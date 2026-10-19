@@ -1,0 +1,4 @@
+# DclawOS 1.0 binary source lock — immutable release DEBs validated by SHA-256.
+# id	filename	url	sha256	license_status
+peazip	peazip_11.2.0.LINUX.Qt6-1_amd64.deb	https://github.com/peazip/PeaZip/releases/download/11.2.0/peazip_11.2.0.LINUX.Qt6-1_amd64.deb	11af7ca6fd633566eb8de969b43ca257b8bce759421775c8c7bbb66105406e58	LGPL-3.0-or-later
+onlyoffice	onlyoffice-desktopeditors_amd64.deb	https://github.com/ONLYOFFICE/DesktopEditors/releases/download/v9.4.0/onlyoffice-desktopeditors_amd64.deb	4271434e81be42b1559fd989d24bf6d413482f278dc6a5e328202a4fc1a18649	AGPL-3.0-only

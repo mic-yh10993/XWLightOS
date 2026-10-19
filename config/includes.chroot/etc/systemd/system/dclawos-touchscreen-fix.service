@@ -1,0 +1,15 @@
+[Unit]
+Description=Move non-standard IR touchscreens from hid-generic to hid-multitouch
+# 国产红外触屏框（如 CJTouch 系）在 Linux 下常被 hid-generic 兜底认领，
+# 触摸事件无法正确映射。本服务在开机时把这类设备转交给 hid-multitouch。
+# 无触屏机器：脚本扫描不到设备，直接 no-op 退出，零影响。
+After=local-fs.target systemd-udevd.service
+Wants=systemd-udevd.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/dclawos-touchscreen-fix.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

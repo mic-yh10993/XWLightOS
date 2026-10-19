@@ -1,0 +1,177 @@
+#!/bin/sh
+# Install the pinned binary packages (PeaZip, ONLYOFFICE DesktopEditors) and
+# write the DclawOS desktop entries that live outside any Debian package: the
+# Terminal launcher and the AI-first desktop shortcuts.  DclawOS no longer
+# ships its own desktop components and no longer masquerades as another
+# desktop environment.
+set -eu
+
+PKG_DIR=/opt/dclawos/packages
+if [ ! -d "$PKG_DIR" ] || ! ls "$PKG_DIR"/*.deb >/dev/null 2>&1; then
+    echo "DclawOS binary packages are missing: $PKG_DIR" >&2
+    exit 1
+fi
+
+cd "$PKG_DIR"
+sha256sum -c SHA256SUMS
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y --no-install-recommends ./*.deb
+
+install -d /usr/local/share/applications
+# The Windows-command compatibility layer is gone; Terminal launches XTerm
+# directly, with an explicit black palette and a compact DejaVu primary face
+# with Fontconfig CJK fallback.
+cat > /usr/local/share/applications/xterm.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Terminal
+Name[zh_CN]=终端
+Comment=DclawOS terminal
+Exec=xterm -fa "DejaVu Sans Mono" -fs 11 -xrm "XTerm*cjkWidth:false" -xrm "XTerm*background:#000000" -xrm "XTerm*cursorColor:#ffffff"
+Icon=utilities-terminal
+Terminal=false
+Categories=System;TerminalEmulator;
+StartupWMClass=XTerm
+EOF
+install -d /etc/skel/Desktop
+install -Dm644 /usr/local/share/applications/xterm.desktop /etc/skel/Desktop/终端.desktop
+# XWLightOS no longer ships AI components; desktop gets the terminal launcher
+# and the installer entry only.
+# The raw Calamares entry would duplicate the DclawOS installer launcher.
+rm -f /usr/share/applications/calamares.desktop
+
+# --- ONLYOFFICE DesktopEditors (pinned official DEB) -----------------------
+# Registered as the system-wide default for documents, spreadsheets,
+# presentations and PDF; seeded for multi-window mode.  The desktop entry id
+# below is the filename the official DEB really ships
+# (onlyoffice-desktopeditors.desktop), verified against the pinned release.
+OO_DESKTOP=""
+for oo_cand in /usr/share/applications/onlyoffice-desktopeditors.desktop \
+    /usr/local/share/applications/onlyoffice-desktopeditors.desktop; do
+    if [ -s "$oo_cand" ]; then
+        OO_DESKTOP="$oo_cand"
+        break
+    fi
+done
+[ -n "$OO_DESKTOP" ] || {
+    echo "ONLYOFFICE desktop entry is missing after install" >&2
+    exit 1
+}
+OO_ENTRY="$(basename "$OO_DESKTOP")"
+echo "ONLYOFFICE desktop entry: $OO_DESKTOP"
+# The official entry already advertises the office MIME types (including
+# application/pdf); assert rather than trust, so a repackaged upstream that
+# drops them fails the build instead of silently losing file associations.
+for oo_mime in \
+    application/pdf \
+    application/msword \
+    application/vnd.openxmlformats-officedocument.wordprocessingml.document \
+    application/vnd.ms-excel \
+    application/vnd.openxmlformats-officedocument.spreadsheetml.sheet \
+    application/vnd.ms-powerpoint \
+    application/vnd.openxmlformats-officedocument.presentationml.presentation; do
+    grep -q "^MimeType=.*${oo_mime}[;]" "$OO_DESKTOP" || {
+        echo "ONLYOFFICE entry does not advertise MIME type: $oo_mime" >&2
+        exit 1
+    }
+done
+# Wire ONLYOFFICE as the default handler in /etc/xdg/mimeapps.list, replacing
+# any competing default (e.g. the PDF -> Firefox ESR mapping from the base
+# config).  GNOME "默认应用程序" reads this file system-wide.
+dclawos_mime_default() {
+    dm_mime="$1"
+    dm_entry="$2"
+    MIMEAPPS=/etc/xdg/mimeapps.list
+    if [ -f "$MIMEAPPS" ]; then
+        grep -v "^${dm_mime}=" "$MIMEAPPS" > "$MIMEAPPS.tmp" || true
+        if grep -q '^\[Default Applications\]' "$MIMEAPPS.tmp"; then
+            sed -i "/^\[Default Applications\]/a ${dm_mime}=${dm_entry}" \
+                "$MIMEAPPS.tmp"
+        else
+            printf '\n[Default Applications]\n%s=%s\n' "$dm_mime" "$dm_entry" \
+                >> "$MIMEAPPS.tmp"
+        fi
+        mv -f "$MIMEAPPS.tmp" "$MIMEAPPS"
+    else
+        printf '[Default Applications]\n%s=%s\n' "$dm_mime" "$dm_entry" \
+            > "$MIMEAPPS"
+    fi
+}
+for oo_mime in \
+    application/pdf \
+    application/msword \
+    application/vnd.openxmlformats-officedocument.wordprocessingml.document \
+    application/vnd.ms-excel \
+    application/vnd.openxmlformats-officedocument.spreadsheetml.sheet \
+    application/vnd.ms-powerpoint \
+    application/vnd.openxmlformats-officedocument.presentationml.presentation \
+    application/vnd.oasis.opendocument.text \
+    application/vnd.oasis.opendocument.spreadsheet \
+    application/vnd.oasis.opendocument.presentation \
+    application/vnd.oasis.opendocument.graphics \
+    application/rtf \
+    text/csv; do
+    dclawos_mime_default "$oo_mime" "$OO_ENTRY"
+done
+grep -qx "application/pdf=${OO_ENTRY}" /etc/xdg/mimeapps.list || {
+    echo "ONLYOFFICE is not the default application/pdf handler" >&2
+    exit 1
+}
+# Multi-window mode ("Open file -> In its own window"): verified against the
+# pinned ONLYOFFICE DesktopEditors 9.4.0 (opt/onlyoffice/desktopeditors/
+# index.html, settings page JS): the launch-mode select uses values
+# "inwindow"/"intab" and applies `editorwindowmode = ("inwindow" == value)`.
+# So `editorWindowMode = true` means every document opens in its own window;
+# `false` (the previous seed) actively forced single-window tab mode.
+# Seeded into /etc/skel so the Live session and every installed user inherit
+# it (Qt INI format).
+OO_SKEL_CONF=/etc/skel/.config/onlyoffice/DesktopEditors.conf
+install -d "$(dirname "$OO_SKEL_CONF")"
+cat > "$OO_SKEL_CONF" <<'EOF'
+[General]
+editorWindowMode = true
+EOF
+grep -q -E '^editorWindowMode *= *true$' "$OO_SKEL_CONF" || {
+    echo "ONLYOFFICE multi-window mode was not seeded" >&2
+    exit 1
+}
+# Desktop shortcut using the real entry id (strip menu-only flags like the
+# other skeleton launchers above).
+install -Dm644 "$OO_DESKTOP" /etc/skel/Desktop/ONLYOFFICE.desktop
+sed -i -e '/^NoDisplay=/d' -e '/^Hidden=/d' \
+    -e '/^OnlyShowIn=/d' -e '/^NotShowIn=/d' \
+    /etc/skel/Desktop/ONLYOFFICE.desktop
+grep -q '^Exec=' /etc/skel/Desktop/ONLYOFFICE.desktop || {
+    echo "ONLYOFFICE desktop shortcut is unusable" >&2
+    exit 1
+}
+if command -v desktop-file-validate >/dev/null 2>&1; then
+    desktop-file-validate "$OO_DESKTOP"
+fi
+echo "ONLYOFFICE $OO_ENTRY installed: default office/PDF handler, multi-window mode"
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database /usr/share/applications
+    update-desktop-database /usr/local/share/applications
+fi
+
+# Packages are installed; keeping their archives only increases the ISO.
+rm -rf "$PKG_DIR"
+# PeaZip must really launch: its bundled libQt6Pas links against
+# libQt6PrintSupport.so.6, which no Debian Qt6 meta-package pulls in by
+# default. Fail the build here instead of shipping a dead launcher.
+if command -v ldd >/dev/null 2>&1 && [ -x /usr/lib/peazip/peazip ]; then
+    if ldd /usr/lib/peazip/peazip 2>/dev/null | grep -q 'not found'; then
+        echo "DclawOS: PeaZip has unresolved shared libraries:" >&2
+        ldd /usr/lib/peazip/peazip 2>/dev/null | grep 'not found' >&2 || true
+        exit 1
+    fi
+fi
+mkdir -p /usr/share/dclawos
+cat > /usr/share/dclawos/components.txt <<'EOF'
+DclawOS 1.0 bundled extras
+- GNOME desktop with WhiteSur macOS-like theme
+- PeaZip 11.2.0 Qt6 official DEB (archive manager)
+- ONLYOFFICE DesktopEditors 9.4.0 official DEB (documents/spreadsheets/presentations/PDF default handler, multi-window mode)
+- XWLightOS education software: DingTalk, Seewo whiteboard, Seewo terminal manager (vendor .debs)
+EOF

@@ -1,0 +1,71 @@
+#!/bin/sh
+set -eu
+
+# The Live session user is created HERE, at build time, so it is guaranteed
+# to exist before GDM starts. (Build 50 proved boot-time-only creation
+# unreliable: its QEMU frames showed the GDM username prompt, i.e. no user
+# existed when the greeter loaded, even though the oneshot service was
+# enabled and ordered Before=gdm.service. The boot-time script stays as an
+# idempotent repair net, not the primary creation path.)
+if ! id user >/dev/null 2>&1; then
+    useradd --create-home --shell /bin/bash --user-group user
+fi
+# Empty password, never locked: GDM autologins as this user via pam_permit
+# (see /etc/gdm3/daemon.conf), and the live text console needs no password
+# either (standard live-CD behavior). Do NOT `passwd --lock` here: a locked
+# account risks the account stack refusing the autologin session.
+passwd -d user
+for group in audio video plugdev netdev render input; do
+    if getent group "$group" >/dev/null 2>&1; then
+        usermod --append --groups "$group" user
+    fi
+done
+if [ -d /etc/skel ]; then
+    cp -a /etc/skel/. /home/user/ 2>/dev/null || true
+fi
+chown -R user:user /home/user
+# Tell GDM/AccountsService exactly which session to start for the autologin
+# (X11 is forced for VM/guest compatibility, matching custom.conf).
+install -d -m 0755 /var/lib/AccountsService/users
+cat > /var/lib/AccountsService/users/user <<'EOF'
+[User]
+Language=
+XSession=gnome-xorg
+SystemAccount=false
+EOF
+install -d -m 0755 /etc/dclawos
+printf '%s\n' user > /etc/dclawos/session-user
+
+# GDM owns the only graphical session path. The services are enabled
+# explicitly because live-build does not always preserve preset state.
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl enable dclawos-live-session-init.service >/dev/null 2>&1 || true
+    systemctl enable gdm.service >/dev/null 2>&1 || true
+    # XWLightOS ships no AI components: no firstboot AI setup, no AI gateways.
+    # Only the live session and GDM are enabled here.
+fi
+
+# Apply the DclawOS GNOME defaults (WhiteSur theme, dock, extensions).
+if command -v dconf >/dev/null 2>&1; then
+    dconf update || {
+        echo 'DclawOS: dconf update failed' >&2
+        exit 1
+    }
+fi
+
+# live-build can install the generic live-config systemd backend independently
+# of the explicit package list. Its oneshot service runs Before=basic.target,
+# yet DclawOS initializes its Live user and graphical session through the
+# native services above. Mask it in the finished Live root so it cannot block
+# the graphical target during DHCP, locale or generic profile processing.
+install -d -m 0755 /etc/systemd/system
+ln -sfn /dev/null /etc/systemd/system/live-config.service
+if [ -e /etc/init.d/lightdm ] || [ -e /usr/sbin/lightdm ]; then
+    echo 'DclawOS: LightDM is not permitted; use gdm.service' >&2
+    exit 1
+fi
+# GDM must actually be installed; without it there is no graphical login.
+if [ ! -e /usr/sbin/gdm3 ]; then
+    echo 'DclawOS: gdm3 is missing; the GNOME session cannot start' >&2
+    exit 1
+fi

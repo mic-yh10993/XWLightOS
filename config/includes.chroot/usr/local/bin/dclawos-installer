@@ -1,0 +1,28 @@
+#!/bin/sh
+set -eu
+
+if ! command -v calamares >/dev/null 2>&1; then
+    echo "Calamares is not installed in this DclawOS Live session." >&2
+    exit 1
+fi
+
+# In the disposable LiveCD, the dedicated sudoers rule grants only this
+# installer binary passwordless root execution. This avoids asking the Live
+# user for a password that does not exist while keeping other commands unprivileged.
+# Preserve a usable X11 session even when the wrapper is started from a desktop
+# file through a privilege boundary.
+export LANG=zh_CN.UTF-8
+export LANGUAGE=zh_CN:zh
+export LC_ALL=zh_CN.UTF-8
+export DISPLAY="${DISPLAY:-:0}"
+# The DclawOS live session stores its X cookie at a fixed, predictable path to
+# avoid xauth lock contention. Prefer that Live cookie and only fall back to
+# a conventional Xauthority file for compatibility.
+if [ -z "${XAUTHORITY:-}" ]; then
+    if [ -f "/home/user/.Xauthority-dclawos" ]; then
+        export XAUTHORITY=/home/user/.Xauthority-dclawos
+    elif [ -f "/home/user/.Xauthority" ]; then
+        export XAUTHORITY=/home/user/.Xauthority
+    fi
+fi
+exec /usr/bin/sudo -n -E /usr/bin/calamares "$@"

@@ -1,0 +1,34 @@
+---
+componentName: dclawos
+welcomeStyleCalamares: false
+welcomeExpandingLogo: true
+windowExpanding: normal
+windowSize: 1024px,650px
+windowPlacement: center
+sidebar: widget
+navigation: widget
+
+strings:
+    productName: DclawOS
+    shortProductName: DclawOS
+    version: "1.0"
+    shortVersion: "1.0"
+    versionedName: DclawOS 1.0
+    shortVersionedName: DclawOS 1.0
+    bootloaderEntryName: DclawOS
+    productUrl: https://github.com/SYSTEM-Intel-MIC/dclawos
+    supportUrl: https://github.com/SYSTEM-Intel-MIC/dclawos/issues
+    knownIssuesUrl: https://github.com/SYSTEM-Intel-MIC/dclawos/issues
+    releaseNotesUrl: https://github.com/SYSTEM-Intel-MIC/dclawos/releases
+
+images:
+    productIcon: "dclawos-mark.svg"
+    productLogo: "dclawos-mark.svg"
+    productWallpaper: "dclawos-aurora-wallpaper.png"
+    productWelcome: "dclawos-mark.svg"
+
+style:
+    sidebarBackground: "#082353"
+    sidebarText: "#EAF6FF"
+    sidebarTextSelect: "#07162F"
+    sidebarTextHighlight: "#75D6FF"

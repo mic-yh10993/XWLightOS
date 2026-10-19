@@ -1,0 +1,13 @@
+[Unit]
+Description=Initialize the DclawOS Live graphical session user
+Before=gdm.service
+After=local-fs.target systemd-tmpfiles-setup.service
+Wants=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/dclawos-live-session-init
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

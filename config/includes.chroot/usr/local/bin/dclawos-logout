@@ -1,0 +1,9 @@
+#!/bin/sh
+# Log out of the current GNOME session.
+set -eu
+
+if [ -n "${GNOME_SHELL_SESSION_MODE:-}" ] || [ "$XDG_CURRENT_DESKTOP" = "GNOME" ]; then
+    exec gnome-session-quit --logout --no-prompt
+fi
+# Fallback: ask logind to terminate the session.
+exec loginctl terminate-session "${XDG_SESSION_ID:-self}"

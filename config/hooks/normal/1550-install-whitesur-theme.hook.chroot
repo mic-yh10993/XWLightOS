@@ -1,0 +1,95 @@
+#!/bin/sh
+# Install the pinned WhiteSur macOS-like theme (GTK + icons + cursors) into
+# the live chroot. All versions are pinned; the hook fails the image build if
+# any of them cannot be installed or verified.
+#
+# NOTE: WhiteSur's install.sh cannot run in a chroot: its lib-core.sh calls
+# `logname`, which fails without a login session and aborts the script via
+# `set -Eeo pipefail`. The GTK theme is therefore installed from the
+# project's own pre-built release tarballs (same content install.sh would
+# generate), extracted directly to /usr/share/themes.
+set -eu
+
+GTK_VER="2026-09-10"
+ICON_VER="2026-09-10"
+CURSOR_REV="e190baf618ed95ee217d2fd45589bd309b37672b"
+
+WORKDIR="$(mktemp -d /tmp/dclawos-whitesur-XXXXXX)"
+trap 'rm -rf "$WORKDIR"' EXIT
+cd "$WORKDIR"
+
+# xz is needed to unpack the pre-built .tar.xz theme archives.
+apt-get update
+apt-get install -y --no-install-recommends xz-utils
+
+echo "DclawOS: installing WhiteSur GTK theme $GTK_VER (pre-built release)"
+curl -fsSL "https://github.com/vinceliuice/WhiteSur-gtk-theme/archive/refs/tags/${GTK_VER}.tar.gz" -o whitesur-gtk.tar.gz
+tar xzf whitesur-gtk.tar.gz
+# Extract the standard Dark/Light variants from the pre-built release.
+for variant in Dark Light; do
+    tar -xJf "WhiteSur-gtk-theme-${GTK_VER}/release/WhiteSur-${variant}.tar.xz" \
+        -C /usr/share/themes
+done
+[ -d /usr/share/themes/WhiteSur-Dark/gnome-shell ] || {
+    echo "DclawOS: WhiteSur-Dark gnome-shell theme missing after install" >&2
+    exit 1
+}
+# Build 56 教训：用户会话的 Shell 主题是 WhiteSur-Light（user-theme），
+# 它的 gnome-shell.css 必须真实存在，否则会话回退到 gresource 默认样式表。
+[ -f /usr/share/themes/WhiteSur-Light/gnome-shell/gnome-shell.css ] || {
+    echo "DclawOS: WhiteSur-Light gnome-shell.css missing after install (user-theme would have no stylesheet)" >&2
+    exit 1
+}
+[ -d /usr/share/themes/WhiteSur-Light/gtk-4.0 ] || {
+    echo "DclawOS: WhiteSur-Light gtk-4.0 theme missing after install" >&2
+    exit 1
+}
+# libadwaita/GTK4 应用（GNOME 43 的"文件"/Nautilus 等）不读 dconf 的 gtk-theme，
+# 只加载 ~/.config/gtk-4.0/gtk.css。这是上游 install.sh -l/--libadwaita 的
+# chroot 等效做法：把 WhiteSur-Light（配合用户"默认白色"指令）的 gtk-4.0
+# 主题装进 /etc/skel，live 用户（1700 钩子从 skel 复制家目录）与安装后的
+# 新用户都能继承。没有这一步，GTK4 应用会渲染成原生 Adwaita浅色，
+# 用户观感就是"主题没用上"（用户 2026-10-18 真机反馈）。
+install -d /etc/skel/.config/gtk-4.0
+cp -a /usr/share/themes/WhiteSur-Light/gtk-4.0/. /etc/skel/.config/gtk-4.0/
+[ -s /etc/skel/.config/gtk-4.0/gtk.css ] || {
+    echo "DclawOS: WhiteSur-Light gtk-4.0 theme did not land in /etc/skel (libadwaita apps would stay Adwaita)" >&2
+    exit 1
+}
+
+echo "DclawOS: installing WhiteSur icon theme $ICON_VER"
+curl -fsSL "https://github.com/vinceliuice/WhiteSur-icon-theme/archive/refs/tags/${ICON_VER}.tar.gz" -o whitesur-icons.tar.gz
+tar xzf whitesur-icons.tar.gz
+cd "WhiteSur-icon-theme-${ICON_VER}"
+./install.sh --dest /usr/share/icons 1>/tmp/dclawos-whitesur-icons.log 2>&1 || {
+    tail -30 /tmp/dclawos-whitesur-icons.log >&2
+    echo "DclawOS: WhiteSur icon theme install failed" >&2
+    exit 1
+}
+cd "$WORKDIR"
+[ -d /usr/share/icons/WhiteSur ] || {
+    echo "DclawOS: WhiteSur icon directory missing after install" >&2
+    exit 1
+}
+
+echo "DclawOS: installing WhiteSur cursors $CURSOR_REV"
+curl -fsSL "https://github.com/vinceliuice/WhiteSur-cursors/archive/${CURSOR_REV}.tar.gz" -o whitesur-cursors.tar.gz
+tar xzf whitesur-cursors.tar.gz
+cd "WhiteSur-cursors-${CURSOR_REV}"
+./install.sh 1>/tmp/dclawos-whitesur-cursors.log 2>&1 || {
+    tail -30 /tmp/dclawos-whitesur-cursors.log >&2
+    echo "DclawOS: WhiteSur cursors install failed" >&2
+    exit 1
+}
+cd "$WORKDIR"
+[ -d /usr/share/icons/WhiteSur-cursors ] || {
+    echo "DclawOS: WhiteSur-cursors directory missing after install" >&2
+    exit 1
+}
+
+# Refresh icon caches so GNOME picks the theme up immediately.
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    gtk-update-icon-cache -f /usr/share/icons/WhiteSur >/dev/null 2>&1 || true
+fi
+
+echo "DclawOS: WhiteSur theme installation complete"

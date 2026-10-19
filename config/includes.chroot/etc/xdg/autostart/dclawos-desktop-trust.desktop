@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=DclawOS desktop launcher trust setup
+Exec=/bin/sh -c 'gio set --type=string "/home/user/Desktop/Install DclawOS.desktop" metadata::trusted true >/dev/null 2>&1; touch "/home/user/Desktop/Install DclawOS.desktop"'
+OnlyShowIn=GNOME;
+X-GNOME-Autostart-enabled=true
+NoDisplay=true
+Terminal=false

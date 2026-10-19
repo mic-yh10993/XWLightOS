@@ -1,0 +1,53 @@
+#!/bin/sh
+# 用户 2026-10-18 邮件「字体问题」指令：为了防止 Office 文档错位，在构建期
+# 在线安装常用字体（构建机有网；成品安装/开机不依赖联网，用户 10-17 要求）。
+#
+# 方案（按邮件 4 项 + 用户自己提出的"方便/合规"权衡落地）：
+#   1. 英文字体：Debian 官方 contrib 包 ttf-mscorefonts-installer
+#      （Arial / Times New Roman / Courier New / Georgia / Verdana 等），
+#      构建期预接受微软 EULA —— 这是邮件里说的"最稳妥的方式"，微软官方
+#      认可的分发通道，合规无风险。
+#   2. 中文字体：微软雅黑/宋体等是微软专有字体，社区 GitHub 仓库
+#      （uinv/windows-fonts、funggtopp/onlyoffice-chinese-fonts）版权不清，
+#      不能直接打进公开发布的 ISO。邮件本身也要求权衡方便与合规。
+#      DclawOS 走邮件里给的开源替代路线：镜像已含 Noto CJK
+#      （fonts-noto-cjk，思源系列同源字体，SIL OFL 协议），
+#      70-dclawos-windows-font-aliases.conf 把雅黑/宋体等字族名别名过去，
+#      OnlyOffice 打开 Windows 文档时不缺字形、不错位，无需再装一套。
+#   3. DclawOS 装的是 ONLYOFFICE DesktopEditors（桌面版，直接读 fontconfig），
+#      不需要邮件里提的 documentserver-generate-allfonts.sh（那是服务端
+#      DocumentServer 的脚本）。构建期 fc-cache -f 刷新一次缓存即可。
+set -eu
+
+export DEBIAN_FRONTEND=noninteractive
+
+# 预接受微软核心字体 EULA（非交互构建的必须步骤），取值同 debconf 模板
+# msttcorefonts/accepted-mscorefonts-eula。
+printf '%s\n' \
+    'ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true' \
+    | debconf-set-selections
+
+apt-get install -y --no-install-recommends ttf-mscorefonts-installer
+
+fc-cache -f >/dev/null 2>&1
+
+# 构建期门禁：真正的 Arial / Times New Roman 必须已落盘且可被检索；
+# 中文字体别名文件必须还在（双保险，防错位依赖它）。
+for want in 'usr/share/fonts/truetype/msttcorefonts/Arial.ttf' \
+    'usr/share/fonts/truetype/msttcorefonts/Times_New_Roman.ttf' \
+    'etc/fonts/conf.d/70-dclawos-windows-font-aliases.conf'; do
+    [ -s "/$want" ] || {
+        echo "DclawOS: office font asset missing after install: /$want" >&2
+        exit 1
+    }
+done
+fc-list | grep -qi 'Arial' || {
+    echo 'DclawOS: Arial not visible to fontconfig after install' >&2
+    exit 1
+}
+fc-list | grep -qi 'Times New Roman' || {
+    echo 'DclawOS: Times New Roman not visible to fontconfig after install' >&2
+    exit 1
+}
+
+echo 'DclawOS: MS core fonts installed (EULA pre-accepted), CJK aliases intact'

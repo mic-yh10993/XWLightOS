@@ -1,0 +1,68 @@
+# DclawOS GNOME defaults: macOS-like WhiteSur theme, dock and AI entry points.
+# Applied via `dconf update` in the 1700 hook.
+
+[org/gnome/desktop/interface]
+# 用户 2026-10-17 邮件指令：图标 WhiteSur-light、Shell WhiteSur-Light、
+# 过时应用程序（legacy GTK）WhiteSur-Dark。
+# 用户 2026-10-18 邮件指令：系统默认主题色为白色。color-scheme 决定
+# libadwaita/GTK4 应用的浅色/深色外观，'prefer-light' 即默认白色；
+# GTK3 老应用仍走下面的 gtk-theme（过时应用 WhiteSur-Dark，保持 10-17 指令）。
+color-scheme='prefer-light'
+gtk-theme='WhiteSur-Dark'
+icon-theme='WhiteSur-light'
+cursor-theme='WhiteSur-cursors'
+font-name='Noto Sans CJK SC 11'
+document-font-name='Noto Sans CJK SC 11'
+monospace-font-name='Noto Sans Mono CJK SC 11'
+
+[org/gnome/desktop/wm/preferences]
+theme='WhiteSur-Dark'
+# 用户 2026-10-17 邮件指令：窗口按钮放右上角。
+button-layout=':minimize,maximize,close'
+
+[org/gnome/shell]
+# mac 主题（用户 2026-10-12 明确要求不可精简）+ 用户 2026-10-17 邮件指令的
+# 全局默认扩展：Apps Menu、dash-to-dock、Desktop-icons-ng (ding)、
+# Native Window Placement、Places Status Indicator、
+# Removable Drive Menu、System Monitor、User Themes。
+# 注意：10-17 邮件里要求的 Light Style 已于 2026-10-19 移除（#61/#62 构建失败
+# 根因）——GNOME 官方 43.1 仓库里没有该扩展，且它依赖 GNOME 45+ 的 API，在
+# GNOME 43 上从原理上跑不起来；浅色效果已由本文件 color-scheme='prefer-light'
+# 实现，不是偷工减料。
+# appindicatorsupport 保留：托盘图标是 AI-first 体验的一部分。
+# chroot 构建无显示、无重启：扩展启用走系统级 dconf 默认（dconf update 编译
+# 进 db），首次登录即生效，无需运行时 gnome-extensions enable。
+# 用户 2026-10-19 邮件指令：顶栏加系统监控（CPU/内存），用 paradoxxxzero 维护版
+#（UUID system-monitor@paradoxxx.zero.gmail.com，1610 钩子安装，支持 GNOME 43）。
+enabled-extensions=['apps-menu@gnome-shell-extensions.gcampax.github.com', 'dash-to-dock@micxgx.gmail.com', 'ding@rastersoft.com', 'native-window-placement@gnome-shell-extensions.gcampax.github.com', 'places-menu@gnome-shell-extensions.gcampax.github.com', 'drive-menu@gnome-shell-extensions.gcampax.github.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'appindicatorsupport@rgcjonas.gmail.com', 'system-monitor@paradoxxx.zero.gmail.com']
+# AI-first: AI 聊天和 AI 管理器固定在 dock，随时唤起。
+# Super+Shift+A 全局唤起 AI 聊天（见下方自定义快捷键）。
+favorite-apps=['org.gnome.Nautilus.desktop', 'firefox-esr.desktop', 'org.gnome.Terminal.desktop', 'dclawos-ai-chat.desktop', 'dclawos-ai-manager.desktop']
+
+[org/gnome/shell/extensions/user-theme]
+# 用户 2026-10-17 邮件指令：Shell 主题用 WhiteSur-Light。
+name='WhiteSur-Light'
+
+[org/gnome/desktop/background]
+picture-uri='file:///usr/share/backgrounds/dclawos-aurora-wallpaper.png'
+picture-uri-dark='file:///usr/share/backgrounds/dclawos-aurora-wallpaper.png'
+
+[org/gnome/desktop/screensaver]
+picture-uri='file:///usr/share/backgrounds/dclawos-aurora-wallpaper.png'
+
+[org/gnome/shell/extensions/dash-to-dock]
+dock-position='BOTTOM'
+extend-height=false
+dash-max-icon-size=48
+show-trash=false
+show-mounts=false
+running-indicator-style='DOTS'
+
+# AI-first: Super+Shift+A launches the AI chat anywhere.
+[org/gnome/settings-daemon/plugins/media-keys]
+custom-keybindings=['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/dclawos-ai-chat/']
+
+[org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/dclawos-ai-chat]
+name='DclawOS AI Chat'
+command='/usr/local/bin/dclawos-ai-chat'
+binding='<Super><Shift>a'

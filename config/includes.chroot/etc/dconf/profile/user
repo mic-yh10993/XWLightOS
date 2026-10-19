@@ -1,0 +1,14 @@
+# DclawOS user-session dconf profile.
+#
+# Debian ships no /etc/dconf/profile/user. Without this file dconf falls
+# back to a user-db-only profile and SILENTLY IGNORES every system database,
+# so /etc/dconf/db/local.d/00-dclawos-gnome (WhiteSur GTK/icon/cursor theme,
+# enabled extensions incl. dash-to-dock/ding/user-theme, dock favorites,
+# input-source defaults) would never take effect on the desktop -- while the
+# GDM greeter (which has its own profile with system-db:gdm) looked fine.
+# That is exactly the "登录页有主题、桌面没主题、扩展都没启用" symptom.
+#
+# Same lesson as the greeter profile: the system-db line is what makes the
+# keyfile below it visible. Keep user-db first so user overrides still win.
+user-db:user
+system-db:local

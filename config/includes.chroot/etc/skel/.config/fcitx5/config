@@ -1,0 +1,14 @@
+# DclawOS fcitx5 全局配置：单击 Shift 在中英文之间切换。
+# Ctrl+Space 保留为备用切换键。
+
+[Hotkey]
+# 修饰键单击触发的超时（毫秒）
+ModifierOnlyKeyTimeout=250
+
+[Hotkey/TriggerKeys]
+0=Control+space
+
+[Hotkey/AltTriggerKeys]
+# 单击左/右 Shift 切换中英文
+0=Shift_L
+1=Shift_R

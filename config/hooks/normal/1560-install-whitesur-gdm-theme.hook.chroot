@@ -1,0 +1,142 @@
+#!/bin/sh
+# Apply the WhiteSur theme to the GDM login screen in the live chroot.
+# This is the chroot equivalent of upstream `tweaks.sh -g` (user request,
+# 2026-10-17 mail: "保证MacOS主题一切成功运用（图标，dock栏，登陆页面等）").
+#
+# Adaptation notes (decided per the user's "自己决策" authorization):
+# - Upstream `tweaks.sh -g` on GNOME 48+ runs install_only_gdm_theme, which
+#   uses the PRE-COMPILED other/gdm/theme from the repo + glib-compile-resources.
+#   On GNOME 43 it would instead rebuild the whole shell theme from SCSS
+#   (needs sassc/imagemagick, interactive sudo prompts). A non-interactive
+#   chroot cannot do the SCSS path, so the pre-compiled path is used directly:
+#   same pinned tag, same gresource target (/usr/share/gnome-shell/
+#   gnome-shell-theme.gresource), no SCSS rebuild, no imagemagick needed.
+# - "sudo" in a chroot is a no-op concept: hooks already run as root, so no
+#   sudo is used or required (tweaks.sh's full_sudo re-exec is skipped).
+# - The greeter background becomes the WhiteSur BigSur-like wallpaper
+#   (other/gdm/theme/background.png), replacing the previous neutral-dark
+#   default. The DclawOS greeter logo override (org.gnome.login-screen logo
+#   via the gdm dconf db) is untouched and keeps applying.
+set -eu
+
+GTK_VER="2026-09-10"
+# Same pin as the 1550 hook. Never float: no --depth=1, no branch pulls.
+GDM_GR="/usr/share/gnome-shell/gnome-shell-theme.gresource"
+
+[ -f "$GDM_GR" ] || {
+    echo "DclawOS: $GDM_GR is missing (is gdm3 installed?)" >&2
+    exit 1
+}
+
+install -d -m 0755 /etc/dclawos
+
+WORKDIR="$(mktemp -d /tmp/dclawos-whitesur-gdm-XXXXXX)"
+trap 'rm -rf "$WORKDIR"' EXIT
+cd "$WORKDIR"
+
+# glib-compile-resources ships in libglib2.0-dev-bin (same package upstream
+# tweaks.sh would install for -g). Installed in the hook like the 1550 hook
+# does for xz-utils.
+if ! command -v glib-compile-resources >/dev/null 2>&1; then
+    apt-get update
+    apt-get install -y --no-install-recommends libglib2.0-dev-bin
+fi
+command -v gresource >/dev/null 2>&1 || {
+    echo "DclawOS: gresource tool missing after installing libglib2.0-dev-bin" >&2
+    exit 1
+}
+
+echo "DclawOS: installing WhiteSur GDM theme $GTK_VER (pre-compiled)"
+curl -fsSL "https://github.com/vinceliuice/WhiteSur-gtk-theme/archive/refs/tags/${GTK_VER}.tar.gz" -o whitesur-gtk.tar.gz
+tar xzf whitesur-gtk.tar.gz
+SRC="WhiteSur-gtk-theme-${GTK_VER}"
+[ -d "$SRC/other/gdm/theme" ] || {
+    echo "DclawOS: GDM theme dir missing in tag $GTK_VER" >&2
+    exit 1
+}
+# 注意：不再直接使用上游的 gnome-shell-theme.gresource.xml——它漏了
+# gnome-shell.css（Build 56 根因）。下面用 DclawOS 自有的 XML 编译，
+# 源文件逐个校验，见本文件后半部分。
+[ -f "$SRC/other/gdm/theme/background.png" ] || {
+    echo "DclawOS: GDM background.png missing in tag $GTK_VER" >&2
+    exit 1
+}
+
+# Replace Debian's stock GDM shell gresource with the WhiteSur one. This is
+# the chroot equivalent of what tweaks.sh -g does; the stock file is
+# regenerated from the gdm3 package on reinstall, so no backup is kept inside
+# the image.
+#
+# DclawOS-owned gresource XML: it is upstream's
+# other/gdm/gnome-shell-theme.gresource.xml PLUS one alias that upstream omits
+# and Debian's GNOME 43 cannot live without:
+#   <file alias="gnome-shell.css">gnome-shell-dark.css</file>
+# 根因（Build 56，Run 39043461212，QEMU BIOS 烟测失败）：上游的 GDM XML 里
+# 根本没有 gnome-shell.css。任何加载不到 user theme 的 gnome-shell 实例
+# （greeter 回退、user-theme 生效前的用户会话）都会去查
+# resource:///org/gnome/shell/theme/gnome-shell.css，报
+# "JS ERROR: No valid stylesheet found for 'gnome-shell.css'" 后永远渲染不出
+# 桌面；GDM 一直停在登录界面，烟测的饱和度检查判定失败。Debian 原装的
+# gresource 一直带有 gnome-shell.css，所以 1560 替换掉它之后才出事。
+cat > dclawos-gdm-theme.gresource.xml <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<gresources>
+  <gresource prefix="/org/gnome/shell/theme">
+    <file>calendar-today.svg</file>
+    <file>calendar-today-light.svg</file>
+    <file>gnome-shell-dark.css</file>
+    <file>gnome-shell-light.css</file>
+    <file>gnome-shell-high-contrast.css</file>
+    <file>gnome-shell-start.svg</file>
+    <file>pad-osd.css</file>
+    <file>workspace-placeholder.svg</file>
+    <file>background.png</file>
+    <file alias="gdm.css">gnome-shell-dark.css</file>
+    <file alias="gdm3.css">gnome-shell-dark.css</file>
+    <!-- DclawOS: 上游 GDM XML 漏了这一项；没有它 gnome-shell 就没有默认
+         样式表可回退，会话永远渲染不出来。指向 dark 与 gdm.css 保持一致。 -->
+    <file alias="gnome-shell.css">gnome-shell-dark.css</file>
+    <file alias="Yaru/gnome-shell.css">gnome-shell-light.css</file>
+    <file alias="Yaru/gnome-shell-dark.css">gnome-shell-dark.css</file>
+    <file alias="Yaru-dark/gnome-shell.css">gnome-shell-dark.css</file>
+  </gresource>
+</gresources>
+EOF
+
+# XML 引用的每个源文件都必须在 pin 的 tag 里真实存在，否则编译报错难读，
+# 在这里先给明确失败。
+for gdm_src in calendar-today.svg calendar-today-light.svg \
+    gnome-shell-dark.css gnome-shell-light.css gnome-shell-high-contrast.css \
+    gnome-shell-start.svg pad-osd.css workspace-placeholder.svg background.png; do
+    [ -f "$SRC/other/gdm/theme/$gdm_src" ] || {
+        echo "DclawOS: GDM theme source file missing in tag $GTK_VER: $gdm_src" >&2
+        exit 1
+    }
+done
+
+glib-compile-resources \
+    --sourcedir="$SRC/other/gdm/theme" \
+    --target="$GDM_GR" \
+    dclawos-gdm-theme.gresource.xml
+
+# Build-time gate: 登录主题和默认 shell 样式表必须同时在新 gresource 里
+# （Build 56 失败的回归门禁：只查 gdm.css 放过了 gnome-shell.css 的缺失）。
+GDM_RESOURCES="$(gresource list "$GDM_GR")"
+printf '%s\n' "$GDM_RESOURCES" | grep -q '^/org/gnome/shell/theme/gdm\.css$' || {
+    echo "DclawOS: WhiteSur GDM theme missing from $GDM_GR after compile" >&2
+    exit 1
+}
+printf '%s\n' "$GDM_RESOURCES" | grep -q '^/org/gnome/shell/theme/gnome-shell\.css$' || {
+    echo "DclawOS: default gnome-shell.css missing from $GDM_GR after compile (gnome-shell fallback would break)" >&2
+    exit 1
+}
+
+# Marker for the image validator: the compiled gresource carries no
+# "WhiteSur" string, so the installed version and the full resource list are
+# recorded explicitly for static assertions.
+{
+    printf 'whitesur-gdm-theme %s (tweaks.sh -g equivalent, pre-compiled)\n' "$GTK_VER"
+    printf '%s\n' "$GDM_RESOURCES"
+} > /etc/dclawos/whitesur-gdm-theme
+
+echo "DclawOS: WhiteSur GDM theme installed"

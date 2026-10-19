@@ -1,0 +1,155 @@
+# DclawOS core: Debian Bookworm AMD64, GNOME desktop with macOS-like WhiteSur theme
+# The Live user and graphical session are initialized by the DclawOS-native
+# services below, rather than by live-config (which blocks basic.target while
+# executing generic late-userspace profiles on every boot).
+live-boot
+systemd-sysv
+libpam-systemd
+linux-image-amd64
+firmware-linux
+firmware-iwlwifi
+firmware-atheros
+firmware-brcm80211
+firmware-realtek
+firmware-misc-nonfree
+firmware-amd-graphics
+firmware-intel-sound
+
+# GNOME desktop, minimal set (X11 session for VM compatibility) + GDM.
+# Replaces the full gnome-core metapackage: only the shell, session,
+# settings daemon, control center, file manager, terminal and keyring are
+# installed. No bundled GNOME apps (maps/music/weather/calendar/contacts/
+# clocks/characters/logs/screenshot), no games, no help/docs viewers, no
+# software center — AI-first and keeps the image small for the runner disk.
+# macOS look comes from the WhiteSur theme installed by the
+# 1550-install-whitesur-theme hook (pinned release).
+xorg
+xauth
+kbd
+x11-xserver-utils
+x11-utils
+dbus-x11
+policykit-1
+sudo
+network-manager
+dconf-cli
+gnome-session
+gnome-shell
+gnome-settings-daemon
+gnome-control-center
+gnome-terminal
+nautilus
+gnome-keyring
+gnome-calculator
+gnome-text-editor
+gvfs
+gnome-menus
+gdm3
+gnome-shell-extension-dashtodock
+gnome-shell-extension-appindicator
+# Desktop Icons NG (ding)：用户 2026-10-17 邮件要求安装并全局默认启用，
+# 在桌面上显示"此电脑"等图标（macOS 风格桌面不可缺）。
+gnome-shell-extension-desktop-icons-ng
+# nautilus-python 绑定："此电脑" Nautilus 扩展
+# （yannmasoch/nautilus-my-computer，pin 见 1570 钩子）的运行时依赖。
+python3-nautilus
+# GNOME Tweaks：用户 2026-10-17 邮件要求安装，用于主题/扩展的可视化调整。
+gnome-tweaks
+# 不可精简：mac 主题的顶栏/锁屏 shell 部分靠 user-theme 扩展
+# （gnome-shell-extensions 包提供）。用户 2026-10-12 明确要求回归 mac
+# 主题，此包不得再被精简。
+gnome-shell-extensions
+pipewire
+wireplumber
+pipewire-pulse
+pipewire-alsa
+libspa-0.2-bluetooth
+pavucontrol
+
+# GNOME runtime dependencies
+libx11-6
+libxft2
+libfontconfig1
+libpng16-16
+libxtst6
+libxi6
+libdbus-1-3
+libcrypt1
+libgtk-3-0
+libgtk-4-1
+libnotify4
+libnss3
+libxss1
+libsecret-1-0
+libatspi2.0-0
+libayatana-appindicator3-1
+xdg-utils
+librsvg2-common
+adwaita-icon-theme
+hicolor-icon-theme
+shared-mime-info
+alsa-utils
+cheese
+
+# Qt6 runtime for bundled Qt components (PeaZip)
+libqt6widgets6
+libqt6gui6
+libqt6core6
+libqt6network6
+libqt6dbus6
+# PeaZip 的 libQt6Pas.so.6 直接链接 libQt6PrintSupport.so.6，
+# 无其它 Qt6 包会顺带装上它，缺了 PeaZip 启动即死（用户 2026-10-18 真机反馈）。
+libqt6printsupport6
+libgdk-pixbuf-2.0-0
+
+# Chinese locale and Fcitx5 input method
+locales
+fonts-noto-cjk
+fonts-noto-color-emoji
+fcitx5
+fcitx5-config-qt
+fcitx5-frontend-gtk3
+fcitx5-frontend-gtk4
+fcitx5-frontend-qt5
+fcitx5-chinese-addons
+fcitx5-pinyin
+
+# Requested everyday applications
+# PeaZip is installed from packages/binaries.lock.tsv (pinned official DEB).
+vlc
+eog
+calamares
+calamares-settings-debian
+squashfs-tools
+rsync
+udisks2
+libblockdev-part2
+libblockdev-fs2
+dosfstools
+ntfs-3g
+mtools
+parted
+grub-common
+grub-pc-bin
+grub-efi-amd64-bin
+syslinux-utils
+efibootmgr
+os-prober
+
+# Runtime dependencies of integrated system tools
+python3-gi
+python3-cairo
+python3-tk
+python3-websockets
+gir1.2-gtk-3.0
+xdotool
+wmctrl
+libjson-glib-1.0-0
+libdrm2
+libsystemd0
+pciutils
+usbutils
+fwupd
+linux-headers-amd64
+procps
+man-db

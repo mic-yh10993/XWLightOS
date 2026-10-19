@@ -1,0 +1,37 @@
+#!/bin/sh
+# 用户 2026-10-18 邮件指令：程序列表里只保留「fcitx 设置」，删除「fcitx5」
+# 和「fcitx5 迁移助手」等多余快捷方式。
+#
+# Debian bookworm 上 fcitx 相关包一共装 5 个 .desktop 启动器：
+#   org.fcitx.Fcitx5.desktop          「fcitx5」主启动器（保留会跟自启动守护进程重复）
+#   fcitx5-configtool.desktop         旧版配置工具启动器
+#   org.fcitx.fcitx5-migrator.desktop 「fcitx5 迁移助手」
+#   kbd-layout-viewer5.desktop        键盘布局查看器（fcitx5-config-qt 包附带）
+# 只保留 org.fcitx.fcitx5-config-qt.desktop（「fcitx 设置」）。
+# 只删除启动器文件，不动输入法本身；fcitx5 守护进程仍由
+# /etc/xdg/autostart/fcitx5.desktop 自启动。
+set -eu
+
+rm -f /usr/share/applications/org.fcitx.Fcitx5.desktop
+rm -f /usr/share/applications/fcitx5-configtool.desktop
+rm -f /usr/share/applications/org.fcitx.fcitx5-migrator.desktop
+rm -f /usr/share/applications/kbd-layout-viewer5.desktop
+
+# 构建期门禁：「fcitx 设置」必须还在，多余项必须已消失。
+[ -s /usr/share/applications/org.fcitx.fcitx5-config-qt.desktop ] || {
+    echo "DclawOS: fcitx settings launcher is missing after prune" >&2
+    exit 1
+}
+for gone in org.fcitx.Fcitx5.desktop fcitx5-configtool.desktop \
+    org.fcitx.fcitx5-migrator.desktop kbd-layout-viewer5.desktop; do
+    [ ! -e "/usr/share/applications/$gone" ] || {
+        echo "DclawOS: redundant fcitx launcher still present: $gone" >&2
+        exit 1
+    }
+done
+
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
+fi
+
+echo "DclawOS: fcitx launchers pruned, only fcitx settings kept"
