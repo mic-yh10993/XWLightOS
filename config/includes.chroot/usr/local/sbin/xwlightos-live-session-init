@@ -1,0 +1,32 @@
+#!/bin/sh
+# Boot-time safety net for the Live session user. The `user` account is
+# created at BUILD time (see the 1700 hook) so it always exists before GDM
+# starts; this service only repairs it if something removed it, and still
+# runs before gdm.service.
+set -eu
+
+if [ ! -d /run/live ]; then
+    # Installed systems keep this unit until the Calamares postinstall removes
+    # it. Never fail the boot there, but log the skip so a missing live user
+    # stays diagnosable from the journal.
+    echo 'xwlightos-live-session-init: /run/live not present, not a live boot; skipping' >&2
+    exit 0
+fi
+if ! id user >/dev/null 2>&1; then
+    echo 'xwlightos-live-session-init: live user missing, recreating' >&2
+    useradd --create-home --shell /bin/bash --user-group user
+    for group in audio video plugdev netdev render input; do
+        if getent group "$group" >/dev/null 2>&1; then
+            usermod --append --groups "$group" user
+        fi
+    done
+    if [ -d /etc/skel ]; then
+        cp -a /etc/skel/. /home/user/ 2>/dev/null || true
+    fi
+    chown -R user:user /home/user
+fi
+# The live account must stay unlocked with an empty password: GDM autologins
+# as this user (see /etc/gdm3/daemon.conf). Never lock it here.
+passwd -d user >/dev/null 2>&1 || true
+install -d -m 0755 /etc/xwlightos
+printf '%s\n' user > /etc/xwlightos/session-user

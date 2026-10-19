@@ -1,5 +1,5 @@
 #!/bin/bash
-# Bounded BIOS/UEFI boot smoke for the finished DclawOS ISO.  A menu that
+# Bounded BIOS/UEFI boot smoke for the finished XWLightOS ISO.  A menu that
 # merely renders is insufficient: send Return to select the default Live item,
 # then poll screendumps until the graphical desktop is visibly rendered (or
 # the bounded budget runs out), and fail on QEMU-level diagnostics.
@@ -23,8 +23,8 @@ BUDGET="${3:-260}"
 # Minimum dwell after selecting the Live entry before the first frame check.
 # Screenshots taken earlier could catch the ISOLINUX boot menu or the early
 # kernel text console instead of the finished desktop.
-MIN_DWELL="${DCLAWOS_QEMU_MIN_DWELL:-90}"
-POLL_INTERVAL="${DCLAWOS_QEMU_POLL_INTERVAL:-15}"
+MIN_DWELL="${XWLIGHTOS_QEMU_MIN_DWELL:-90}"
+POLL_INTERVAL="${XWLIGHTOS_QEMU_POLL_INTERVAL:-15}"
 MONITOR_WAIT=20
 BOOT_MENU_WAIT=8
 # Margin kept at the end of the budget so the guest still has to be alive when
@@ -51,7 +51,7 @@ WORK="$(mktemp -d)"
 cleanup() { rm -rf "$WORK"; }
 trap cleanup EXIT
 MONITOR="$WORK/monitor.sock"
-FRAME="${DCLAWOS_QEMU_SMOKE_FRAME:-${ISO}.${MODE}.ppm}"
+FRAME="${XWLIGHTOS_QEMU_SMOKE_FRAME:-${ISO}.${MODE}.ppm}"
 LOG="$WORK/qemu.log"
 # Guest serial console capture: the kernel cmdline (see build.yml
 # --bootappend-live) maps /dev/console to ttyS0 and journald forwards the

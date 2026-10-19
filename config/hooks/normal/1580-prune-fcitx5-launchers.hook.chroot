@@ -19,13 +19,13 @@ rm -f /usr/share/applications/kbd-layout-viewer5.desktop
 
 # 构建期门禁：「fcitx 设置」必须还在，多余项必须已消失。
 [ -s /usr/share/applications/org.fcitx.fcitx5-config-qt.desktop ] || {
-    echo "DclawOS: fcitx settings launcher is missing after prune" >&2
+    echo "XWLightOS: fcitx settings launcher is missing after prune" >&2
     exit 1
 }
 for gone in org.fcitx.Fcitx5.desktop fcitx5-configtool.desktop \
     org.fcitx.fcitx5-migrator.desktop kbd-layout-viewer5.desktop; do
     [ ! -e "/usr/share/applications/$gone" ] || {
-        echo "DclawOS: redundant fcitx launcher still present: $gone" >&2
+        echo "XWLightOS: redundant fcitx launcher still present: $gone" >&2
         exit 1
     }
 done
@@ -34,4 +34,4 @@ if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
 fi
 
-echo "DclawOS: fcitx launchers pruned, only fcitx settings kept"
+echo "XWLightOS: fcitx launchers pruned, only fcitx settings kept"

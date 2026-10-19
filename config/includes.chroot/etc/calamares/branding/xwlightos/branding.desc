@@ -1,0 +1,34 @@
+---
+componentName: xwlightos
+welcomeStyleCalamares: false
+welcomeExpandingLogo: true
+windowExpanding: normal
+windowSize: 1024px,650px
+windowPlacement: center
+sidebar: widget
+navigation: widget
+
+strings:
+    productName: XWLightOS
+    shortProductName: XWLightOS
+    version: "1.0"
+    shortVersion: "1.0"
+    versionedName: XWLightOS 1.0
+    shortVersionedName: XWLightOS 1.0
+    bootloaderEntryName: XWLightOS
+    productUrl: https://github.com/SYSTEM-Intel-MIC/xwlightos
+    supportUrl: https://github.com/SYSTEM-Intel-MIC/xwlightos/issues
+    knownIssuesUrl: https://github.com/SYSTEM-Intel-MIC/xwlightos/issues
+    releaseNotesUrl: https://github.com/SYSTEM-Intel-MIC/xwlightos/releases
+
+images:
+    productIcon: "xwlightos-mark.svg"
+    productLogo: "xwlightos-mark.svg"
+    productWallpaper: "xwlightos-aurora-wallpaper.png"
+    productWelcome: "xwlightos-mark.svg"
+
+style:
+    sidebarBackground: "#082353"
+    sidebarText: "#EAF6FF"
+    sidebarTextSelect: "#07162F"
+    sidebarTextHighlight: "#75D6FF"

@@ -1,10 +1,10 @@
 #!/bin/sh
 # 用户 2026-10-19 邮件「ok,写入并监控构建」批准：
-# DclawOS 触屏通用兼容修法（两阶段方案）。
+# XWLightOS 触屏通用兼容修法（两阶段方案）。
 #
 # 背景：国产红外触屏框（如希沃 T86EA 的 CJTouch 系，VID 1FF7）在 Linux 下
 # 常被 hid-generic 兜底认领，触摸事件无法正确映射（光标浮中央不动）。
-# Debian 13 官方 live 同样现象，确认是内核侧问题、非 DclawOS 特有。
+# Debian 13 官方 live 同样现象，确认是内核侧问题、非 XWLightOS 特有。
 # 用户明确要求：方案必须追求最大通用兼容性，不能只针对他这台机
 # （通用 live ISO，不通用就不必构建）。
 #
@@ -19,55 +19,55 @@
 #   HID_GROUP_MULTITOUCH + HID_ANY_ID 通配条目。
 #
 # 实现（本钩子只做构建期门禁，文件本体在 includes.chroot 里版本管理）：
-# - /usr/local/sbin/dclawos-touchscreen-fix.sh：开机脚本，两阶段
+# - /usr/local/sbin/xwlightos-touchscreen-fix.sh：开机脚本，两阶段
 #   （通用兜底：hid-generic 占用 + 名字含 touch + 排除 touchpad；
-#   已知 ID 名单：/etc/dclawos/touchscreen-known-ids.conf，首批 1FF7:0F26）
-# - /etc/systemd/system/dclawos-touchscreen-fix.service：oneshot 开机服务
-# - multi-user.target.wants 符号链接：构建期启用（仿 dclawos-live-session-init）
+#   已知 ID 名单：/etc/xwlightos/touchscreen-known-ids.conf，首批 1FF7:0F26）
+# - /etc/systemd/system/xwlightos-touchscreen-fix.service：oneshot 开机服务
+# - multi-user.target.wants 符号链接：构建期启用（仿 xwlightos-live-session-init）
 set -eu
 
 # ---- 构建期门禁 ----
 # 1. 开机脚本必须存在、可执行、语法通过。
-[ -x /usr/local/sbin/dclawos-touchscreen-fix.sh ] || {
-    echo 'DclawOS: dclawos-touchscreen-fix.sh missing or not executable' >&2
+[ -x /usr/local/sbin/xwlightos-touchscreen-fix.sh ] || {
+    echo 'XWLightOS: xwlightos-touchscreen-fix.sh missing or not executable' >&2
     exit 1
 }
-bash -n /usr/local/sbin/dclawos-touchscreen-fix.sh || {
-    echo 'DclawOS: dclawos-touchscreen-fix.sh syntax check failed' >&2
+bash -n /usr/local/sbin/xwlightos-touchscreen-fix.sh || {
+    echo 'XWLightOS: xwlightos-touchscreen-fix.sh syntax check failed' >&2
     exit 1
 }
 # 2. 脚本必须包含两阶段关键逻辑（防将来有人改坏）。
-grep -q 'touchscreen-known-ids.conf' /usr/local/sbin/dclawos-touchscreen-fix.sh || {
-    echo 'DclawOS: dclawos-touchscreen-fix.sh lost phase-2 known-IDs logic' >&2
+grep -q 'touchscreen-known-ids.conf' /usr/local/sbin/xwlightos-touchscreen-fix.sh || {
+    echo 'XWLightOS: xwlightos-touchscreen-fix.sh lost phase-2 known-IDs logic' >&2
     exit 1
 }
-grep -q 'touchpad' /usr/local/sbin/dclawos-touchscreen-fix.sh || {
-    echo 'DclawOS: dclawos-touchscreen-fix.sh lost touchpad exclusion (would steal touchpads)' >&2
+grep -q 'touchpad' /usr/local/sbin/xwlightos-touchscreen-fix.sh || {
+    echo 'XWLightOS: xwlightos-touchscreen-fix.sh lost touchpad exclusion (would steal touchpads)' >&2
     exit 1
 }
 # 3. 已知 ID 名单必须存在且包含首批 ID。
-grep -qi '^1FF7:0F26' /etc/dclawos/touchscreen-known-ids.conf || {
-    echo 'DclawOS: touchscreen-known-ids.conf missing 1FF7:0F26' >&2
+grep -qi '^1FF7:0F26' /etc/xwlightos/touchscreen-known-ids.conf || {
+    echo 'XWLightOS: touchscreen-known-ids.conf missing 1FF7:0F26' >&2
     exit 1
 }
 # 4. systemd 服务文件必须存在，wants 链接必须有效且指向正确。
-[ -f /etc/systemd/system/dclawos-touchscreen-fix.service ] || {
-    echo 'DclawOS: dclawos-touchscreen-fix.service missing' >&2
+[ -f /etc/systemd/system/xwlightos-touchscreen-fix.service ] || {
+    echo 'XWLightOS: xwlightos-touchscreen-fix.service missing' >&2
     exit 1
 }
-_WANTS=/etc/systemd/system/multi-user.target.wants/dclawos-touchscreen-fix.service
+_WANTS=/etc/systemd/system/multi-user.target.wants/xwlightos-touchscreen-fix.service
 [ -e "$_WANTS" ] || {
-    echo 'DclawOS: dclawos-touchscreen-fix.service wants symlink is dangling (fix would never run at boot)' >&2
+    echo 'XWLightOS: xwlightos-touchscreen-fix.service wants symlink is dangling (fix would never run at boot)' >&2
     exit 1
 }
-[ "$(readlink "$_WANTS")" = '../dclawos-touchscreen-fix.service' ] || {
-    echo 'DclawOS: dclawos-touchscreen-fix.service wants symlink points at the wrong unit' >&2
+[ "$(readlink "$_WANTS")" = '../xwlightos-touchscreen-fix.service' ] || {
+    echo 'XWLightOS: xwlightos-touchscreen-fix.service wants symlink points at the wrong unit' >&2
     exit 1
 }
-grep -q '^ExecStart=/usr/local/sbin/dclawos-touchscreen-fix.sh$' \
-    /etc/systemd/system/dclawos-touchscreen-fix.service || {
-    echo 'DclawOS: dclawos-touchscreen-fix.service lost its ExecStart' >&2
+grep -q '^ExecStart=/usr/local/sbin/xwlightos-touchscreen-fix.sh$' \
+    /etc/systemd/system/xwlightos-touchscreen-fix.service || {
+    echo 'XWLightOS: xwlightos-touchscreen-fix.service lost its ExecStart' >&2
     exit 1
 }
 
-echo 'DclawOS: touchscreen fix (1620) staged'
+echo 'XWLightOS: touchscreen fix (1620) staged'

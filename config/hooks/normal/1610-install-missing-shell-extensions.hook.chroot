@@ -1,5 +1,5 @@
 #!/bin/sh
-# 用户 2026-10-19 邮件「回复: DclawOS 进一步检测修改」指令：
+# 用户 2026-10-19 邮件「回复: XWLightOS 进一步检测修改」指令：
 # 1. GNOME 顶栏加系统监控扩展（右上角显示 CPU/内存占用）。
 # 2. 补上之前要求但从未真正进构建的扩展。
 #
@@ -24,7 +24,7 @@
 #   Main.sessionMode.colorScheme API，该 API 是 GNOME 45 才加入的，43/44 里
 #   不存在——即使拿到 45.0 的版本，在 GNOME 43 上也从原理上跑不起来，enable
 #   即报错。它的功能（强制浅色主题）已由 dconf color-scheme='prefer-light'
-#   实现（00-dclawos-gnome），扩展本身冗余，不装了。
+#   实现（00-xwlightos-gnome），扩展本身冗余，不装了。
 set -eu
 
 export DEBIAN_FRONTEND=noninteractive
@@ -33,7 +33,7 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends gir1.2-gtop-2.0
 
-WORKDIR="$(mktemp -d /tmp/dclawos-extensions-XXXXXX)"
+WORKDIR="$(mktemp -d /tmp/xwlightos-extensions-XXXXXX)"
 trap 'rm -rf "$WORKDIR"' EXIT
 cd "$WORKDIR"
 
@@ -41,13 +41,13 @@ cd "$WORKDIR"
 # pin: 2025-03-11 master，实测 metadata.json shell-version 含 43。
 SM_COMMIT="2552673aa56532045bb9eedd3eb29cd88faa7d6f"
 SM_UUID="system-monitor@paradoxxx.zero.gmail.com"
-echo "DclawOS: installing system-monitor $SM_COMMIT"
+echo "XWLightOS: installing system-monitor $SM_COMMIT"
 curl -fsSL "https://github.com/paradoxxxzero/gnome-shell-system-monitor-applet/archive/${SM_COMMIT}.tar.gz" \
     -o system-monitor.tar.gz
 tar xzf system-monitor.tar.gz
 SM_SRC="gnome-shell-system-monitor-applet-${SM_COMMIT}/${SM_UUID}"
 [ -d "$SM_SRC" ] || {
-    echo "DclawOS: system-monitor source dir missing after extract" >&2
+    echo "XWLightOS: system-monitor source dir missing after extract" >&2
     exit 1
 }
 mkdir -p "/usr/share/gnome-shell/extensions/${SM_UUID}"
@@ -60,8 +60,8 @@ fi
 # ---- 构建期门禁 ----
 # system-monitor 的 metadata 必须声明支持 GNOME 43，否则装了也白装。
 grep -q '"43"' "/usr/share/gnome-shell/extensions/${SM_UUID}/metadata.json" || {
-    echo "DclawOS: system-monitor metadata does not list GNOME 43" >&2
+    echo "XWLightOS: system-monitor metadata does not list GNOME 43" >&2
     exit 1
 }
 
-echo "DclawOS: system-monitor installed"
+echo "XWLightOS: system-monitor installed"

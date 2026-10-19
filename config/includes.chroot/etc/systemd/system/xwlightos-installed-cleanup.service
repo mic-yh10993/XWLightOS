@@ -1,0 +1,11 @@
+[Unit]
+Description=Remove Live installer launchers from installed XWLightOS
+After=local-fs.target
+Before=gdm.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/xwlightos-installed-cleanup
+
+[Install]
+WantedBy=graphical.target

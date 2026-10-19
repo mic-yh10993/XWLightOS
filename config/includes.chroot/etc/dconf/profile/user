@@ -1,8 +1,8 @@
-# DclawOS user-session dconf profile.
+# XWLightOS user-session dconf profile.
 #
 # Debian ships no /etc/dconf/profile/user. Without this file dconf falls
 # back to a user-db-only profile and SILENTLY IGNORES every system database,
-# so /etc/dconf/db/local.d/00-dclawos-gnome (WhiteSur GTK/icon/cursor theme,
+# so /etc/dconf/db/local.d/00-xwlightos-gnome (WhiteSur GTK/icon/cursor theme,
 # enabled extensions incl. dash-to-dock/ding/user-theme, dock favorites,
 # input-source defaults) would never take effect on the desktop -- while the
 # GDM greeter (which has its own profile with system-db:gdm) looked fine.

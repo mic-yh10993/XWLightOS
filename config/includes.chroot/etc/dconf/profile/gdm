@@ -1,6 +1,6 @@
-# DclawOS GDM greeter dconf profile. Debian's gdm3 ships this profile without
+# XWLightOS GDM greeter dconf profile. Debian's gdm3 ships this profile without
 # a system-db, so /etc/dconf/db/gdm.d/ keyfiles would be ignored; adding
-# system-db:gdm lets the DclawOS greeter branding below take effect while
+# system-db:gdm lets the XWLightOS greeter branding below take effect while
 # keeping Debian's greeter lockdown defaults from the file-db.
 user-db:user
 system-db:gdm

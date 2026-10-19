@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build and smoke-test DclawOS 1.0 locally with the same component containers
+# Build and smoke-test XWLightOS 1.0 locally with the same component containers
 # and input staging model as GitHub Actions.  Run from the repository root.
 set -euo pipefail
 
@@ -25,26 +25,26 @@ if [ "$(id -u)" = 0 ]; then
     exit 1
 fi
 
-if [ "${DCLAWOS_USE_PREBUILT_PACKAGES:-0}" = "1" ]; then
-    echo "==> Using already-fetched DclawOS 1.0 binary packages"
+if [ "${XWLIGHTOS_USE_PREBUILT_PACKAGES:-0}" = "1" ]; then
+    echo "==> Using already-fetched XWLightOS 1.0 binary packages"
     [ -f artifacts/packages/SHA256SUMS ] || {
         echo "prebuilt package checksum manifest is missing" >&2
         exit 1
     }
 else
-    echo "==> DclawOS 1.0 binary package fetch"
+    echo "==> XWLightOS 1.0 binary package fetch"
     rm -rf artifacts
-    bash ./scripts/fetch-dclawos-binary-packages.sh
+    bash ./scripts/fetch-xwlightos-binary-packages.sh
 fi
-python3 scripts/write-dclawos-build-manifest.py
+python3 scripts/write-xwlightos-build-manifest.py
 (
     cd artifacts/packages
     sha256sum -c SHA256SUMS
 )
-bash scripts/validate-dclawos-component-packages.sh
+bash scripts/validate-xwlightos-component-packages.sh
 
 echo "==> Staging verified packages and chroot hooks"
-sudo ROOT="$ROOT" PKGS="$ROOT/artifacts/packages" bash scripts/stage-dclawos-live-inputs.sh
+sudo ROOT="$ROOT" PKGS="$ROOT/artifacts/packages" bash scripts/stage-xwlightos-live-inputs.sh
 
 # Remove only generated live-build output; source configuration remains intact.
 sudo rm -rf lb .build stage cache auto chroot binary binary.tmp *.iso build.log 2>/dev/null || true
@@ -74,42 +74,42 @@ sudo lb config \
     --binary-images iso-hybrid \
     --compression gzip \
     --bootappend-live "components splash" \
-    --iso-application "DclawOS Live" \
+    --iso-application "XWLightOS Live" \
     --iso-publisher "SYSTEM-Intel-MIC" \
-    --iso-volume "DclawOS 1.0" \
+    --iso-volume "XWLightOS 1.0" \
     --source false \
     --zsync false \
     --firmware-chroot false \
     --apt-recommends false \
     --debian-installer false
 
-sudo bash scripts/prepare-dclawos-live-build-compression.sh
+sudo bash scripts/prepare-xwlightos-live-build-compression.sh
 
 sudo mkdir -p config/archives
-cat <<'EOF' | sudo tee config/archives/dclawos.list.chroot >/dev/null
+cat <<'EOF' | sudo tee config/archives/xwlightos.list.chroot >/dev/null
 deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
 deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
 deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
 EOF
-cat <<'EOF' | sudo tee config/archives/dclawos.list.binary >/dev/null
+cat <<'EOF' | sudo tee config/archives/xwlightos.list.binary >/dev/null
 deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
 deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
 EOF
 
 sudo chmod 755 config/hooks/*.chroot \
-    config/includes.chroot/usr/local/bin/dclawos-installer \
-    config/includes.chroot/usr/local/sbin/dclawos-live-session-init
+    config/includes.chroot/usr/local/bin/xwlightos-installer \
+    config/includes.chroot/usr/local/sbin/xwlightos-live-session-init
 sudo cp -f /usr/lib/ISOLINUX/isolinux.bin config/bootloaders/isolinux/isolinux.bin
 sudo cp -f /usr/lib/syslinux/modules/bios/*.c32 config/bootloaders/isolinux/
 
-echo "==> Building DclawOS 1.0 Live ISO"
+echo "==> Building XWLightOS 1.0 Live ISO"
 sudo lb build 2>&1 | tee build.log
-ISO="$(find . -maxdepth 2 -type f \( -name '*DclawOS*.iso' -o -name '*.hybrid.iso' \) | head -n1)"
+ISO="$(find . -maxdepth 2 -type f \( -name '*XWLightOS*.iso' -o -name '*.hybrid.iso' \) | head -n1)"
 [ -n "$ISO" ] && [ -s "$ISO" ] || { echo "ISO was not generated" >&2; exit 1; }
-chmod 755 scripts/repack-dclawos-dualboot-iso.sh scripts/validate-dclawos-live-image.sh scripts/qemu-boot-smoke.sh
-DCLAWOS_BINARY_TREE="$ROOT/binary" bash scripts/repack-dclawos-dualboot-iso.sh "$ISO"
-sudo bash scripts/validate-dclawos-live-image.sh "$ISO"
+chmod 755 scripts/repack-xwlightos-dualboot-iso.sh scripts/validate-xwlightos-live-image.sh scripts/qemu-boot-smoke.sh
+XWLIGHTOS_BINARY_TREE="$ROOT/binary" bash scripts/repack-xwlightos-dualboot-iso.sh "$ISO"
+sudo bash scripts/validate-xwlightos-live-image.sh "$ISO"
 bash scripts/qemu-boot-smoke.sh "$ISO" bios 75
 bash scripts/qemu-boot-smoke.sh "$ISO" uefi 75
 sha256sum "$ISO" | tee "${ISO}.sha256"
-echo "DclawOS 1.0 local ISO passed BIOS/UEFI smoke tests: $ISO"
+echo "XWLightOS 1.0 local ISO passed BIOS/UEFI smoke tests: $ISO"

@@ -31,39 +31,39 @@ SCHEMA_DIR="/usr/share/glib-2.0/schemas"
 SCHEMA_ID="io.github.yannmasoch.nautilus-my-computer"
 
 command -v python3 >/dev/null 2>&1 || {
-    echo "DclawOS: python3 is missing" >&2
+    echo "XWLightOS: python3 is missing" >&2
     exit 1
 }
 # nautilus-python binding (python3-nautilus package) must be present.
 [ -f /usr/lib/x86_64-linux-gnu/girepository-1.0/Nautilus-4.0.typelib ] || {
-    echo "DclawOS: python3-nautilus is missing (Nautilus typelib not found)" >&2
+    echo "XWLightOS: python3-nautilus is missing (Nautilus typelib not found)" >&2
     exit 1
 }
 
-WORKDIR="$(mktemp -d /tmp/dclawos-nmc-XXXXXX)"
+WORKDIR="$(mktemp -d /tmp/xwlightos-nmc-XXXXXX)"
 trap 'rm -rf "$WORKDIR"' EXIT
 cd "$WORKDIR"
 
-echo "DclawOS: installing nautilus-my-computer $NMC_VER (system-wide)"
+echo "XWLightOS: installing nautilus-my-computer $NMC_VER (system-wide)"
 curl -fsSL "https://codeload.github.com/yannmasoch/nautilus-my-computer/tar.gz/${NMC_VER}" -o nmc.tar.gz
 tar xzf nmc.tar.gz --strip-components=1
 
 [ -f nautilus-my-computer.py ] || {
-    echo "DclawOS: nautilus-my-computer.py missing in $NMC_VER" >&2
+    echo "XWLightOS: nautilus-my-computer.py missing in $NMC_VER" >&2
     exit 1
 }
 [ -f "$SCHEMA_ID.gschema.xml" ] || {
-    echo "DclawOS: $SCHEMA_ID.gschema.xml missing in $NMC_VER" >&2
+    echo "XWLightOS: $SCHEMA_ID.gschema.xml missing in $NMC_VER" >&2
     exit 1
 }
 [ -d nautilus_my_computer ] || {
-    echo "DclawOS: nautilus_my_computer package dir missing in $NMC_VER" >&2
+    echo "XWLightOS: nautilus_my_computer package dir missing in $NMC_VER" >&2
     exit 1
 }
 
 # Syntax gate with the chroot's Python (3.11 on bookworm).
 python3 -m py_compile nautilus-my-computer.py nautilus_my_computer/*.py || {
-    echo "DclawOS: nautilus-my-computer $NMC_VER failed py_compile" >&2
+    echo "XWLightOS: nautilus-my-computer $NMC_VER failed py_compile" >&2
     exit 1
 }
 
@@ -78,7 +78,7 @@ chmod -R a+rX "$EXT_DIR/nautilus_my_computer"
 # GSettings schema, system-wide.
 install -m 0644 "$SCHEMA_ID.gschema.xml" "$SCHEMA_DIR/$SCHEMA_ID.gschema.xml"
 glib-compile-schemas "$SCHEMA_DIR" || {
-    echo "DclawOS: glib-compile-schemas failed" >&2
+    echo "XWLightOS: glib-compile-schemas failed" >&2
     exit 1
 }
 
@@ -93,7 +93,7 @@ if [ -d po ]; then
         lang="$(basename "$po_file" .po)"
         mkdir -p "/usr/share/locale/$lang/LC_MESSAGES"
         msgfmt "$po_file" -o "/usr/share/locale/$lang/LC_MESSAGES/nautilus-my-computer.mo"
-        # DclawOS default locale is zh_CN.UTF-8; gettext resolves zh_CN then
+        # XWLightOS default locale is zh_CN.UTF-8; gettext resolves zh_CN then
         # zh, never zh_Hans, so the Simplified Chinese catalog is aliased.
         if [ "$lang" = "zh_Hans" ]; then
             mkdir -p /usr/share/locale/zh_CN/LC_MESSAGES
@@ -104,16 +104,16 @@ fi
 
 # Build-time gates.
 [ -f "$EXT_DIR/nautilus-my-computer.py" ] || {
-    echo "DclawOS: extension file missing after install" >&2
+    echo "XWLightOS: extension file missing after install" >&2
     exit 1
 }
 [ -f "$SCHEMA_DIR/$SCHEMA_ID.gschema.xml" ] || {
-    echo "DclawOS: schema file missing after install" >&2
+    echo "XWLightOS: schema file missing after install" >&2
     exit 1
 }
 # "默认打开文件就打开此电脑": start-on-disks must default to true.
 grep -q '<key name="start-on-disks" type="b">' "$SCHEMA_DIR/$SCHEMA_ID.gschema.xml" || {
-    echo "DclawOS: start-on-disks key missing from schema" >&2
+    echo "XWLightOS: start-on-disks key missing from schema" >&2
     exit 1
 }
 # Runtime smoke test: py_compile only proves syntax. nautilus-python silently
@@ -135,7 +135,7 @@ spec = importlib.util.spec_from_file_location(
 )
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
-print("DclawOS: nautilus-my-computer imports cleanly")
+print("XWLightOS: nautilus-my-computer imports cleanly")
 PYEOF
 
-echo "DclawOS: nautilus-my-computer $NMC_VER installed"
+echo "XWLightOS: nautilus-my-computer $NMC_VER installed"

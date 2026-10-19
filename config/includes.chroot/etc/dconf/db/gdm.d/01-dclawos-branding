@@ -1,6 +1,0 @@
-# DclawOS login-screen (GDM greeter) branding. Compiled by `dconf update`
-# (see the 1700 hook). Replaces the distribution logo on the greeter with the
-# DclawOS mark. The greeter background stays the neutral dark default so a
-# greeter frame remains visually distinct from the rendered desktop.
-[org/gnome/login-screen]
-logo='/usr/share/dclawos/branding/dclawos-mark.svg'

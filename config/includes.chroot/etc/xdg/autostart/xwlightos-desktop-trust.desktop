@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=XWLightOS desktop launcher trust setup
+Exec=/bin/sh -c 'gio set --type=string "/home/user/Desktop/Install XWLightOS.desktop" metadata::trusted true >/dev/null 2>&1; touch "/home/user/Desktop/Install XWLightOS.desktop"'
+OnlyShowIn=GNOME;
+X-GNOME-Autostart-enabled=true
+NoDisplay=true
+Terminal=false

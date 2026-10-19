@@ -1,14 +1,14 @@
 #!/bin/sh
 # Install the pinned binary packages (PeaZip, ONLYOFFICE DesktopEditors) and
-# write the DclawOS desktop entries that live outside any Debian package: the
-# Terminal launcher and the AI-first desktop shortcuts.  DclawOS no longer
+# write the XWLightOS desktop entries that live outside any Debian package: the
+# Terminal launcher and the AI-first desktop shortcuts.  XWLightOS no longer
 # ships its own desktop components and no longer masquerades as another
 # desktop environment.
 set -eu
 
-PKG_DIR=/opt/dclawos/packages
+PKG_DIR=/opt/xwlightos/packages
 if [ ! -d "$PKG_DIR" ] || ! ls "$PKG_DIR"/*.deb >/dev/null 2>&1; then
-    echo "DclawOS binary packages are missing: $PKG_DIR" >&2
+    echo "XWLightOS binary packages are missing: $PKG_DIR" >&2
     exit 1
 fi
 
@@ -27,7 +27,7 @@ cat > /usr/local/share/applications/xterm.desktop <<'EOF'
 Type=Application
 Name=Terminal
 Name[zh_CN]=终端
-Comment=DclawOS terminal
+Comment=XWLightOS terminal
 Exec=xterm -fa "DejaVu Sans Mono" -fs 11 -xrm "XTerm*cjkWidth:false" -xrm "XTerm*background:#000000" -xrm "XTerm*cursorColor:#ffffff"
 Icon=utilities-terminal
 Terminal=false
@@ -38,7 +38,7 @@ install -d /etc/skel/Desktop
 install -Dm644 /usr/local/share/applications/xterm.desktop /etc/skel/Desktop/终端.desktop
 # XWLightOS no longer ships AI components; desktop gets the terminal launcher
 # and the installer entry only.
-# The raw Calamares entry would duplicate the DclawOS installer launcher.
+# The raw Calamares entry would duplicate the XWLightOS installer launcher.
 rm -f /usr/share/applications/calamares.desktop
 
 # --- ONLYOFFICE DesktopEditors (pinned official DEB) -----------------------
@@ -79,7 +79,7 @@ done
 # Wire ONLYOFFICE as the default handler in /etc/xdg/mimeapps.list, replacing
 # any competing default (e.g. the PDF -> Firefox ESR mapping from the base
 # config).  GNOME "默认应用程序" reads this file system-wide.
-dclawos_mime_default() {
+xwlightos_mime_default() {
     dm_mime="$1"
     dm_entry="$2"
     MIMEAPPS=/etc/xdg/mimeapps.list
@@ -112,7 +112,7 @@ for oo_mime in \
     application/vnd.oasis.opendocument.graphics \
     application/rtf \
     text/csv; do
-    dclawos_mime_default "$oo_mime" "$OO_ENTRY"
+    xwlightos_mime_default "$oo_mime" "$OO_ENTRY"
 done
 grep -qx "application/pdf=${OO_ENTRY}" /etc/xdg/mimeapps.list || {
     echo "ONLYOFFICE is not the default application/pdf handler" >&2
@@ -162,14 +162,14 @@ rm -rf "$PKG_DIR"
 # default. Fail the build here instead of shipping a dead launcher.
 if command -v ldd >/dev/null 2>&1 && [ -x /usr/lib/peazip/peazip ]; then
     if ldd /usr/lib/peazip/peazip 2>/dev/null | grep -q 'not found'; then
-        echo "DclawOS: PeaZip has unresolved shared libraries:" >&2
+        echo "XWLightOS: PeaZip has unresolved shared libraries:" >&2
         ldd /usr/lib/peazip/peazip 2>/dev/null | grep 'not found' >&2 || true
         exit 1
     fi
 fi
-mkdir -p /usr/share/dclawos
-cat > /usr/share/dclawos/components.txt <<'EOF'
-DclawOS 1.0 bundled extras
+mkdir -p /usr/share/xwlightos
+cat > /usr/share/xwlightos/components.txt <<'EOF'
+XWLightOS 1.0 bundled extras
 - GNOME desktop with WhiteSur macOS-like theme
 - PeaZip 11.2.0 Qt6 official DEB (archive manager)
 - ONLYOFFICE DesktopEditors 9.4.0 official DEB (documents/spreadsheets/presentations/PDF default handler, multi-window mode)

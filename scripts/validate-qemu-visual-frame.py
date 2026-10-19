@@ -108,14 +108,14 @@ def main() -> int:
         return 1
     # The GDM login screen passes the checks above (it is non-black and has
     # antialiased text), which is how Build 50 shipped with a broken
-    # autologin. The DclawOS desktop paints the colorful aurora wallpaper
+    # autologin. The XWLightOS desktop paints the colorful aurora wallpaper
     # over nearly the whole frame (mean saturation ~0.95), while the GDM
     # greeter is essentially monochrome (mean saturation ~0.001). The greeter
     # background is deliberately left dark so this stays a reliable signal.
     if mean_sat < 0.10:
         print(
             "QEMU frame has near-zero color saturation; it is the GDM login "
-            "screen, not the rendered DclawOS desktop (autologin did not happen)",
+            "screen, not the rendered XWLightOS desktop (autologin did not happen)",
             file=sys.stderr,
         )
         return 1

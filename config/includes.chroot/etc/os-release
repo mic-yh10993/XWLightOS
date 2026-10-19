@@ -1,11 +1,11 @@
-PRETTY_NAME="DclawOS 1.0 (Bookworm)"
-NAME="DclawOS"
+PRETTY_NAME="XWLightOS 1.0 (Bookworm)"
+NAME="XWLightOS"
 VERSION_ID="1.0"
 VERSION="1.0 (Bookworm)"
 VERSION_CODENAME=bookworm
-ID=dclawos
+ID=xwlightos
 ID_LIKE=debian
-HOME_URL="https://github.com/SYSTEM-Intel-MIC/dclawos"
-SUPPORT_URL="https://github.com/SYSTEM-Intel-MIC/dclawos/issues"
-BUG_REPORT_URL="https://github.com/SYSTEM-Intel-MIC/dclawos/issues"
+HOME_URL="https://github.com/SYSTEM-Intel-MIC/xwlightos"
+SUPPORT_URL="https://github.com/SYSTEM-Intel-MIC/xwlightos/issues"
+BUG_REPORT_URL="https://github.com/SYSTEM-Intel-MIC/xwlightos/issues"
 BUILD_ID="SYSTEM-Intel-MIC"

@@ -1,4 +1,4 @@
-# DclawOS GNOME default applications (system-wide).
+# XWLightOS GNOME default applications (system-wide).
 # Applied to every user via /etc/xdg; per-user overrides still win through
 # ~/.config/mimeapps.list.  GNOME "默认应用程序" settings read these.
 [Default Applications]

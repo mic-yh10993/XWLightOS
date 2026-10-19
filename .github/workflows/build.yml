@@ -3,14 +3,14 @@ name: Build XWLightOS Live ISO
 
 on:
   push:
-    branches: [main, dclawos-1.0-integration]
+    branches: [main, xwlightos-1.0-integration]
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: dclawos-live-${{ github.ref }}
+  group: xwlightos-live-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -110,27 +110,27 @@ jobs:
           # Note: this step runs on the host runner (not inside docker),
           # so pass the real repo path explicitly instead of relying on
           # the script's /workspace default (container-only).
-          ROOT="$GITHUB_WORKSPACE" bash ./scripts/fetch-dclawos-binary-packages.sh
+          ROOT="$GITHUB_WORKSPACE" bash ./scripts/fetch-xwlightos-binary-packages.sh
           # Component lock manifest: every consumer (validation, JSON manifest,
           # live-input staging) expects this file, so generate it from the
           # packages that were actually fetched.
           ( cd artifacts/packages && for deb in *.deb; do
               printf '%s\t%s\n' "$(dpkg-deb -f "$deb" Package)" "$(dpkg-deb -f "$deb" Version)"
-            done | sort > DCLAWOS-1.0-COMPONENTS.txt )
-          python3 scripts/write-dclawos-build-manifest.py
+            done | sort > XWLIGHTOS-1.0-COMPONENTS.txt )
+          python3 scripts/write-xwlightos-build-manifest.py
           test -f artifacts/packages/SHA256SUMS
           ( cd artifacts/packages && sha256sum -c SHA256SUMS )
-          bash scripts/validate-dclawos-component-packages.sh
+          bash scripts/validate-xwlightos-component-packages.sh
 
-      - name: Stage verified DclawOS 1.0 packages and hooks
+      - name: Stage verified XWLightOS 1.0 packages and hooks
         run: |
           set -euxo pipefail
           sudo ROOT="$GITHUB_WORKSPACE" PKGS="$GITHUB_WORKSPACE/artifacts/packages" \
-            bash scripts/stage-dclawos-live-inputs.sh
-          ls -lh config/includes.chroot/opt/dclawos/packages
+            bash scripts/stage-xwlightos-live-inputs.sh
+          ls -lh config/includes.chroot/opt/xwlightos/packages
           find config/hooks -maxdepth 1 -name '*.chroot' -type f -printf '%f\n' | sort
 
-      - name: Configure DclawOS live-build image
+      - name: Configure XWLightOS live-build image
         run: |
           set -euxo pipefail
           sudo rm -rf lb .build stage cache auto chroot binary binary.tmp *.iso build.log 2>/dev/null || true
@@ -184,24 +184,24 @@ jobs:
             --apt-recommends false \
             --debian-installer false
 
-          sudo bash scripts/prepare-dclawos-live-build-compression.sh
+          sudo bash scripts/prepare-xwlightos-live-build-compression.sh
 
           sudo mkdir -p config/archives
-          cat <<'EOF' | sudo tee config/archives/dclawos.list.chroot
+          cat <<'EOF' | sudo tee config/archives/xwlightos.list.chroot
           deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
           deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
           deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
           EOF
-          cat <<'EOF' | sudo tee config/archives/dclawos.list.binary
+          cat <<'EOF' | sudo tee config/archives/xwlightos.list.binary
           deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
           deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
           EOF
           sudo chmod 755 config/hooks/*.chroot \
-            config/includes.chroot/usr/local/bin/dclawos-installer \
-            config/includes.chroot/usr/local/bin/dclawos-power-action \
-            config/includes.chroot/usr/local/bin/dclawos-logout \
-            config/includes.chroot/usr/local/sbin/dclawos-live-session-init \
-            config/includes.chroot/usr/local/libexec/dclawos-privileged-action
+            config/includes.chroot/usr/local/bin/xwlightos-installer \
+            config/includes.chroot/usr/local/bin/xwlightos-power-action \
+            config/includes.chroot/usr/local/bin/xwlightos-logout \
+            config/includes.chroot/usr/local/sbin/xwlightos-live-session-init \
+            config/includes.chroot/usr/local/libexec/xwlightos-privileged-action
           # Keep isolinux.bin and every COM32 runtime module from the same
           # syslinux package. In particular, isolinux.cfg -> vesamenu.c32
           # requires ldlinux.c32, libcom32.c32 and libutil.c32 at boot time.
@@ -214,10 +214,10 @@ jobs:
           test -s config/bootloaders/isolinux/vesamenu.c32
           sudo find config -maxdepth 4 -type f -printf '%p\n' | sort | head -200
 
-      - name: Build DclawOS ISO
+      - name: Build XWLightOS ISO
         run: |
           set -euxo pipefail
-          echo "DclawOS build started: $(date --iso-8601=seconds)" | tee build.log
+          echo "XWLightOS build started: $(date --iso-8601=seconds)" | tee build.log
           sudo lb build 2>&1 | tee -a build.log
 
           # The GNOME-based image is larger (~3.6GB); drop the multi-GB chroot
@@ -227,12 +227,12 @@ jobs:
           df -h /
           # Use the same repack implementation locally and in CI. It retains the
           # matching ISOLINUX tree and injects an x86_64 EFI System Partition.
-          ISO_SOURCE="$(find . -maxdepth 2 -type f \( -name '*DclawOS*.iso' -o -name '*.hybrid.iso' \) | head -n1)"
+          ISO_SOURCE="$(find . -maxdepth 2 -type f \( -name '*XWLightOS*.iso' -o -name '*.hybrid.iso' \) | head -n1)"
           test -n "$ISO_SOURCE"
-          chmod 755 scripts/repack-dclawos-dualboot-iso.sh
-          DCLAWOS_BINARY_TREE="$GITHUB_WORKSPACE/binary" \
-            bash scripts/repack-dclawos-dualboot-iso.sh "$ISO_SOURCE" 2>&1 | tee -a build.log
-          echo "DclawOS dual BIOS/UEFI ISO finished: $(date --iso-8601=seconds)" | tee -a build.log
+          chmod 755 scripts/repack-xwlightos-dualboot-iso.sh
+          XWLIGHTOS_BINARY_TREE="$GITHUB_WORKSPACE/binary" \
+            bash scripts/repack-xwlightos-dualboot-iso.sh "$ISO_SOURCE" 2>&1 | tee -a build.log
+          echo "XWLightOS dual BIOS/UEFI ISO finished: $(date --iso-8601=seconds)" | tee -a build.log
 
       - name: Reclaim disk before verification
         run: |
@@ -245,11 +245,11 @@ jobs:
           sudo apt-get clean 2>/dev/null || true
           df -h /
 
-      - name: Verify DclawOS ISO
+      - name: Verify XWLightOS ISO
         id: iso
         run: |
           set -euxo pipefail
-          ISO_SOURCE="$(find . -maxdepth 2 -type f \( -name '*DclawOS*.iso' -o -name '*.hybrid.iso' \) | head -n1)"
+          ISO_SOURCE="$(find . -maxdepth 2 -type f \( -name '*XWLightOS*.iso' -o -name '*.hybrid.iso' \) | head -n1)"
           test -n "$ISO_SOURCE"
           test -s "$ISO_SOURCE"
           ISO="XWLightOS-1.0-amd64-livecd.iso"
@@ -273,12 +273,12 @@ jobs:
           grep -q '/usr/bin/rsync$' "$ROOT_CHECK/squashfs.list"
           grep -q '/usr/lib/.*/calamares/modules/partition/libcalamares_viewmodule_partition.so$' "$ROOT_CHECK/squashfs.list"
           grep -q '/usr/lib/.*/calamares/modules/mount/module.desc$' "$ROOT_CHECK/squashfs.list"
-          grep -q '/etc/calamares/branding/dclawos/show.qml$' "$ROOT_CHECK/squashfs.list"
-          grep -q '/etc/calamares/branding/dclawos/stylesheet.qss$' "$ROOT_CHECK/squashfs.list"
+          grep -q '/etc/calamares/branding/xwlightos/show.qml$' "$ROOT_CHECK/squashfs.list"
+          grep -q '/etc/calamares/branding/xwlightos/stylesheet.qss$' "$ROOT_CHECK/squashfs.list"
           rm -rf "$BOOT_CHECK" "$ROOT_CHECK"
           grep -q -E 'El Torito boot img.*BIOS|El Torito boot img.*UEFI|EFI|efi.img|isolinux' iso-boot-report.txt
-          chmod 755 scripts/validate-dclawos-live-image.sh
-          sudo bash scripts/validate-dclawos-live-image.sh "$ISO"
+          chmod 755 scripts/validate-xwlightos-live-image.sh
+          sudo bash scripts/validate-xwlightos-live-image.sh "$ISO"
           sha256sum "$ISO" | tee XWLightOS-1.0-amd64-livecd.iso.sha256
           cat > XWLightOS-1.0-release-notes.md <<EOF
           # XWLightOS 1.0 Preview — LiveCD with installer
@@ -313,7 +313,7 @@ jobs:
       - name: Smoke boot XWLightOS 1.0 ISO in QEMU BIOS and UEFI
         run: |
           set -euxo pipefail
-          chmod 755 scripts/qemu-boot-smoke.sh scripts/validate-dclawos-live-image.sh
+          chmod 755 scripts/qemu-boot-smoke.sh scripts/validate-xwlightos-live-image.sh
           bash scripts/qemu-boot-smoke.sh "${{ steps.iso.outputs.iso_path }}" bios 260
           bash scripts/qemu-boot-smoke.sh "${{ steps.iso.outputs.iso_path }}" uefi 260
 
@@ -329,7 +329,7 @@ jobs:
         # the parts plus per-part checksums; the whole-ISO sha256 still
         # verifies the merge.
         id: splitpkg
-        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dclawos-1.0-integration') && success()
+        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/xwlightos-1.0-integration') && success()
         run: |
           set -euxo pipefail
           ISO="${{ steps.iso.outputs.iso_path }}"
@@ -372,7 +372,7 @@ jobs:
         # Preview releases are published automatically after the ISO verifier
         # and both BIOS/UEFI QEMU smoke checks succeed on main or the
         # integration branch.
-        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dclawos-1.0-integration') && success()
+        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/xwlightos-1.0-integration') && success()
         uses: softprops/action-gh-release@v2
         with:
           tag_name: xwlightos-1.0-preview-${{ github.run_number }}
@@ -389,8 +389,8 @@ jobs:
             build.log
             iso-boot-report.txt
             artifacts/packages/SHA256SUMS
-            artifacts/packages/DCLAWOS-1.0-BUILD-MANIFEST.json
-            artifacts/packages/DCLAWOS-1.0-COMPONENTS.txt
+            artifacts/packages/XWLIGHTOS-1.0-BUILD-MANIFEST.json
+            artifacts/packages/XWLIGHTOS-1.0-COMPONENTS.txt
 
       - name: Cleanup runner disk
         if: always()
