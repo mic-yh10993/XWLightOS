@@ -580,10 +580,10 @@ for path in \
 done
 
 # Core runtime that must be inside the ISO.
-# XWLightOS 已移除 AI 栈：Node.js/npm 不再需要（原为 OpenClaw 运行时）。
+# XWLightOS 已移除 AI 栈：Node.js/npm 不再需要（原为 OpenClaw 运行时）；
+# dclawos-sysmon 也不再需要（原为 AI system-monitor skill 的配套脚本）。
 for path in \
-    usr/bin/firefox \
-    usr/local/bin/dclawos-sysmon; do
+    usr/bin/firefox; do
     require_path "$path"
 done
 
