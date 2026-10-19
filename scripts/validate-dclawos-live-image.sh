@@ -580,25 +580,12 @@ for path in \
 done
 
 # Core runtime that must be inside the ISO.
+# XWLightOS 已移除 AI 栈：Node.js/npm 不再需要（原为 OpenClaw 运行时）。
 for path in \
-    usr/bin/node \
-    usr/bin/npm \
     usr/bin/firefox \
     usr/local/bin/dclawos-sysmon; do
     require_path "$path"
 done
-NODE_VERSION="$("$FULL_ROOT/usr/bin/node" --version 2>/dev/null)" || {
-    echo 'final ISO node binary does not execute' >&2
-    exit 1
-}
-case "$NODE_VERSION" in
-    v24.*) ;;
-    *)
-        echo "final ISO Node.js is not 24 LTS: $NODE_VERSION" >&2
-        exit 1
-        ;;
-esac
-printf 'final ISO Node.js version: %s\n' "$NODE_VERSION"
 
 # XWLightOS ships no AI components: no Playwright browsers, no OpenClaw
 # unit, no ai-home tarball are required.
