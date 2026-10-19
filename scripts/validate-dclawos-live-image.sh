@@ -154,7 +154,7 @@ require_path 'usr/share/gnome-shell/extensions/ding@rastersoft.com'
 # "此电脑" Nautilus 扩展（1570 钩子，系统级安装）。
 require_path 'usr/share/nautilus-python/extensions/nautilus-my-computer.py'
 require_path 'usr/share/glib-2.0/schemas/io.github.yannmasoch.nautilus-my-computer.gschema.xml'
-require_path 'usr/share/dclawos/ai-home.tar.gz'
+# XWLightOS 已移除 AI 栈：ai-home.tar.gz 不应再要求存在（见下文否定检查）。
 require_path 'usr/local/bin/dclawos-power-action'
 require_path 'usr/local/bin/dclawos-logout'
 require_path 'usr/local/libexec/dclawos-privileged-action'
