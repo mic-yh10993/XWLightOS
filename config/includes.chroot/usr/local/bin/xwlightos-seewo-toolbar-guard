@@ -1,0 +1,128 @@
+#!/bin/sh
+# XWLightOS Seewo annotation toolbar guardian.
+#
+# Keeps the Seewo floating toolbar (annotation panel) on top of all windows.
+# When the whiteboard enters annotation mode it raises its main window,
+# which can cover the toolbar; clicks meant for the toolbar then land on
+# the whiteboard. This daemon watches the window stacking order once per
+# second and re-raises the toolbar whenever a Seewo main window has moved
+# above it.
+#
+# A window counts as a "toolbar panel" when it belongs to Seewo and either
+# has a floating window type (DOCK/UTILITY/TOOLBAR/SPLASH) or occupies less
+# than 60% of the screen in either dimension. The main whiteboard window
+# is everything else Seewo-owned.
+set -u
+
+log() { echo "xwlightos-seewo-toolbar: $*"; }
+
+command -v wmctrl >/dev/null 2>&1 || { log "wmctrl missing, exiting"; exit 0; }
+command -v xdotool >/dev/null 2>&1 || log "xdotool missing, using wmctrl fallback"
+command -v xprop >/dev/null 2>&1 || { log "xprop missing, exiting"; exit 0; }
+
+to_dec() { printf '%d' "$1" 2>/dev/null || printf '%s' "-1"; }
+
+is_seewo() {
+    printf '%s' "$1" | grep -Eiq 'seewo|easinote|easicare|easicamera|cvte|maxhub|swen|showboard'
+}
+
+is_float_type() {
+    xprop -id "$1" _NET_WM_WINDOW_TYPE 2>/dev/null | grep -Eiq \
+        '_NET_WM_WINDOW_TYPE_(DOCK|UTILITY|TOOLBAR|SPLASH|MENU)'
+}
+
+screen_wh() {
+    xrandr --query 2>/dev/null | \
+        sed -n 's/^[^ ]* connected.* \([0-9][0-9]*\)x\([0-9][0-9]*\)+.*/\1 \2/p' | head -n 1
+}
+
+# Raise without stealing keyboard focus from the whiteboard.
+raise_win() {
+    if command -v xdotool >/dev/null 2>&1; then
+        xdotool windowraise "$1" >/dev/null 2>&1 && return 0
+    fi
+    wmctrl -i -r "$1" -b remove,above >/dev/null 2>&1 || true
+    wmctrl -i -r "$1" -b add,above >/dev/null 2>&1
+}
+
+covered=""
+while sleep 1; do
+    xrandr --query >/dev/null 2>&1 || { log "display gone, exiting"; exit 0; }
+
+    # Build decimal stacking index: position in _NET_CLIENT_LIST_STACKING.
+    stacking=""
+    for w in $(xprop -root _NET_CLIENT_LIST_STACKING 2>/dev/null | sed -n 's/.*window id #//p' | tr ',' ' '); do
+        stacking="$stacking $(to_dec "$w")"
+    done
+
+    stack_pos() {
+        target="$(to_dec "$1")"; i=0
+        for s in $stacking; do
+            [ "$s" = "$target" ] && { printf '%s' "$i"; return 0; }
+            i=$((i + 1))
+        done
+        printf '%s' "-1"
+    }
+
+    set -- $(screen_wh); sw="${1:-0}"; sh="${2:-0}"
+
+    best_panel=""; best_panel_pos=-1; best_main_pos=-1
+
+    # wmctrl -lG -x: id desktop x y w h WM_CLASS...  (w=$5 h=$6)
+    wmctrl -lG -x 2>/dev/null | awk '$1 ~ /^0x/ && NF >= 6 {
+        rest=""; for (i=7;i<=NF;i++) rest=rest" "$i
+        print $1"\t"$5"\t"$6"\t"rest
+    }' | while IFS="$(printf '\t')" read -r wid w h ident; do
+        [ -n "$wid" ] || continue
+        is_seewo "$ident" || continue
+        panel=0
+        is_float_type "$wid" && panel=1
+        if [ "$panel" -eq 0 ]; then
+            case "$w$h" in *[!0-9]*) continue ;; esac
+            if [ "$sw" -gt 0 ] && [ "$sh" -gt 0 ]; then
+                if [ "$((w * 100))" -lt "$((sw * 60))" ] || \
+                   [ "$((h * 100))" -lt "$((sh * 60))" ]; then
+                    panel=1
+                fi
+            fi
+        fi
+        pos="$(stack_pos "$wid")"
+        if [ "$panel" -eq 1 ]; then
+            # Keep the EWMH above-state armed as well.
+            xprop -id "$wid" _NET_WM_STATE 2>/dev/null | grep -q '_NET_WM_STATE_ABOVE' || \
+                wmctrl -i -r "$wid" -b add,above >/dev/null 2>&1 || true
+            if [ "$pos" -gt "$best_panel_pos" ]; then
+                best_panel_pos="$pos"; best_panel="$wid"
+            fi
+        else
+            [ "$pos" -gt "$best_main_pos" ] && best_main_pos="$pos"
+        fi
+        # Export for the outer scope via a state file (subshell limitation).
+        printf '%s %s %s\n' "$best_panel" "$best_panel_pos" "$best_main_pos" > /tmp/xw-toolbar-state
+    done
+
+    if [ -f /tmp/xw-toolbar-state ]; then
+        read -r best_panel best_panel_pos best_main_pos < /tmp/xw-toolbar-state
+    else
+        best_panel=""; best_panel_pos=-1; best_main_pos=-1
+    fi
+    [ -n "$best_panel" ] || continue
+
+    need_raise=0
+    if [ -z "$stacking" ]; then
+        # No stacking order published; keep the toolbar raised anyway.
+        need_raise=1
+    elif [ "$best_main_pos" -gt "$best_panel_pos" ]; then
+        need_raise=1
+    fi
+
+    if [ "$need_raise" -eq 1 ]; then
+        raise_win "$best_panel" || true
+        if [ "$covered" != "$best_panel" ]; then
+            log "raised toolbar $best_panel above Seewo main window"
+            covered="$best_panel"
+        fi
+    else
+        covered=""
+    fi
+done

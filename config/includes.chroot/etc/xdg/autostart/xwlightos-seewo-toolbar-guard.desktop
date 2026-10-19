@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=XWLightOS Seewo Toolbar Guard
+Comment=Keep the Seewo annotation toolbar on top of all windows
+Exec=/usr/local/bin/xwlightos-seewo-toolbar-guard
+Icon=preferences-system
+Terminal=false
+Categories=Utility;
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

@@ -1,48 +1,83 @@
 #!/bin/sh
-# Install XWLightOS education software (DingTalk, Seewo whiteboard,
-# Seewo terminal manager) from vendor .deb packages.
+# Install XWLightOS education software from vendor .deb packages.
 #
-# Vendor packages are proprietary and must be staged at
-# /opt/xwlightos/edu-packages/*.deb before the build (e.g. via the CI
-# secret or a pre-build staging step). If the directory is empty or
-# missing, this hook warns and continues so the base system can still
-# build and be tested without the proprietary software.
+# Vendor packages are proprietary and sourced directly from the WinduxEdu
+# repository (SYSTEM-Intel-MIC/WinduxEdu, edu-software/ directory) at the
+# exact pinned versions recorded in DEB-INVENTORY.tsv. No Wine is used;
+# all packages are native Linux .debs installed directly.
+#
+# The .debs are fetched from the WinduxEdu GitHub repo during build
+# (split volumes, reassembled and SHA256-verified). If the fetch fails,
+# this hook warns and continues so the base system can still build.
 set -eu
 
+WINDXUEDU_REPO="https://github.com/SYSTEM-Intel-MIC/WinduxEdu"
 EDU_DIR=/opt/xwlightos/edu-packages
-if [ ! -d "$EDU_DIR" ] || ! ls "$EDU_DIR"/*.deb >/dev/null 2>&1; then
-    echo "XWLightOS: edu-software packages not staged at $EDU_DIR, skipping (base build continues)" >&2
+INVENTORY_URL="$WINDXUEDU_REPO/raw/main/edu-software/DEB-INVENTORY.tsv"
+
+export DEBIAN_FRONTEND=noninteractive
+
+# Hold kernel metapackages so the chroot and binary stages agree on
+# exactly one kernel.
+apt-mark hold linux-image-amd64 linux-headers-amd64
+
+# DingTalk (native Linux build) bundles a PulseAudio client that links
+# against libpulse-mainloop-glib explicitly; libpulse0 alone does not
+# pull that split library in, so DingTalk died at load time with
+# "libpulse-mainloop-glib.so.0: cannot open shared object file".
+apt-get update
+apt-get install -y --no-install-recommends libpulse-mainloop-glib0
+
+mkdir -p "$EDU_DIR"
+
+# Fetch DEB-INVENTORY.tsv to get the pinned file list and SHA256.
+echo "XWLightOS: fetching education software inventory from WinduxEdu"
+if ! curl -fsSL -o "$EDU_DIR/DEB-INVENTORY.tsv" "$INVENTORY_URL"; then
+    echo "XWLightOS: WARNING: cannot fetch DEB-INVENTORY.tsv, skipping edu-software (base build continues)" >&2
     exit 0
 fi
 
-export DEBIAN_FRONTEND=noninteractive
-# Add i386 architecture for Wine WoW64 support (DingTalk dependencies).
-dpkg --add-architecture i386
-apt-get update
+# Download and reassemble each .deb from split volumes.
+# Format of DEB-INVENTORY.tsv: classification<TAB>file<TAB>Package<TAB>Version<TAB>Architecture<TAB>Size<TAB>SHA256
+fetch_ok=1
+grep -v '^#' "$EDU_DIR/DEB-INVENTORY.tsv" | while IFS="$(printf '\t')" read -r classification file package version arch size sha256; do
+    [ -n "$file" ] || continue
+    echo "XWLightOS: fetching $package $version"
+    dest="$EDU_DIR/$(basename "$file")"
+    vol=0
+    rm -f "$dest"
+    while true; do
+        vol_name="$(printf '%s.%03d' "$file" "$vol")"
+        # URL-encode via python3 for Chinese characters in filenames
+        enc_name="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$vol_name")"
+        vol_url="$WINDXUEDU_REPO/raw/main/edu-software/$enc_name"
+        if ! curl -fsSL -o "$EDU_DIR/vol.tmp" "$vol_url" 2>/dev/null; then
+            if [ "$vol" -eq 0 ]; then
+                echo "XWLightOS: WARNING: cannot fetch $vol_name, skipping $package" >&2
+                break
+            fi
+            break
+        fi
+        cat "$EDU_DIR/vol.tmp" >> "$dest"
+        rm -f "$EDU_DIR/vol.tmp"
+        vol=$((vol + 1))
+    done
+    if [ -f "$dest" ]; then
+        actual="$(sha256sum "$dest" | cut -d' ' -f1)"
+        if [ "$actual" != "$sha256" ]; then
+            echo "XWLightOS: WARNING: SHA256 mismatch for $package, skipping" >&2
+            rm -f "$dest"
+        else
+            echo "XWLightOS: verified $package $version"
+        fi
+    fi
+done
+rm -f "$EDU_DIR/vol.tmp"
 
-# Hold kernel metapackages so the chroot and binary stages agree on
-# exactly one kernel (same rationale as the DclawOS base).
-apt-mark hold linux-image-amd64 linux-headers-amd64
-
-# Install Wine stack and i386 dependencies for DingTalk.
-apt-get install -y --no-install-recommends \
-    wine wine32 wine64 libwine libwine:i386 fonts-wine
-
-# DingTalk bundles a PulseAudio client linking libpulse-mainloop-glib
-# explicitly; ship both architectures.
-apt-get install -y --no-install-recommends \
-    libpulse-mainloop-glib0 libpulse-mainloop-glib0:i386
-
-# Wine 32-bit library dependencies (i386).
-apt-get install -y --no-install-recommends \
-    libasound2:i386 libasound2-plugins:i386 \
-    libgstreamer-plugins-base1.0-0:i386 libgstreamer1.0-0:i386 \
-    libpulse0:i386 libglib2.0-0:i386 \
-    libgtk-3-0:i386 libasound2:i386 \
-    libx11-6:i386 libxext6:i386 libxrender1:i386 \
-    libxi6:i386 libxrandr2:i386 libxcursor1:i386 \
-    libgl1:i386 libglx0:i386 libegl1:i386 \
-    libvulkan1:i386 libfaudio0:i386 libmpg123-0:i386
+if ! ls "$EDU_DIR"/*.deb >/dev/null 2>&1; then
+    echo "XWLightOS: WARNING: no edu-software .debs fetched, skipping (base build continues)" >&2
+    exit 0
+fi
 
 # Force HOME=/root for vendor postinsts.
 mkdir -p /etc/dpkg/pre-inst.d
@@ -53,7 +88,8 @@ EOF
 chmod +x /etc/dpkg/pre-inst.d/set-home
 
 for deb in "$EDU_DIR"/*.deb; do
-    package_name="$(dpkg-deb -f "$deb" Package)"
+    [ -f "$deb" ] || continue
+    package_name="$(dpkg-deb -f "$deb" Package 2>/dev/null || echo "unknown")"
 
     if [ "$package_name" = "com.seewo.terminalmanager" ]; then
         # 希沃管家 declares "Depends: libstdc++6 (>= 8.3), libstdc++6 (<< 9),
@@ -71,16 +107,56 @@ for deb in "$EDU_DIR"/*.deb; do
         rm -rf "$repack_dir"
     fi
 
-    echo "XWLightOS: installing $package_name from $deb"
+    echo "XWLightOS: installing $package_name from $(basename "$deb")"
     HOME=/root apt-get install -y --no-install-recommends "$deb"
 done
 
-# 希沃白板守护进程：确保开机自启（vendor 包可能只装了二进制）。
-if [ -f /usr/share/applications/seewo-whiteboard.desktop ] || \
-   [ -f /opt/seewo/whiteboard/whiteboard ]; then
-    echo "XWLightOS: Seewo whiteboard detected, ensuring autostart"
-    mkdir -p /etc/xdg/autostart
-    # Vendor autostart entry is created here if the package did not ship one.
+# --- Seewo whiteboard daemon: ensure it is enabled at boot ---
+if [ -f /usr/lib/systemd/system/com.cvte.maxhub.alfred.service ] || \
+   [ -f /lib/systemd/system/com.cvte.maxhub.alfred.service ]; then
+    mkdir -p /etc/systemd/system/multi-user.target.wants
+    ln -sfn /usr/lib/systemd/system/com.cvte.maxhub.alfred.service \
+        /etc/systemd/system/multi-user.target.wants/com.cvte.maxhub.alfred.service 2>/dev/null || \
+    ln -sfn /lib/systemd/system/com.cvte.maxhub.alfred.service \
+        /etc/systemd/system/multi-user.target.wants/com.cvte.maxhub.alfred.service 2>/dev/null || true
+    echo "XWLightOS: Seewo whiteboard daemon enabled"
 fi
+
+# --- Seewo Terminal Manager daemon ---
+if [ -f /usr/lib/systemd/system/com.seewo.terminalmanager.service ]; then
+    mkdir -p /etc/systemd/system/multi-user.target.wants
+    ln -sfn /usr/lib/systemd/system/com.seewo.terminalmanager.service \
+        /etc/systemd/system/multi-user.target.wants/com.seewo.terminalmanager.service
+    echo "XWLightOS: Seewo Terminal Manager daemon enabled"
+fi
+
+# --- Disable Seewo OTA updates ---
+# 1. Mask vendor updater systemd units
+for unit in $(systemctl list-unit-files 2>/dev/null | grep -Ei 'seewo|easinote|easicare|easicamera|cvte|maxhub' | grep -Ei 'update|upgrade' | awk '{print $1}'); do
+    echo "XWLightOS: masking vendor updater unit: $unit"
+    ln -sfn /dev/null "/etc/systemd/system/$unit" 2>/dev/null || true
+done
+# 2. Disable Electron auto-update feeds
+for tree in /opt/apps/com.seewo.* /opt/EasiNote5; do
+    [ -d "$tree" ] || continue
+    find "$tree" -maxdepth 5 -type f \
+        \( -iname 'app-update.yml' -o -iname 'latest.yml' -o -iname 'update-info.json' \) \
+        -exec sh -c 'mv -f "$1" "$1.disabled" 2>/dev/null || true' _ {} \; 2>/dev/null || true
+done
+# 3. The OTA gateway (ota-gateway.seewo.com) is blocked at boot via
+#    /etc/hosts by xwlightos-seewo-ota-block.service (shipped in
+#    config/includes.chroot, armed at boot because live-build overwrites
+#    /etc/hosts during build). Enable it here with an explicit .wants
+#    symlink (live-build does not preserve preset state in the chroot).
+if [ -s /usr/local/bin/xwlightos-seewo-ota-block ] && \
+   [ -s /etc/systemd/system/xwlightos-seewo-ota-block.service ]; then
+    mkdir -p /etc/systemd/system/multi-user.target.wants
+    ln -sfn ../xwlightos-seewo-ota-block.service \
+        /etc/systemd/system/multi-user.target.wants/xwlightos-seewo-ota-block.service
+    echo "XWLightOS: Seewo OTA block service enabled"
+else
+    echo "XWLightOS: WARNING: OTA block script/service missing" >&2
+fi
+echo "XWLightOS: Seewo OTA updates disabled"
 
 echo "XWLightOS: education software installation complete"
