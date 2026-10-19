@@ -40,6 +40,8 @@ gnome-control-center
 gnome-terminal
 nautilus
 gnome-keyring
+# Firefox ESR：原由 1520 AI 钩子顺带安装，XWLightOS 移除 AI 钩子后需显式声明。
+firefox-esr
 gnome-calculator
 gnome-text-editor
 gvfs
