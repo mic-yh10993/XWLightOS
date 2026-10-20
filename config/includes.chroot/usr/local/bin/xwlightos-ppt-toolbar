@@ -241,6 +241,7 @@ class Toolbar:
         self.annotating = False
         self.visible = False
         self._synced_wid = None  # 已发送 sync 的放映窗口 id，避免重复同步重置页码
+        self._expecting_slideshow = False  # 工具栏主动发起的放映，出现窗口时不发 sync
         self.position_toolbar()
         # 状态刷新（页码显示）
         GLib.timeout_add(500, self.refresh_label)
@@ -275,9 +276,13 @@ class Toolbar:
         wid = find_slideshow_window()
         if wid and not self.annotating:
             self.show_toolbar()
-            # 通知插件：放映开始（同步起点页码），同一窗口只发一次，
+            # 工具栏主动发起的放映（start 指令）：插件已知道正确页码，不发 sync
+            if self._expecting_slideshow:
+                self._expecting_slideshow = False
+                self._synced_wid = wid
+            # 用户手动按 F5 发起的放映：同一窗口只发一次 sync，
             # 否则每 500ms 重置页码计数器
-            if self._synced_wid != wid:
+            elif self._synced_wid != wid:
                 send_cmd('sync')
                 self._synced_wid = wid
         elif not wid and self.visible and not self.annotating:
@@ -342,7 +347,9 @@ class Toolbar:
                 cur = _plugin_state['current']
             # 插件从指定页启动放映（0-based index）
             send_cmd('start', index=max(0, cur - 1))
-            self._synced_wid = None  # 下次检测到放映窗口时重新同步
+            # 标记为工具栏主动发起，窗口出现时不发 sync（插件已知正确页码）
+            self._expecting_slideshow = True
+            self._synced_wid = None
 
     def on_eraser(self, _btn):
         """橡皮：向编辑器发送 Ctrl+Z，撤销上一步绘画"""

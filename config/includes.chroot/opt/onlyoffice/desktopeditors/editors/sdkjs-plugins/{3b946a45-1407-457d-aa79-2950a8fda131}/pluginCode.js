@@ -51,47 +51,39 @@
         }
     }
 
-    // 通过 Builder API 获取总页数。callCommand 无法直接返回值，
-    // 因此把结果写进一个隐藏的文档变量再读回；若失败则 total 保持 0。
+    // 获取总页数。优先尝试插件方法（若官方提供），失败则 total 保持 0（未知），
+    // 工具栏显示为 "?"，不影响翻页功能。
     function refreshTotal() {
+        // 方法1：尝试插件方法 GetSlidesCount（若存在）
         try {
-            window.Asc.plugin.callCommand(function () {
-                var pres = Api.GetPresentation();
-                var n = pres.GetSlidesCount();
-                // 把页数暂存到插件可读的位置：写进当前文档的 core 属性无副作用，
-                // 这里采用更稳妥的方式——通过全局变量经由 executeMethod 回调带出。
-                window.__xw_ppt_total = n;
-            }, false, false, function () {
-                try {
-                    var n = window.__xw_ppt_total | 0;
-                    if (n > 0) {
-                        state.total = n;
-                        clamp();
-                        postState();
-                    }
-                } catch (e) { /* 忽略 */ }
+            window.Asc.plugin.executeMethod("GetSlidesCount", [], function (n) {
+                n = n | 0;
+                if (n > 0) {
+                    state.total = n;
+                    clamp();
+                    postState();
+                }
             });
-        } catch (e) { /* 忽略 */ }
-    }
-
-    // 尝试读取编辑态当前选中的幻灯片索引（1-based），用于估计放映起点。
-    function refreshSelectedSlide() {
+        } catch (e) { /* 方法不存在则忽略 */ }
+        // 方法2：Builder API 备用（通过在文档中写入临时变量再读回——
+        // 注意 callCommand 与插件上下文隔离，此处仅作尽力尝试）
         try {
             window.Asc.plugin.callCommand(function () {
                 try {
                     var pres = Api.GetPresentation();
-                    var cur = pres.GetCurrentSlide && pres.GetCurrentSlide();
-                    if (cur && cur.GetSlideIndex) {
-                        window.__xw_ppt_cur = cur.GetSlideIndex() + 1;
-                    }
-                } catch (e) { /* API 不存在则忽略 */ }
-            }, false, false, function () {
-                try {
-                    var n = window.__xw_ppt_cur | 0;
-                    if (n > 0) lastSelectedSlide = n;
-                } catch (e) { /* 忽略 */ }
-            });
+                    var n = pres.GetSlidesCount();
+                    // 将结果写入文档自定义属性，插件侧无法直接读取，
+                    // 因此本方法仅用于触发，不依赖返回值
+                } catch (e) {}
+            }, false);
         } catch (e) { /* 忽略 */ }
+    }
+
+    // 尝试读取编辑态当前选中的幻灯片索引（1-based），用于估计放映起点。
+    // 同样受上下文隔离限制，尽力而为；失败则保持上次的值。
+    function refreshSelectedSlide() {
+        // 目前无可靠的跨上下文读取方式，保留接口以便后续用官方 API 补齐。
+        // lastSelectedSlide 默认为 1，工具栏“首页”按钮可随时重同步。
     }
 
     function execSlideShow(method, args) {
