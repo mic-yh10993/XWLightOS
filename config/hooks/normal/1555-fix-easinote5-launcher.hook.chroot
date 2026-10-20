@@ -1,0 +1,64 @@
+#!/bin/sh
+# Fix Seewo whiteboard (EasiNote5) launcher.
+#
+# 用户 2026-10-20 邮件指令：希沃白板 .desktop 直接启动 EasiNote5 二进制，
+# 而不是厂商的 com.seewo.easinote5.sh 包装脚本。
+#
+# 厂商 .sh 实测内容（从 deb 解包核验）：
+#  - 设置 LD_LIBRARY_PATH（必需，否则缺库起不来）
+#  - 若 3123 端口未监听则起 swenserver（白板功能依赖，必需）
+#  - 复制 .desktop 到用户桌面目录等副作用（live ISO 不需要，去掉）
+#  - 兆芯 CPU 的 --use-angle=gles 特判（保留在下面注释，需要时可加回）
+#  - 以 --disable-gpu-sandbox 启动 EasiNote5（保留）
+#
+# 本钩子：
+#  1. 重写 /usr/share/applications/com.seewo.easinote5.desktop 的 Exec，
+#     用 env 直接带 LD_LIBRARY_PATH 启动 EasiNote5 二进制；
+#  2. swenserver 改由 XDG autostart 保证运行（不再依赖 .sh 的 nohup）。
+set -eu
+
+DESKTOP=/usr/share/applications/com.seewo.easinote5.desktop
+APP=/opt/apps/com.seewo.easinote5
+BIN="$APP/files/EasiNote5"
+LIBPATH="$APP/files/resources/public/lib:$APP/files"
+
+if [ ! -x "$BIN" ]; then
+    echo "XWLightOS: EasiNote5 binary not found at $BIN, skipping launcher fix" >&2
+    exit 0
+fi
+
+if [ -f "$DESKTOP" ]; then
+    # 备份原厂商文件以便排查
+    cp -f "$DESKTOP" "$DESKTOP.vendor-orig"
+    # 直接启动二进制：env 带上必需的 LD_LIBRARY_PATH，保留 --disable-gpu-sandbox
+    # 注意：兆芯 6780/6580 + 新驱动才需要 --use-angle=gles，通用 live ISO 默认不加；
+    # 如真机是兆芯 CPU 且画面异常，改此行追加该参数即可。
+    sed -i "s|^Exec=.*|Exec=env LD_LIBRARY_PATH=$LIBPATH $BIN --disable-gpu-sandbox %F|" "$DESKTOP"
+    grep -q "^Exec=env LD_LIBRARY_PATH=" "$DESKTOP" || {
+        echo "XWLightOS: failed to rewrite EasiNote5 Exec line" >&2
+        exit 1
+    }
+    echo "XWLightOS: EasiNote5 .desktop now launches the binary directly:"
+    grep "^Exec=" "$DESKTOP"
+else
+    echo "XWLightOS: WARNING: $DESKTOP not found" >&2
+fi
+
+# swenserver 自启：白板依赖的本地服务（原由 .sh 用 nohup 起）
+if [ -x "$APP/files/server/swenserver" ]; then
+    cat > /etc/xdg/autostart/xwlightos-easinote-swenserver.desktop <<EOF
+[Desktop Entry]
+Type=Application
+Name=EasiNote5 swenserver
+Comment=Seewo whiteboard local service (port 3123)
+Exec=sh -c 'pgrep -f "swenserver" >/dev/null || exec $APP/files/server/swenserver'
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+EOF
+    echo "XWLightOS: swenserver autostart installed"
+else
+    echo "XWLightOS: WARNING: swenserver binary not found" >&2
+fi
+
+echo "XWLightOS: EasiNote5 launcher fix complete"

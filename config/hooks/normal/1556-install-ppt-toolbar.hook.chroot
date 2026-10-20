@@ -1,0 +1,62 @@
+#!/bin/sh
+# Install XWLightOS ONLYOFFICE PPT toolbar (global plugin + software).
+#
+# 用户 2026-10-20 邮件指令：给 ONLYOFFICE 增加 PPT 放映工具栏——
+# 插件识别当前页码，软件检测到进入 PPT 放映后在屏幕下方置顶显示，
+# 功能：翻页、批注（批注随翻页切换）、橡皮、结束放映。全局插件+软件。
+#
+# 落地：
+#  插件：/opt/onlyoffice/desktopeditors/editors/sdkjs-plugins/{GUID}/
+#        后台插件，轮询本机 127.0.0.1:18923，执行官方放映 API
+#        （Start/End/GoToNext/GoToPrevious/GoToSlide/Pause/ResumeSlideShow，
+#         ONLYOFFICE 8.0+ 已核验），回传 {presenting, current, total}。
+#  软件：/usr/local/bin/xwlightos-ppt-toolbar（Python3+GTK），
+#        XDG autostart 常驻；检测到全屏放映窗口即置顶显示工具栏。
+#  批注：退出放映→编辑器画笔直接画在幻灯片上→继续放映，批注为幻灯片对象，
+#        天然随翻页切换；橡皮=Ctrl+Z 撤销上一步。
+set -eu
+
+PLUGIN_DIR="/opt/onlyoffice/desktopeditors/editors/sdkjs-plugins/{3b946a45-1407-457d-aa79-2950a8fda131}"
+
+# 1. 工具栏可执行权限（includes.chroot 复制后补一次，确保无误）
+if [ -f /usr/local/bin/xwlightos-ppt-toolbar ]; then
+    chmod 755 /usr/local/bin/xwlightos-ppt-toolbar
+    python3 -m py_compile /usr/local/bin/xwlightos-ppt-toolbar && \
+        echo "XWLightOS: ppt-toolbar syntax OK" || {
+        echo "XWLightOS: ERROR: ppt-toolbar python syntax failed" >&2
+        exit 1
+    }
+else
+    echo "XWLightOS: WARNING: xwlightos-ppt-toolbar not found" >&2
+fi
+
+# 2. 插件完整性校验
+if [ -d "$PLUGIN_DIR" ]; then
+    for f in config.json index.html pluginCode.js; do
+        [ -s "$PLUGIN_DIR/$f" ] || {
+            echo "XWLightOS: ERROR: plugin file missing: $f" >&2
+            exit 1
+        }
+    done
+    python3 -c "import json; json.load(open('$PLUGIN_DIR/config.json'))" || {
+        echo "XWLightOS: ERROR: plugin config.json invalid" >&2
+        exit 1
+    }
+    # JS 基础语法检查（node 未必在，失败只警告）
+    if command -v node >/dev/null 2>&1; then
+        node --check "$PLUGIN_DIR/pluginCode.js" || {
+            echo "XWLightOS: ERROR: pluginCode.js syntax failed" >&2
+            exit 1
+        }
+    fi
+    chmod 644 "$PLUGIN_DIR"/config.json "$PLUGIN_DIR"/index.html "$PLUGIN_DIR"/pluginCode.js
+    echo "XWLightOS: PPT bridge plugin verified at $PLUGIN_DIR"
+else
+    echo "XWLightOS: WARNING: plugin dir not found: $PLUGIN_DIR" >&2
+fi
+
+# 3. 自启 desktop 存在性
+[ -f /etc/xdg/autostart/xwlightos-ppt-toolbar.desktop ] || \
+    echo "XWLightOS: WARNING: ppt-toolbar autostart desktop missing" >&2
+
+echo "XWLightOS: PPT toolbar (plugin+software) installation complete"

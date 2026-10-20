@@ -1,0 +1,363 @@
+#!/usr/bin/env python3
+"""
+XWLightOS ONLYOFFICE PPT 放映工具栏
+
+全局常驻软件（XDG autostart 启动）：
+ 1. 检测 ONLYOFFICE 进入 PPT 放映（全屏放映窗口出现）；
+ 2. 在屏幕下方置顶显示工具栏：上一页 | 页码 X/Y | 下一页 | 批注 | 橡皮 | 结束放映；
+ 3. 通过本机 HTTP 服务与 ONLYOFFICE 桥接插件通信（插件执行官方放映 API，
+    并回传当前页码/总页数）。
+
+批注说明（诚实标注）：
+  批注采用“退出放映→编辑器画笔批注→继续放映”流程，批注直接画在幻灯片上
+  （幻灯片对象），因此天然“随翻页切换”。橡皮发送 Ctrl+Z 撤销上一步绘画。
+  未采用放映内原生画笔的原因：官方未提供可编程触发的 API/快捷键（已核验
+  官方 changelog 确认原生放映绘画存在，但无程序化接口）。
+
+HTTP 接口（127.0.0.1:18923，仅本机）：
+  GET  /cmd    -> 取走一条待执行指令（插件轮询）
+  POST /state  -> 插件上报 {presenting, current, total, seq}
+"""
+import json
+import os
+import subprocess
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+try:
+    import gi
+    gi.require_version('Gtk', '3.0')
+    from gi.repository import Gtk, Gdk, GLib
+    HAS_GTK = True
+except Exception:
+    HAS_GTK = False
+
+PORT = 18923
+POLL_INTERVAL = 0.5  # 放映窗口检测间隔（秒）
+
+# ---- 指令队列（插件通过 GET /cmd 取走） ----
+_cmd_lock = threading.Lock()
+_pending_cmd = None
+_cmd_seq = 0
+
+# ---- 插件上报的状态 ----
+_state_lock = threading.Lock()
+_plugin_state = {'presenting': False, 'current': 1, 'total': 0, 'seq': 0}
+_plugin_seen = False  # 是否曾经收到插件上报
+
+
+def send_cmd(action, **kwargs):
+    """向插件发送指令（覆盖式，只保留最新一条）"""
+    global _pending_cmd, _cmd_seq
+    with _cmd_lock:
+        _cmd_seq += 1
+        _pending_cmd = {'action': action, 'seq': _cmd_seq}
+        _pending_cmd.update(kwargs)
+
+
+class Handler(BaseHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
+
+    def _cors(self):
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self._cors()
+        self.end_headers()
+
+    def do_GET(self):
+        if self.path == '/cmd':
+            with _cmd_lock:
+                global _pending_cmd
+                cmd = _pending_cmd or {'action': 'none', 'seq': 0}
+                _pending_cmd = None
+            body = json.dumps(cmd).encode()
+            self.send_response(200)
+            self._cors()
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_POST(self):
+        if self.path == '/state':
+            try:
+                length = int(self.headers.get('Content-Length', 0))
+                data = json.loads(self.rfile.read(length) or b'{}')
+                with _state_lock:
+                    global _plugin_seen
+                    _plugin_state.update({
+                        'presenting': bool(data.get('presenting', False)),
+                        'current': int(data.get('current', 1)),
+                        'total': int(data.get('total', 0)),
+                        'seq': int(data.get('seq', 0)),
+                    })
+                    _plugin_seen = True
+                self.send_response(200)
+                self._cors()
+                self.end_headers()
+            except Exception:
+                self.send_response(400)
+                self.end_headers()
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+
+def run_http():
+    srv = HTTPServer(('127.0.0.1', PORT), Handler)
+    srv.serve_forever()
+
+
+# ---- 放映窗口检测 ----
+def _wmctrl_list():
+    try:
+        out = subprocess.check_output(['wmctrl', '-l', '-x'],
+                                      stderr=subprocess.DEVNULL,
+                                      timeout=5).decode('utf-8', 'ignore')
+        return out.splitlines()
+    except Exception:
+        return []
+
+
+def _is_fullscreen(wid):
+    try:
+        out = subprocess.check_output(['xprop', '-id', wid, '_NET_WM_STATE'],
+                                      stderr=subprocess.DEVNULL,
+                                      timeout=5).decode('utf-8', 'ignore')
+        return '_NET_WM_STATE_FULLSCREEN' in out
+    except Exception:
+        return False
+
+
+def find_slideshow_window():
+    """
+    寻找 ONLYOFFICE 放映窗口：WM_CLASS 含 onlyoffice 且全屏。
+    返回窗口 id（十六进制字符串），找不到返回 None。
+    """
+    for line in _wmctrl_list():
+        parts = line.split(None, 3)
+        if len(parts) < 4:
+            continue
+        wid, _desk, _cls, _title = parts[0], parts[1], parts[2], parts[3]
+        if 'onlyoffice' in _cls.lower() or 'desktopeditors' in _cls.lower():
+            if _is_fullscreen(wid):
+                return wid
+    return None
+
+
+def find_editor_window():
+    """寻找 ONLYOFFICE 编辑器主窗口（非全屏的 onlyoffice 窗口）"""
+    for line in _wmctrl_list():
+        parts = line.split(None, 3)
+        if len(parts) < 4:
+            continue
+        wid = parts[0]
+        cls = parts[2]
+        if 'onlyoffice' in cls.lower() or 'desktopeditors' in cls.lower():
+            if not _is_fullscreen(wid):
+                return wid
+    return None
+
+
+def activate_window(wid):
+    try:
+        subprocess.run(['wmctrl', '-i', '-a', wid],
+                       stderr=subprocess.DEVNULL, timeout=5)
+    except Exception:
+        pass
+
+
+def send_key_to_window(wid, *keys):
+    """向指定窗口发送按键（xdotool），失败则静默"""
+    try:
+        subprocess.run(['xdotool', 'windowactivate', wid],
+                       stderr=subprocess.DEVNULL, timeout=5)
+        time.sleep(0.15)
+        subprocess.run(['xdotool', 'key'] + list(keys),
+                       stderr=subprocess.DEVNULL, timeout=5)
+    except Exception:
+        pass
+
+
+class Toolbar:
+    def __init__(self):
+        self.win = Gtk.Window(type=Gtk.WindowType.POPUP)
+        self.win.set_decorated(False)
+        self.win.set_keep_above(True)
+        self.win.set_skip_taskbar_hint(True)
+        self.win.set_skip_pager_hint(True)
+        self.win.stick()
+        # 接受焦点但不抢走放映窗口的键盘焦点（点击按钮时才交互）
+        self.win.set_accept_focus(True)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        box.set_border_width(8)
+        self.win.add(box)
+
+        self.btn_prev = Gtk.Button(label='◀ 上一页')
+        self.btn_prev.connect('clicked', self.on_prev)
+        box.pack_start(self.btn_prev, False, False, 0)
+
+        self.lbl_page = Gtk.Label(label='- / -')
+        self.lbl_page.set_width_chars(9)
+        box.pack_start(self.lbl_page, False, False, 0)
+
+        self.btn_next = Gtk.Button(label='下一页 ▶')
+        self.btn_next.connect('clicked', self.on_next)
+        box.pack_start(self.btn_next, False, False, 0)
+
+        sep1 = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
+        box.pack_start(sep1, False, False, 0)
+
+        self.btn_annotate = Gtk.Button(label='✏ 批注')
+        self.btn_annotate.connect('clicked', self.on_annotate)
+        box.pack_start(self.btn_annotate, False, False, 0)
+
+        self.btn_eraser = Gtk.Button(label='🧽 橡皮')
+        self.btn_eraser.connect('clicked', self.on_eraser)
+        box.pack_start(self.btn_eraser, False, False, 0)
+
+        sep2 = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
+        box.pack_start(sep2, False, False, 0)
+
+        self.btn_home = Gtk.Button(label='⏮ 首页')
+        self.btn_home.set_tooltip_text('回到第一页并重同步页码')
+        self.btn_home.connect('clicked', self.on_home)
+        box.pack_start(self.btn_home, False, False, 0)
+
+        self.btn_end = Gtk.Button(label='⏹ 结束放映')
+        self.btn_end.connect('clicked', self.on_end)
+        box.pack_start(self.btn_end, False, False, 0)
+
+        self.annotating = False
+        self.visible = False
+        self.position_toolbar()
+        # 状态刷新（页码显示）
+        GLib.timeout_add(500, self.refresh_label)
+        # 放映检测
+        GLib.timeout_add(int(POLL_INTERVAL * 1000), self.detect_tick)
+
+    def position_toolbar(self):
+        self.win.show_all()
+        # 居中偏下：先显示拿到尺寸，再移动
+        win_w, win_h = self.win.get_size()
+        screen = self.win.get_screen()
+        mon = screen.get_primary_monitor()
+        geo = screen.get_monitor_geometry(mon)
+        x = geo.x + (geo.width - win_w) // 2
+        y = geo.y + geo.height - win_h - 60
+        self.win.move(max(x, 0), max(y, 0))
+
+    def show_toolbar(self):
+        if not self.visible:
+            self.visible = True
+            self.win.show_all()
+            self.position_toolbar()
+
+    def hide_toolbar(self):
+        if self.visible:
+            self.visible = False
+            self.win.hide()
+            self.annotating = False
+            self.btn_annotate.set_label('✏ 批注')
+
+    def detect_tick(self):
+        wid = find_slideshow_window()
+        if wid and not self.annotating:
+            self.show_toolbar()
+            # 通知插件：放映开始（同步起点页码）
+            send_cmd('sync')
+        elif not wid and self.visible and not self.annotating:
+            self.hide_toolbar()
+            send_cmd('hide')
+        return True
+
+    def refresh_label(self):
+        with _state_lock:
+            cur = _plugin_state['current']
+            total = _plugin_state['total']
+            seen = _plugin_seen
+        if seen and total > 0:
+            self.lbl_page.set_text('%d / %d' % (cur, total))
+        elif seen:
+            self.lbl_page.set_text('%d / ?' % cur)
+        else:
+            # 插件未运行：显示本地计数（仅工具栏翻页时准确）
+            self.lbl_page.set_text('%d / ?' % cur)
+        return True
+
+    # ---- 按钮动作 ----
+    def on_prev(self, _btn):
+        send_cmd('prev')
+        with _state_lock:
+            _plugin_state['current'] = max(1, _plugin_state['current'] - 1)
+
+    def on_next(self, _btn):
+        send_cmd('next')
+        with _state_lock:
+            _plugin_state['current'] += 1
+
+    def on_home(self, _btn):
+        send_cmd('first')
+        with _state_lock:
+            _plugin_state['current'] = 1
+
+    def on_end(self, _btn):
+        send_cmd('end')
+        self.hide_toolbar()
+
+    def on_annotate(self, _btn):
+        """
+        批注模式：退出放映→在编辑器中用画笔批注（批注成为幻灯片对象，
+        随翻页切换）→再点一次回到放映。
+        """
+        if not self.annotating:
+            # 进入批注：结束放映，切到编辑器
+            send_cmd('end')
+            time.sleep(0.4)
+            ed = find_editor_window()
+            if ed:
+                activate_window(ed)
+            self.annotating = True
+            self.btn_annotate.set_label('▶ 继续放映')
+        else:
+            # 继续放映：从当前页开始
+            self.annotating = False
+            self.btn_annotate.set_label('✏ 批注')
+            send_cmd('sync')
+
+    def on_eraser(self, _btn):
+        """橡皮：向编辑器发送 Ctrl+Z，撤销上一步绘画"""
+        ed = find_editor_window()
+        if ed:
+            send_key_to_window(ed, 'ctrl+z')
+
+
+def main():
+    if not HAS_GTK:
+        # 无 GTK 环境时仅运行 HTTP 服务与检测（不显示工具栏）
+        t = threading.Thread(target=run_http, daemon=True)
+        t.start()
+        while True:
+            time.sleep(3600)
+        return
+    t = threading.Thread(target=run_http, daemon=True)
+    t.start()
+    tb = Toolbar()
+    # 启动时隐藏，等检测到放映再显示
+    tb.win.hide()
+    tb.visible = False
+    Gtk.main()
+
+
+if __name__ == '__main__':
+    main()
