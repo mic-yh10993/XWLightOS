@@ -151,6 +151,21 @@
                 state.presenting = false;
                 postState();
             }
+        } else if (action === 'start') {
+            // 从指定页开始放映（批注后继续）
+            var startIdx = (cmd.index | 0) || 0;
+            if (execSlideShow('GoToSlideInSlideShow', [startIdx])) {
+                state.presenting = true;
+                state.current = startIdx + 1;
+                clamp();
+                postState();
+            } else if (execSlideShow('StartSlideShow')) {
+                // 备用：从头开始
+                state.presenting = true;
+                state.current = 1;
+                clamp();
+                postState();
+            }
         } else if (action === 'pause') {
             execSlideShow('PauseSlideShow');
         } else if (action === 'resume') {

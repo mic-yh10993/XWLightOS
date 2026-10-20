@@ -240,6 +240,7 @@ class Toolbar:
 
         self.annotating = False
         self.visible = False
+        self._synced_wid = None  # 已发送 sync 的放映窗口 id，避免重复同步重置页码
         self.position_toolbar()
         # 状态刷新（页码显示）
         GLib.timeout_add(500, self.refresh_label)
@@ -274,11 +275,15 @@ class Toolbar:
         wid = find_slideshow_window()
         if wid and not self.annotating:
             self.show_toolbar()
-            # 通知插件：放映开始（同步起点页码）
-            send_cmd('sync')
+            # 通知插件：放映开始（同步起点页码），同一窗口只发一次，
+            # 否则每 500ms 重置页码计数器
+            if self._synced_wid != wid:
+                send_cmd('sync')
+                self._synced_wid = wid
         elif not wid and self.visible and not self.annotating:
             self.hide_toolbar()
             send_cmd('hide')
+            self._synced_wid = None
         return True
 
     def refresh_label(self):
@@ -333,7 +338,11 @@ class Toolbar:
             # 继续放映：从当前页开始
             self.annotating = False
             self.btn_annotate.set_label('✏ 批注')
-            send_cmd('sync')
+            with _state_lock:
+                cur = _plugin_state['current']
+            # 插件从指定页启动放映（0-based index）
+            send_cmd('start', index=max(0, cur - 1))
+            self._synced_wid = None  # 下次检测到放映窗口时重新同步
 
     def on_eraser(self, _btn):
         """橡皮：向编辑器发送 Ctrl+Z，撤销上一步绘画"""
