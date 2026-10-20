@@ -1,0 +1,39 @@
+#!/bin/sh
+# XWLightOS EasiNote5 launcher wrapper.
+#
+# 用户 2026-10-20「我有个新思路」：批注工具栏置顶守护放到 sh 里，
+# 随白板主程序启动而启动、主程序退出时守护一并退出——
+# 白板没运行时守护不再空转，省性能。
+# （原实现是会话级 autostart 常驻，每秒轮询；见 git 历史。）
+#
+# 厂商 sh 以前台方式运行 EasiNote5（已从希沃白板 5.2.2.4.13701 deb 解包核验，
+# sh 末尾直接以前台方式执行 $appPath/files/EasiNote5），因此本包装器阻塞等待
+# 厂商 sh：守护的生命周期 == 白板主程序的生命周期。
+set -u
+
+VENDOR_SH=/opt/apps/com.seewo.easinote5/files/com.seewo.easinote5.sh
+GUARD=/usr/local/bin/xwlightos-seewo-toolbar-guard
+
+log() { echo "xwlightos-easinote5-launcher: $*"; }
+
+[ -x "$VENDOR_SH" ] || { log "vendor sh missing: $VENDOR_SH"; exit 1; }
+
+GUARD_PID=""
+if [ -x "$GUARD" ]; then
+    "$GUARD" >/dev/null 2>&1 &
+    GUARD_PID=$!
+    log "toolbar guard started (pid $GUARD_PID)"
+else
+    log "WARNING: toolbar guard missing, continuing without it: $GUARD"
+fi
+
+cleanup() {
+    if [ -n "$GUARD_PID" ]; then
+        kill "$GUARD_PID" 2>/dev/null || true
+        wait "$GUARD_PID" 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT INT TERM
+
+# 阻塞运行厂商 sh（%F 参数透传）；白板退出后 trap 自动清理守护。
+"$VENDOR_SH" "$@"

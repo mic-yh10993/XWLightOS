@@ -12,6 +12,11 @@
 # has a floating window type (DOCK/UTILITY/TOOLBAR/SPLASH) or occupies less
 # than 60% of the screen in either dimension. The main whiteboard window
 # is everything else Seewo-owned.
+#
+# Lifecycle (user 2026-10-20「我有个新思路」): started by
+# /usr/local/bin/xwlightos-easinote5-launcher together with the whiteboard
+# main program, killed when the whiteboard exits. No longer a session-wide
+# autostart daemon, so it never spins idly while the whiteboard is closed.
 set -u
 
 log() { echo "xwlightos-seewo-toolbar: $*"; }

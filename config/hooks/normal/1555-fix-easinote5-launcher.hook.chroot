@@ -1,7 +1,15 @@
 #!/bin/sh
-# EasiNote5 launcher: use the vendor sh script (not direct binary launch).
+# EasiNote5 launcher: wrapper sh starts the toolbar guardian together with
+# the whiteboard, then runs the vendor sh (user 2026-10-20「我有个新思路」).
 #
 # 用户 2026-10-20 邮件「再改一点」指令：白板继续走 sh，但确保 sh 无硬件校验程序。
+# 用户 2026-10-20 邮件「我有个新思路」指令：批注工具栏置顶守护放到 sh 里，
+# 随白板主程序启动而启动、退出而退出，避免白板未运行时守护空转浪费性能。
+#
+# 实现：.desktop Exec 指向包装器 /usr/local/bin/xwlightos-easinote5-launcher，
+# 包装器先后台启动守护，再阻塞运行厂商 sh（厂商 sh 以前台方式运行 EasiNote5，
+# 已从 deb 解包核验）；白板退出后包装器杀掉守护。
+# 原会话级 autostart 常驻守护（xwlightos-seewo-toolbar-guard.desktop）已删除。
 #
 # 审计结论（2026-10-20，亲手从希沃白板 5.2.2.4.13701 deb 解包核验
 # com.seewo.easinote5.sh 全文）：
@@ -14,35 +22,42 @@
 #  - server/launch.sh 仅一行启动 swenserver，无任何校验。
 #  - deb 的 postinst 用 dmidecode 采集内存/机器信息写入文件，仅为遥测，
 #    无门禁逻辑（相关 CPU/VGA 信息采集代码已被厂商注释掉）。
-# 因此直接使用厂商 sh，不再绕过它。
 set -eu
 
 DESKTOP=/usr/share/applications/com.seewo.easinote5.desktop
 APP=/opt/apps/com.seewo.easinote5
 SH="$APP/files/com.seewo.easinote5.sh"
+WRAPPER=/usr/local/bin/xwlightos-easinote5-launcher
+GUARD=/usr/local/bin/xwlightos-seewo-toolbar-guard
 
 if [ ! -x "$SH" ]; then
     echo "XWLightOS: vendor sh not found at $SH, skipping launcher fix" >&2
     exit 0
 fi
 
+# 权限兜底：includes.chroot 里的文件可能带 root-only 权限，显式放开，
+# 否则 live 用户执行包装器/守护会 Permission denied。
+# （非致命：includes 拷贝若晚于 hook，文件权限已由仓库 git 755 保证。）
+chmod 755 "$WRAPPER" "$GUARD" 2>/dev/null || \
+    echo "XWLightOS: NOTE: launcher/guard not present at hook time (ok if includes land later)" >&2
+
 if [ -f "$DESKTOP" ]; then
     # 备份原厂商文件以便排查
     cp -f "$DESKTOP" "$DESKTOP.vendor-orig"
-    # 走 sh 方案：恢复 Exec 指向厂商 sh（sh 内已审计，无硬件校验）
-    # 注意：兆芯 6780/6580 + 新驱动时 sh 会自动加 --use-angle=gles，通用 live ISO 无需干预
-    sed -i "s|^Exec=.*|Exec=$SH %F|" "$DESKTOP"
-    grep -q "^Exec=$SH" "$DESKTOP" || {
-        echo "XWLightOS: failed to restore EasiNote5 Exec to vendor sh" >&2
+    # 走包装器 sh：先起工具栏守护，再阻塞运行厂商 sh（sh 内已审计，无硬件校验）
+    # 注意：兆芯 6780/6580 + 新驱动时厂商 sh 会自动加 --use-angle=gles，通用 live ISO 无需干预
+    sed -i "s|^Exec=.*|Exec=$WRAPPER %F|" "$DESKTOP"
+    grep -q "^Exec=$WRAPPER" "$DESKTOP" || {
+        echo "XWLightOS: failed to point EasiNote5 Exec to wrapper" >&2
         exit 1
     }
-    echo "XWLightOS: EasiNote5 .desktop launches via vendor sh (audited, no HW check):"
+    echo "XWLightOS: EasiNote5 .desktop launches via wrapper (guardian rides along):"
     grep "^Exec=" "$DESKTOP"
 else
     echo "XWLightOS: WARNING: $DESKTOP not found" >&2
 fi
 
-# swenserver 自启兜底：白板依赖的本地服务（sh 自己也会起，双保险）
+# swenserver 自启兜底：白板依赖的本地服务（厂商 sh 自己也会起，双保险）
 if [ -x "$APP/files/server/swenserver" ]; then
     cat > /etc/xdg/autostart/xwlightos-easinote-swenserver.desktop <<EOF
 [Desktop Entry]
