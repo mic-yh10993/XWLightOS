@@ -41,6 +41,10 @@ ethtool
 bluez
 bluez-tools
 
+# 4G 模块（Qualcomm）：内核 qcserial/qmi_wwan 识别设备，
+# ModemManager 让 NetworkManager 可以管理蜂窝连接
+modemmanager
+
 # 打印与扫描
 cups
 cups-filters
