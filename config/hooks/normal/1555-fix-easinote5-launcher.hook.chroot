@@ -88,4 +88,24 @@ else
     echo "XWLightOS: WARNING: swenserver binary not found" >&2
 fi
 
+# --- 用户 2026-10-20 邮件「一起修」：视频展台/班级优化大师 .desktop 兜底 ---
+# 核验结论（2026-10-20，从 WinduxEdu 拉实包解包核验）：
+#  com.seewo.easicamera（视频展台）和 com.seewo.easicare（班级优化大师）的 deb
+#  数据里自带 /usr/share/applications/*.desktop，dpkg 安装时直接落地，
+#  与白板（postinst 才拷贝、chroot 中永不触发）情况不同，无需改写 Exec。
+#  此处做防御性兜底：若某版厂商 deb  dropped 该文件，则从 entries/ 亲手补装。
+for _app in com.seewo.easicamera com.seewo.easicare; do
+    _dt="/usr/share/applications/${_app}.desktop"
+    _src="/opt/apps/${_app}/entries/applications/${_app}.desktop"
+    if [ ! -f "$_dt" ] && [ -f "$_src" ]; then
+        cp -f "$_src" "$_dt"
+        echo "XWLightOS: installed $_dt from vendor entries (fallback)"
+    elif [ -f "$_dt" ]; then
+        echo "XWLightOS: $_dt present (shipped in deb data)"
+    else
+        echo "XWLightOS: WARNING: $_dt missing and no vendor template: $_src" >&2
+    fi
+done
+unset _app _dt _src
+
 echo "XWLightOS: EasiNote5 launcher fix complete"

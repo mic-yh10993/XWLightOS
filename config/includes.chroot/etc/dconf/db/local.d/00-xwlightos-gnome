@@ -39,12 +39,14 @@ enabled-extensions=['apps-menu@gnome-shell-extensions.gcampax.github.com', 'dash
 # Super+Shift+A 全局唤起 AI 聊天（见下方自定义快捷键）。
 # 用户 2026-10-20 邮件指令：固定栏固定 7 个应用——希沃白板、希沃视频展台、
 # 班级优化大师、ONLYOFFICE、钉钉、微信、QQ（按此顺序）。
+# 用户 2026-10-20 邮件指令：dock 栏把"文件"和 Firefox 加回去，放最前面。
 # .desktop 文件名均从厂商 deb 实包解包核验（非猜测）：
 #  com.seewo.easinote5.desktop / com.seewo.easicamera.desktop /
 #  com.seewo.easicare.desktop / onlyoffice-desktopeditors.desktop /
-#  com.alibabainc.dingtalk.desktop / wechat.desktop / qq.desktop。
+#  com.alibabainc.dingtalk.desktop / wechat.desktop / qq.desktop /
+#  org.gnome.Nautilus.desktop（文件）/ firefox-esr.desktop。
 # 注意：XWLightOS 已移除 AI 组件，旧的 xwlightos-ai-chat/manager 固定项同步移除。
-favorite-apps=['com.seewo.easinote5.desktop', 'com.seewo.easicamera.desktop', 'com.seewo.easicare.desktop', 'onlyoffice-desktopeditors.desktop', 'com.alibabainc.dingtalk.desktop', 'wechat.desktop', 'qq.desktop']
+favorite-apps=['org.gnome.Nautilus.desktop', 'firefox-esr.desktop', 'com.seewo.easinote5.desktop', 'com.seewo.easicamera.desktop', 'com.seewo.easicare.desktop', 'onlyoffice-desktopeditors.desktop', 'com.alibabainc.dingtalk.desktop', 'wechat.desktop', 'qq.desktop']
 
 [org/gnome/shell/extensions/user-theme]
 # 用户 2026-10-17 邮件指令：Shell 主题用 WhiteSur-Light。
