@@ -27,6 +27,7 @@ set -eu
 DESKTOP=/usr/share/applications/com.seewo.easinote5.desktop
 APP=/opt/apps/com.seewo.easinote5
 SH="$APP/files/com.seewo.easinote5.sh"
+SRC_DESKTOP="$APP/entries/applications/com.seewo.easinote5.desktop"
 WRAPPER=/usr/local/bin/xwlightos-easinote5-launcher
 GUARD=/usr/local/bin/xwlightos-seewo-toolbar-guard
 
@@ -40,6 +41,19 @@ fi
 # （非致命：includes 拷贝若晚于 hook，文件权限已由仓库 git 755 保证。）
 chmod 755 "$WRAPPER" "$GUARD" 2>/dev/null || \
     echo "XWLightOS: NOTE: launcher/guard not present at hook time (ok if includes land later)" >&2
+
+# 安装 .desktop 到 GNOME 可见位置：
+# 厂商 postinst 只在 /home/*/Desktop 存在时才拷贝 .desktop 到
+# /usr/share/applications（chroot 构建环境中该条件永不成立），
+# 因此这里亲手从 deb 的 entries 目录安装（已从实包解包核验路径）。
+if [ ! -f "$DESKTOP" ]; then
+    if [ -f "$SRC_DESKTOP" ]; then
+        cp -f "$SRC_DESKTOP" "$DESKTOP"
+        echo "XWLightOS: installed $DESKTOP from vendor entries"
+    else
+        echo "XWLightOS: WARNING: vendor desktop template not found: $SRC_DESKTOP" >&2
+    fi
+fi
 
 if [ -f "$DESKTOP" ]; then
     # 备份原厂商文件以便排查
