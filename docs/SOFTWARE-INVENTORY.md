@@ -16,13 +16,6 @@
 | ONLYOFFICE DesktopEditors | 9.4.0 | GitHub 官方 release（SHA256 锁定） |
 | PeaZip | 11.2.0 Qt6 | GitHub 官方 release（SHA256 锁定） |
 
-### ONLYOFFICE PPT 放映工具栏（XWLightOS 自研，2026-10-20 新增）
-
-- **全局插件** `xwlightos-ppt-bridge`（后台插件，GUID `asc.{3b946a45-1407-457d-aa79-2950a8fda131}`）：跟踪放映页码，执行官方放映 API（Start/End/GoToNext/GoToPrevious/GoToSlide/Pause/ResumeSlideShow，ONLYOFFICE 8.0+）
-- **全局软件** `xwlightos-ppt-toolbar`（Python3+GTK，常驻）：检测到全屏放映窗口后在屏幕下方置顶显示工具栏
-- 功能：上一页 | 页码 X/Y | 下一页 | 批注 | 橡皮 | 首页 | 结束放映
-- 批注流程（原生批注，2026-10-21）：退出放映→编辑器确认目标页→输入文本→原生 AddComment API 添加到当前幻灯片→继续放映从当前页开始；批注为幻灯片原生对象，随翻页切换，全程不依赖页码计数器；橡皮=Ctrl+Z 撤销
-
 ## 教育软件（来自 WinduxEdu，版本锁定）
 
 | 软件 | 版本 |
