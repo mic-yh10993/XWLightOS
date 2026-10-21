@@ -7,6 +7,10 @@
 #      （Arial / Times New Roman / Courier New / Georgia / Verdana 等），
 #      构建期预接受微软 EULA —— 这是邮件里说的"最稳妥的方式"，微软官方
 #      认可的分发通道，合规无风险。
+#      2026-10-21 用户批准补装（调研：ttf-mscorefonts-installer 不含
+#      Calibri / Cambria，而 Calibri 是 Office 2007+ 默认字体）：
+#      Debian main 源开源包 fonts-crosextra-carlito（度量兼容 Calibri，
+#      零排版漂移）、fonts-crosextra-caladea（度量兼容 Cambria）。
 #   2. 中文字体：微软雅黑/宋体等是微软专有字体，社区 GitHub 仓库
 #      （uinv/windows-fonts、funggtopp/onlyoffice-chinese-fonts）版权不清，
 #      不能直接打进公开发布的 ISO。邮件本身也要求权衡方便与合规。
@@ -27,11 +31,15 @@ printf '%s\n' \
     'ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true' \
     | debconf-set-selections
 
-apt-get install -y --no-install-recommends ttf-mscorefonts-installer
+apt-get install -y --no-install-recommends \
+    ttf-mscorefonts-installer \
+    fonts-crosextra-carlito \
+    fonts-crosextra-caladea
 
 fc-cache -f >/dev/null 2>&1
 
 # 构建期门禁：真正的 Arial / Times New Roman 必须已落盘且可被检索；
+# Carlito（代 Calibri）/ Caladea（代 Cambria）必须可被检索；
 # 中文字体别名文件必须还在（双保险，防错位依赖它）。
 for want in 'usr/share/fonts/truetype/msttcorefonts/Arial.ttf' \
     'usr/share/fonts/truetype/msttcorefonts/Times_New_Roman.ttf' \
@@ -49,5 +57,13 @@ fc-list | grep -qi 'Times New Roman' || {
     echo 'XWLightOS: Times New Roman not visible to fontconfig after install' >&2
     exit 1
 }
+fc-list | grep -qi 'Carlito' || {
+    echo 'XWLightOS: Carlito (Calibri metric-compatible) not visible to fontconfig after install' >&2
+    exit 1
+}
+fc-list | grep -qi 'Caladea' || {
+    echo 'XWLightOS: Caladea (Cambria metric-compatible) not visible to fontconfig after install' >&2
+    exit 1
+}
 
-echo 'XWLightOS: MS core fonts installed (EULA pre-accepted), CJK aliases intact'
+echo 'XWLightOS: MS core fonts installed (EULA pre-accepted), Carlito/Caladea metric fonts installed, CJK aliases intact'
