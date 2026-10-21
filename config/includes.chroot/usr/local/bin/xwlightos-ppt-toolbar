@@ -8,11 +8,12 @@ XWLightOS ONLYOFFICE PPT 放映工具栏
  3. 通过本机 HTTP 服务与 ONLYOFFICE 桥接插件通信（插件执行官方放映 API，
     并回传当前页码/总页数）。
 
-批注说明（诚实标注）：
-  批注采用“退出放映→编辑器画笔批注→继续放映”流程，批注直接画在幻灯片上
-  （幻灯片对象），因此天然“随翻页切换”。橡皮发送 Ctrl+Z 撤销上一步绘画。
-  未采用放映内原生画笔的原因：官方未提供可编程触发的 API/快捷键（已核验
-  官方 changelog 确认原生放映绘画存在，但无程序化接口）。
+批注说明（原生批注流程，2026-10-21）：
+  批注采用 ONLYOFFICE 原生批注 API（AddComment）：点批注→结束放映→编辑器中
+  亲眼确认目标幻灯片→输入批注文本→原生 API 添加到当前幻灯片→继续放映从
+  当前页开始。批注为幻灯片原生对象，翻页时自动跟随切换；全程不依赖页码
+  计数器（ppt 助手不再需要知道当前多少页）。
+  橡皮：向编辑器发送 Ctrl+Z，可撤销上一步添加的批注。
 
 HTTP 接口（127.0.0.1:18923，仅本机）：
   GET  /cmd    -> 取走一条待执行指令（插件轮询）
@@ -218,7 +219,7 @@ class Toolbar:
         sep1 = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
         box.pack_start(sep1, False, False, 0)
 
-        self.btn_annotate = Gtk.Button(label='✏ 批注')
+        self.btn_annotate = Gtk.Button(label='💬 批注')
         self.btn_annotate.connect('clicked', self.on_annotate)
         box.pack_start(self.btn_annotate, False, False, 0)
 
@@ -270,7 +271,7 @@ class Toolbar:
             self.visible = False
             self.win.hide()
             self.annotating = False
-            self.btn_annotate.set_label('✏ 批注')
+            self.btn_annotate.set_label('💬 批注')
 
     def detect_tick(self):
         wid = find_slideshow_window()
@@ -327,8 +328,13 @@ class Toolbar:
 
     def on_annotate(self, _btn):
         """
-        批注模式：退出放映→在编辑器中用画笔批注（批注成为幻灯片对象，
-        随翻页切换）→再点一次回到放映。
+        批注（原生批注流程，2026-10-21）：
+          1. 结束放映，切到编辑器——用户亲眼看到目标幻灯片，
+             不存在“页码对错页”的静默风险；
+          2. 弹出批注输入框，确认后经桥接插件调用 ONLYOFFICE 原生批注 API
+             （AddComment），批注附加到当前幻灯片；
+          3. 再点一次“继续放映”，从编辑器当前页直接开始放映（无需页码）。
+        批注为幻灯片原生对象，翻页时自动跟随切换；全程不依赖页码计数器。
         """
         if not self.annotating:
             # 进入批注：结束放映，切到编辑器
@@ -339,17 +345,46 @@ class Toolbar:
                 activate_window(ed)
             self.annotating = True
             self.btn_annotate.set_label('▶ 继续放映')
+            self.show_comment_dialog()
         else:
-            # 继续放映：从当前页开始
+            # 继续放映：从编辑器当前页开始（无需页码，插件直接 StartSlideShow）
             self.annotating = False
-            self.btn_annotate.set_label('✏ 批注')
-            with _state_lock:
-                cur = _plugin_state['current']
-            # 插件从指定页启动放映（0-based index）
-            send_cmd('start', index=max(0, cur - 1))
-            # 标记为工具栏主动发起，窗口出现时不发 sync（插件已知正确页码）
+            self.btn_annotate.set_label('💬 批注')
+            send_cmd('start')
+            # 标记为工具栏主动发起，窗口出现时不发 sync（插件已知状态）
             self._expecting_slideshow = True
             self._synced_wid = None
+
+    def show_comment_dialog(self):
+        """批注输入对话框：输入文本，确认后经原生 API 添加到当前幻灯片"""
+        dlg = Gtk.Dialog(title='添加批注', parent=self.win, flags=0)
+        dlg.add_buttons('取消', Gtk.ResponseType.CANCEL,
+                        '添加批注', Gtk.ResponseType.OK)
+        dlg.set_default_size(400, 240)
+        content = dlg.get_content_area()
+        info = Gtk.Label(
+            label='批注将添加到编辑器当前显示的幻灯片。\n'
+                  '原生批注随翻页自动切换，无需页码。')
+        info.set_line_wrap(True)
+        info.set_xalign(0)
+        content.pack_start(info, False, False, 8)
+        tv = Gtk.TextView()
+        tv.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        sc = Gtk.ScrolledWindow()
+        sc.set_min_content_height(120)
+        sc.add(tv)
+        content.pack_start(sc, True, True, 0)
+        content.show_all()
+        text = ''
+        try:
+            if dlg.run() == Gtk.ResponseType.OK:
+                buf = tv.get_buffer()
+                text = buf.get_text(
+                    buf.get_start_iter(), buf.get_end_iter(), True).strip()
+        finally:
+            dlg.destroy()
+        if text:
+            send_cmd('add_comment', text=text)
 
     def on_eraser(self, _btn):
         """橡皮：向编辑器发送 Ctrl+Z，撤销上一步绘画"""

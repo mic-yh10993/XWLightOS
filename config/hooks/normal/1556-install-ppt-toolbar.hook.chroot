@@ -12,8 +12,10 @@
 #         ONLYOFFICE 8.0+ 已核验），回传 {presenting, current, total}。
 #  软件：/usr/local/bin/xwlightos-ppt-toolbar（Python3+GTK），
 #        XDG autostart 常驻；检测到全屏放映窗口即置顶显示工具栏。
-#  批注：退出放映→编辑器画笔直接画在幻灯片上→继续放映，批注为幻灯片对象，
-#        天然随翻页切换；橡皮=Ctrl+Z 撤销上一步。
+#  批注：原生批注流程（2026-10-21）——退出放映→编辑器亲眼确认目标页→输入文本→
+#        原生 AddComment API 添加到当前幻灯片→继续放映从当前页开始（无需页码）；
+#        批注为幻灯片原生对象，天然随翻页切换，全程不依赖页码计数器；
+#        橡皮=Ctrl+Z 撤销上一步（含批注添加）。
 set -eu
 
 PLUGIN_DIR="/opt/onlyoffice/desktopeditors/editors/sdkjs-plugins/{3b946a45-1407-457d-aa79-2950a8fda131}"

@@ -3,9 +3,13 @@
  *
  * 职责：
  *  1. 在演示文稿打开时获取总页数；
- *  2. 轮询本机工具栏服务 (http://127.0.0.1:18923/cmd) 获取翻页/结束等指令，
- *     通过官方放映 API 执行；
- *  3. 把 {presenting, current, total} 状态 POST 到 /state，供工具栏显示页码。
+ *  2. 轮询本机工具栏服务 (http://127.0.0.1:18923/cmd) 获取翻页/结束/批注等指令，
+ *     通过官方放映 API 与原生批注 API 执行；
+ *  3. 把 {presenting, current, total} 状态 POST 到 /state，供工具栏显示页码；
+ *  4. 批注：原生批注流程（2026-10-21）——工具栏结束放映后，用户在编辑器中
+ *     亲眼确认目标幻灯片，输入文本后经 AddComment 原生 API 添加到当前幻灯片。
+ *     批注为幻灯片原生对象，翻页时自动跟随切换，全程不依赖页码计数器
+ *     （ppt 助手不再需要知道当前多少页）。
  *
  * 使用的放映 API（ONLYOFFICE 8.0+ 官方插件方法，已核验）：
  *  StartSlideShow / EndSlideShow / GoToNextSlideInSlideShow /
@@ -95,6 +99,26 @@
         }
     }
 
+    // 通过 ONLYOFFICE 原生批注 API 添加批注。
+    //
+    // 官方方法（已核验，ONLYOFFICE 官方博客 Advanced API）：
+    //   executeMethod("AddComment", [{Text, UserName, Time}])
+    // 批注附加到编辑器当前幻灯片。工具栏在发送 add_comment 之前已经结束放映，
+    // 用户在编辑器中亲眼看到目标页，不存在“页码对错页”的静默风险。
+    // 批注为幻灯片原生对象，翻页时自动跟随切换，无需页码计数器。
+    function addNativeComment(text) {
+        try {
+            window.Asc.plugin.executeMethod('AddComment', [{
+                Text: text,
+                UserName: '课堂批注',
+                Time: new Date().toISOString()
+            }]);
+            return true;
+        } catch (e) {
+            return false;
+        }
+    }
+
     function handleCommand(cmd) {
         if (!cmd || typeof cmd.seq !== 'number' || cmd.seq <= state.seq) return;
         state.seq = cmd.seq;
@@ -144,19 +168,24 @@
                 postState();
             }
         } else if (action === 'start') {
-            // 从指定页开始放映（批注后继续）
-            var startIdx = (cmd.index | 0) || 0;
-            if (execSlideShow('GoToSlideInSlideShow', [startIdx])) {
+            // 从编辑器当前页继续放映（批注后继续）。
+            // StartSlideShow 从编辑器当前选中的幻灯片开始放映，无需页码参数——
+            // 批注流程全程不再依赖页码计数器（ppt 助手不需要知道当前多少页）。
+            // 注意：旧的“GoToSlideInSlideShow 起播”已删除——该方法要求放映已在
+            // 进行中，在无放映时调用是静默空操作，不可靠。
+            if (execSlideShow('StartSlideShow')) {
                 state.presenting = true;
-                state.current = startIdx + 1;
-                clamp();
+                // current 保持上次的值：通常编辑器当前页即刚才放映的页，
+                // 计数器仍然准确；若不一致，用户可用“首页”按钮重同步。
                 postState();
-            } else if (execSlideShow('StartSlideShow')) {
-                // 备用：从头开始
-                state.presenting = true;
-                state.current = 1;
-                clamp();
-                postState();
+            }
+        } else if (action === 'add_comment') {
+            // 原生批注：文本经 AddComment 添加到编辑器当前幻灯片。
+            // 调用前工具栏已结束放映，用户在编辑器中确认过目标页；
+            // 批注为幻灯片原生对象，随翻页自动切换，不依赖页码计数器。
+            var text = String(cmd.text || '').trim();
+            if (text) {
+                addNativeComment(text);
             }
         } else if (action === 'pause') {
             execSlideShow('PauseSlideShow');
