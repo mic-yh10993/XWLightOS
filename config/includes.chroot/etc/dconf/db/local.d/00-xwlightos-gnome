@@ -1,4 +1,4 @@
-# XWLightOS GNOME defaults: macOS-like WhiteSur theme, dock and AI entry points.
+# XWLightOS GNOME defaults: macOS-like WhiteSur theme, dock and favorites.
 # Applied via `dconf update` in the 1700 hook.
 
 [org/gnome/desktop/interface]
@@ -21,22 +21,12 @@ theme='WhiteSur-Dark'
 button-layout=':minimize,maximize,close'
 
 [org/gnome/shell]
-# mac 主题（用户 2026-10-12 明确要求不可精简）+ 用户 2026-10-17 邮件指令的
-# 全局默认扩展：Apps Menu、dash-to-dock、Desktop-icons-ng (ding)、
-# Native Window Placement、Places Status Indicator、
-# Removable Drive Menu、System Monitor、User Themes。
-# 注意：10-17 邮件里要求的 Light Style 已于 2026-10-19 移除（#61/#62 构建失败
-# 根因）——GNOME 官方 43.1 仓库里没有该扩展，且它依赖 GNOME 45+ 的 API，在
-# GNOME 43 上从原理上跑不起来；浅色效果已由本文件 color-scheme='prefer-light'
-# 实现，不是偷工减料。
-# appindicatorsupport 保留：托盘图标是 AI-first 体验的一部分。
 # chroot 构建无显示、无重启：扩展启用走系统级 dconf 默认（dconf update 编译
 # 进 db），首次登录即生效，无需运行时 gnome-extensions enable。
-# 用户 2026-10-19 邮件指令：顶栏加系统监控（CPU/内存），用 paradoxxxzero 维护版
-#（UUID system-monitor@paradoxxx.zero.gmail.com，1610 钩子安装，支持 GNOME 43）。
-enabled-extensions=['apps-menu@gnome-shell-extensions.gcampax.github.com', 'dash-to-dock@micxgx.gmail.com', 'ding@rastersoft.com', 'native-window-placement@gnome-shell-extensions.gcampax.github.com', 'places-menu@gnome-shell-extensions.gcampax.github.com', 'drive-menu@gnome-shell-extensions.gcampax.github.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'appindicatorsupport@rgcjonas.gmail.com', 'system-monitor@paradoxxx.zero.gmail.com']
-# AI-first: AI 聊天和 AI 管理器固定在 dock，随时唤起。
-# Super+Shift+A 全局唤起 AI 聊天（见下方自定义快捷键）。
+# 用户 2026-10-23 指令：性能监视工具换成 Debian 官方 gnome-system-monitor
+# 应用（见 xwlightos-desktop.list.chroot）；paradoxxxzero 的顶栏
+# system-monitor 扩展同步移除，不与应用版并存（功能重复、视觉混乱）。
+enabled-extensions=['apps-menu@gnome-shell-extensions.gcampax.github.com', 'dash-to-dock@micxgx.gmail.com', 'ding@rastersoft.com', 'native-window-placement@gnome-shell-extensions.gcampax.github.com', 'places-menu@gnome-shell-extensions.gcampax.github.com', 'drive-menu@gnome-shell-extensions.gcampax.github.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'appindicatorsupport@rgcjonas.gmail.com']
 # 用户 2026-10-20 邮件指令：固定栏固定 7 个应用——希沃白板、希沃视频展台、
 # 班级优化大师、ONLYOFFICE、钉钉、微信、QQ（按此顺序）。
 # 用户 2026-10-20 邮件指令：dock 栏把"文件"和 Firefox 加回去，放最前面。
@@ -67,11 +57,7 @@ show-trash=false
 show-mounts=false
 running-indicator-style='DOTS'
 
-# AI-first: Super+Shift+A launches the AI chat anywhere.
+# XWLightOS 已移除 AI 组件：旧的 Super+Shift+A 唤起 AI 聊天快捷键同步移除
+#（其命令 /usr/local/bin/xwlightos-ai-chat 已不存在，留着是死快捷键）。
 [org/gnome/settings-daemon/plugins/media-keys]
-custom-keybindings=['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/xwlightos-ai-chat/']
-
-[org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/xwlightos-ai-chat]
-name='XWLightOS AI Chat'
-command='/usr/local/bin/xwlightos-ai-chat'
-binding='<Super><Shift>a'
+custom-keybindings=[]

@@ -44,6 +44,9 @@ gnome-keyring
 firefox-esr
 gnome-calculator
 gnome-text-editor
+# 用户 2026-10-23 指令：性能监视工具换成 Debian 官方 gnome-system-monitor
+# 应用（替代 paradoxxxzero 的顶栏 system-monitor 扩展，后者同步移除）。
+gnome-system-monitor
 gvfs
 gnome-menus
 gdm3
