@@ -1,7 +1,9 @@
 [Desktop Entry]
 Type=Application
+# 用户 2026-10-23 邮件指令：桌面图标默认可信任可运行（旧版只处理了安装器图标
+# 且写死了 /home/user，现改为通用脚本，live/安装后/任意用户都生效）。
 Name=XWLightOS desktop launcher trust setup
-Exec=/bin/sh -c 'gio set --type=string "/home/user/Desktop/Install XWLightOS.desktop" metadata::trusted true >/dev/null 2>&1; touch "/home/user/Desktop/Install XWLightOS.desktop"'
+Exec=/usr/local/bin/xwlightos-trust-desktop-launchers
 OnlyShowIn=GNOME;
 X-GNOME-Autostart-enabled=true
 NoDisplay=true

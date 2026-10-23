@@ -27,6 +27,13 @@ else
     log "WARNING: toolbar guard missing, continuing without it: $GUARD"
 fi
 
+# 厂商 sh 启动时会往 ~/Desktop 拷贝一份 .desktop（首次启动），那份拷贝
+# 不在登录时信任脚本的覆盖时间窗内；延迟几秒在后台补一次信任，
+# 本会话内桌面上的白板图标即变为可信任（用户 2026-10-23 邮件指令）。
+if [ -x /usr/local/bin/xwlightos-trust-desktop-launchers ]; then
+    ( sleep 5; exec /usr/local/bin/xwlightos-trust-desktop-launchers ) >/dev/null 2>&1 &
+fi
+
 cleanup() {
     if [ -n "$GUARD_PID" ]; then
         kill "$GUARD_PID" 2>/dev/null || true
