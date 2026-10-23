@@ -1,0 +1,55 @@
+#!/bin/sh
+# XWLightOS: mark every .desktop launcher on the user's Desktop as trusted.
+#
+# 用户 2026-10-23 邮件指令：桌面图标（ONLYOFFICE、终端、希沃白板等）默认就是
+# 可信任可运行状态，不再显示"未知/未信任"红叉、双击直接运行。
+#
+# 根因：GNOME 把 trusted 标记存在 gvfs metadata 里
+# （~/.local/share/gvfs-metadata），chroot 构建期没有会话总线，gio 写不进去；
+# 且安装后系统会新建用户、厂商 sh 也会在白板首次启动时往 ~/Desktop 拷贝
+# .desktop——构建期预置覆盖不到这些情况。
+#
+# 修法：登录时（GNOME autostart，见
+# /etc/xdg/autostart/xwlightos-desktop-trust.desktop）为当前用户桌面上的全部
+# .desktop 设置可执行位 + metadata::trusted=true。live 和安装后系统、任意用户
+# 都生效；每次登录都跑一遍保证幂等，后续新增的图标也会被自动信任。
+set -u
+
+command -v gio >/dev/null 2>&1 || exit 0
+[ -n "${HOME:-}" ] && [ -d "$HOME" ] || exit 0
+
+# 解析桌面目录：优先 XDG_DESKTOP_DIR 环境变量，其次 user-dirs.dirs，
+# 否则回退 ~/Desktop（构建期 1500/1600 钩子往 /etc/skel/Desktop 布署图标，
+# live 用户与 Calamares 新用户都会继承该目录）。
+desktop_dir=""
+if [ -n "${XDG_DESKTOP_DIR:-}" ]; then
+    desktop_dir="$XDG_DESKTOP_DIR"
+elif [ -f "$HOME/.config/user-dirs.dirs" ]; then
+    desktop_dir="$(sed -n 's/^XDG_DESKTOP_DIR="\(.*\)"$/\1/p' "$HOME/.config/user-dirs.dirs" | head -n 1)"
+fi
+# user-dirs.dirs 里是未展开的 $HOME/Desktop 形式，手动展开。
+case "$desktop_dir" in
+    '$HOME'*) desktop_dir="$HOME${desktop_dir#\$HOME}" ;;
+    '') desktop_dir="$HOME/Desktop" ;;
+esac
+
+seen_dirs=""
+for cand in "$desktop_dir" "$HOME/Desktop" "$HOME/桌面"; do
+    [ -d "$cand" ] || continue
+    # 去重：desktop_dir 解析结果常与 $HOME/Desktop 是同一目录。
+    case " $seen_dirs " in
+        *" $cand "*) continue ;;
+    esac
+    seen_dirs="$seen_dirs $cand"
+    for f in "$cand"/*.desktop; do
+        [ -f "$f" ] || continue
+        # ding/Nautilus 要求可执行位 + trusted 标记两者齐备才允许直接启动。
+        chmod u+x "$f" 2>/dev/null || true
+        # 已信任则跳过，避免无谓的 metadata 写入触发桌面重绘。
+        if gio info -a metadata::trusted "$f" 2>/dev/null | grep -q 'metadata::trusted: true'; then
+            continue
+        fi
+        gio set "$f" metadata::trusted true >/dev/null 2>&1 || true
+    done
+done
+exit 0

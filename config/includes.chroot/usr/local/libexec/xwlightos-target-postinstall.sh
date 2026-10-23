@@ -15,7 +15,8 @@ rm -f /etc/systemd/system/xwlightos-live-session-init.service \
       /etc/systemd/system/multi-user.target.wants/xwlightos-live-session-init.service \
       /usr/local/sbin/xwlightos-live-session-init
 rm -rf /etc/lightdm /etc/systemd/system/lightdm.service.d
-rm -f /etc/xdg/autostart/xwlightos-desktop-trust.desktop
+# 注意：/etc/xdg/autostart/xwlightos-desktop-trust.desktop 不再是 live 专用——
+# 用户 2026-10-23 邮件指令要求桌面图标在安装后系统也默认可信任，因此安装后保留。
 # The Live account is created at boot and must never be selected should its
 # passwd entry happen to be visible while Calamares runs. Clear the image's
 # Live session file first, then require the account created by Calamares.

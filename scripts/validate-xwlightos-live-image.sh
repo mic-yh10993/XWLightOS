@@ -151,9 +151,17 @@ require_path 'usr/share/fonts/truetype/msttcorefonts/Times_New_Roman.ttf'
 require_path 'usr/share/fonts/truetype/msttcorefonts/Courier_New.ttf'
 # Desktop Icons NG (ding) 扩展必须装进镜像。
 require_path 'usr/share/gnome-shell/extensions/ding@rastersoft.com'
-# "此电脑" Nautilus 扩展（1570 钩子，系统级安装）。
-require_path 'usr/share/nautilus-python/extensions/nautilus-my-computer.py'
-require_path 'usr/share/glib-2.0/schemas/io.github.yannmasoch.nautilus-my-computer.gschema.xml'
+# 用户 2026-10-23 邮件指令：不需要"此电脑"了（1570 钩子已删除），
+# Nautilus 默认打开"其他位置"（1571 钩子 + xwlightos-default-location.py）。
+# 旧"此电脑"扩展文件必须不在镜像里，新扩展必须在。
+require_path 'usr/share/nautilus-python/extensions/xwlightos-default-location.py'
+for gone in 'usr/share/nautilus-python/extensions/nautilus-my-computer.py' \
+            'usr/share/glib-2.0/schemas/io.github.yannmasoch.nautilus-my-computer.gschema.xml'; do
+    if grep -q -E "(^|/)${gone}$" "$LIST"; then
+        echo "removed nautilus-my-computer extension still present in final ISO: $gone" >&2
+        exit 1
+    fi
+done
 # XWLightOS 已移除 AI 栈：ai-home.tar.gz 不应再要求存在（见下文否定检查）。
 require_path 'usr/local/bin/xwlightos-power-action'
 require_path 'usr/local/bin/xwlightos-logout'
@@ -324,6 +332,13 @@ grep -q "^gtk-theme='WhiteSur-Dark'$" "$GNOME_DEFAULTS"
 # 用户 2026-10-17 邮件指令：图标 WhiteSur-light、Shell WhiteSur-Light。
 grep -q "^icon-theme='WhiteSur-light'$" "$GNOME_DEFAULTS"
 grep -q 'dash-to-dock@micxgx.gmail.com' "$GNOME_DEFAULTS"
+# 用户 2026-10-23 邮件指令：工具栏在时不隐藏 dock，只有全屏窗口才隐藏 dock。
+grep -q "^autohide=false$" "$GNOME_DEFAULTS" \
+    || { echo 'dash-to-dock autohide is not disabled (dock would stay hidden)' >&2; exit 1; }
+grep -q "^intellihide=false$" "$GNOME_DEFAULTS" \
+    || { echo 'dash-to-dock intellihide is not disabled' >&2; exit 1; }
+grep -q "^autohide-in-fullscreen=true$" "$GNOME_DEFAULTS" \
+    || { echo 'dash-to-dock autohide-in-fullscreen is not enabled' >&2; exit 1; }
 # 用户 2026-10-17 邮件指令的全局默认扩展（不可缺项）。
 # 用户 2026-10-19 邮件指令：system-monitor（paradoxxxzero 版，
 # UUID system-monitor@paradoxxx.zero.gmail.com，1610 钩子安装）已加入 enabled。

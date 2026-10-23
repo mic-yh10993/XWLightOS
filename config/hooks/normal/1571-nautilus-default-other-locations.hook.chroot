@@ -1,0 +1,44 @@
+#!/bin/sh
+# Nautilus 默认打开"其他位置"（other-locations:///）。
+# 用户 2026-10-23 邮件指令：不需要"此电脑"了，只需要默认打开其他位置标签页。
+# 本钩子替代已删除的 1570-install-nautilus-my-computer（nautilus-my-computer
+# 扩展不再安装）：扩展本体在
+# config/includes.chroot/usr/share/nautilus-python/extensions/xwlightos-default-location.py，
+# 此处只做构建期门禁 + 防御性清理旧扩展残留。
+set -eu
+
+EXT_DIR="/usr/share/nautilus-python/extensions"
+EXT_FILE="$EXT_DIR/xwlightos-default-location.py"
+
+# nautilus-python 绑定必须在（python3-nautilus 包，见 desktop 软件包清单）。
+[ -f /usr/lib/x86_64-linux-gnu/girepository-1.0/Nautilus-4.0.typelib ] || {
+    echo "XWLightOS: python3-nautilus is missing (Nautilus typelib not found)" >&2
+    exit 1
+}
+
+[ -f "$EXT_FILE" ] || {
+    echo "XWLightOS: $EXT_FILE missing (includes.chroot did not land)" >&2
+    exit 1
+}
+
+# 语法门禁：nautilus-python 对 import 失败的扩展静默跳过，
+# 症状就是"扩展没生效"，必须在构建期拦下来。
+python3 -m py_compile "$EXT_FILE" || {
+    echo "XWLightOS: xwlightos-default-location.py failed py_compile" >&2
+    exit 1
+}
+
+# 防御性清理：旧"此电脑"扩展（1570 钩子，已删除）的文件若因合并等原因
+# 残留在此 chroot，必须清掉，否则"此电脑"入口会复活。
+rm -rf "$EXT_DIR/nautilus-my-computer.py" "$EXT_DIR/nautilus_my_computer"
+rm -f /usr/share/glib-2.0/schemas/io.github.yannmasoch.nautilus-my-computer.gschema.xml
+rm -f /usr/share/locale/*/LC_MESSAGES/nautilus-my-computer.mo
+if [ -d /usr/share/glib-2.0/schemas ]; then
+    glib-compile-schemas /usr/share/glib-2.0/schemas >/dev/null 2>&1 || true
+fi
+[ ! -e "$EXT_DIR/nautilus-my-computer.py" ] || {
+    echo "XWLightOS: nautilus-my-computer.py still present after cleanup" >&2
+    exit 1
+}
+
+echo "XWLightOS: nautilus default location extension ready (other-locations)"

@@ -42,11 +42,13 @@ rm -f /usr/share/applications/xwlightos-installer.desktop \
       /usr/local/share/applications/install-system.desktop \
       /usr/local/share/applications/calamares.desktop \
       /etc/xdg/autostart/calamares-desktop-icon.desktop \
-      /etc/xdg/autostart/xwlightos-desktop-trust.desktop \
       '/etc/skel/Desktop/Install XWLightOS.desktop' \
       '/etc/skel/Desktop/Install System.desktop' \
       '/etc/skel/Desktop/安装 XWLightOS.desktop' \
       '/etc/skel/Desktop/安装系统.desktop'
+# 注意：/etc/xdg/autostart/xwlightos-desktop-trust.desktop 不在此删除——
+# 用户 2026-10-23 邮件指令要求桌面图标在安装后系统也默认可信任，该条目
+# 已从"只信任安装器图标"通用化为"信任桌面全部图标"，安装后必须保留。
 
 for app_dir in /usr/share/applications /usr/local/share/applications /etc/skel/.local/share/applications; do
     [ -d "$app_dir" ] || continue

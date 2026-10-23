@@ -52,8 +52,8 @@ gnome-shell-extension-appindicator
 # Desktop Icons NG (ding)：用户 2026-10-17 邮件要求安装并全局默认启用，
 # 在桌面上显示"此电脑"等图标（macOS 风格桌面不可缺）。
 gnome-shell-extension-desktop-icons-ng
-# nautilus-python 绑定："此电脑" Nautilus 扩展
-# （yannmasoch/nautilus-my-computer，pin 见 1570 钩子）的运行时依赖。
+# nautilus-python 绑定：Nautilus"默认打开其他位置"扩展
+# （xwlightos-default-location.py，见 1571 钩子）的运行时依赖。
 python3-nautilus
 # GNOME Tweaks：用户 2026-10-17 邮件要求安装，用于主题/扩展的可视化调整。
 gnome-tweaks
