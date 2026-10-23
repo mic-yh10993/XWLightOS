@@ -287,6 +287,31 @@ grep -q "^logo='/usr/share/xwlightos/branding/xwlightos-mark.svg'$" "$GDM_BRAND_
     || { echo 'GDM greeter logo override is missing (Debian logo would stay on the login screen)' >&2; exit 1; }
 [ -s "$GDM_BRAND_WORK/usr/share/xwlightos/branding/xwlightos-mark.svg" ] \
     || { echo 'XWLightOS mark SVG for the GDM greeter logo is missing' >&2; exit 1; }
+# 用户 2026-10-23 邮件：系统图标换成新的 420x120 SVG（XW 几何符号 +
+# "XW LightOS" + "by SYSTEM-Intel-MIC"）。旧的 256x256 方块标若还在，
+# 说明替换漏了地方。
+grep -q 'viewBox="0 0 420 120"' "$GDM_BRAND_WORK/usr/share/xwlightos/branding/xwlightos-mark.svg" \
+    || { echo 'XWLightOS mark SVG is not the new 420x120 user-supplied logo' >&2; exit 1; }
+grep -q 'by SYSTEM-Intel-MIC' "$GDM_BRAND_WORK/usr/share/xwlightos/branding/xwlightos-mark.svg" \
+    || { echo 'XWLightOS mark SVG lacks the user-supplied byline' >&2; exit 1; }
+# 用户 2026-10-23 邮件：开机动画改为效果稿（Plymouth script 主题复刻）。
+# 主题文件 + 默认主题配置必须进 squashfs，且主题必须被打进 initrd
+# （开机 early-userspace 显示动画靠 initrd 里的那份）。
+PLYMOUTH_WORK="$WORK/plymouth-check"
+rm -rf "$PLYMOUTH_WORK"
+unsquashfs -f -d "$PLYMOUTH_WORK" "$FS" \
+    usr/share/plymouth/themes/xwlightos \
+    etc/plymouth/plymouthd.conf \
+    >/dev/null 2>&1
+for plymouth_asset in xwlightos.plymouth xwlightos.script mark.png \
+    mark-glow.png brand-main.png brand-sub.png dot.png bar-bg.png bar-fg.png; do
+    [ -s "$PLYMOUTH_WORK/usr/share/plymouth/themes/xwlightos/$plymouth_asset" ] \
+        || { echo "plymouth xwlightos theme asset missing in image: $plymouth_asset" >&2; exit 1; }
+done
+grep -q '^Theme=xwlightos$' "$PLYMOUTH_WORK/etc/plymouth/plymouthd.conf" \
+    || { echo 'plymouth default theme is not xwlightos (1630 hook did not run or failed)' >&2; exit 1; }
+lsinitramfs "$INITRD" | grep -q 'usr/share/plymouth/themes/xwlightos/xwlightos.script' \
+    || { echo 'plymouth xwlightos theme is not inside initrd (boot splash would not show)' >&2; exit 1; }
 # 用户会话 dconf profile 必须含 system-db:local，否则 /etc/dconf/db/local.d/
 # 下的全部桌面默认（WhiteSur 主题、扩展启用、dock、输入法）会被会话静默忽略
 # ——登录页有主题而桌面没有，就是这个原因（用户 2026-10-18 真机反馈）。

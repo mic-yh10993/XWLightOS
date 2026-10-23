@@ -1,0 +1,244 @@
+# XWLightOS 开机动画 Plymouth 主题（script 插件）
+#
+# 复刻用户 2026-10-23 邮件效果稿的四个阶段（效果接近即可）：
+#   1. XW 几何符号描边绘制  -> 用 clip 遮罩从左向右渐显近似
+#   2. 描边完成后的呼吸辉光 -> 辉光层透明度正弦脉动近似
+#   3. 沿路径流动的光点     -> 光点沿两段折线做弧长匀速循环
+#   4. 文字逐段浮现         -> "XW LightOS" 先升起浮现，随后副标题浮现
+# 另有一条细进度条，随 boot_progress 回调推进。
+#
+# 素材坐标系：用户 SVG viewBox 0 0 420 120，按 SCALE=2 光栅化；
+# 内容区 viewBox x 取 [-8, 337]，mark 图层画布原点在 viewBox (-8, -2)。
+
+# ---------------- 基础 ----------------
+SCALE = 2;
+CONTENT_W = 690;   # (337 + 8) * 2
+CONTENT_H = 183;
+
+Window.SetBackgroundTopColor (0x05, 0x07, 0x0f);
+Window.SetBackgroundBottomColor (0x0a, 0x12, 0x26);
+
+screen_w = Window.GetX ();
+screen_h = Window.GetY ();
+ox = (screen_w - CONTENT_W) / 2;
+oy = (screen_h - CONTENT_H) / 2 - 40;
+
+mark_img   = Image ("mark.png");
+glow_img   = Image ("mark-glow.png");
+main_img   = Image ("brand-main.png");
+sub_img    = Image ("brand-sub.png");
+dot_img    = Image ("dot.png");
+barbg_img  = Image ("bar-bg.png");
+barfg_img  = Image ("bar-fg.png");
+
+mark_w = mark_img.GetWidth ();    # 314
+mark_h = mark_img.GetHeight ();   # 248
+
+mark = Sprite (mark_img);
+mark.SetPosition (ox, oy, 2);
+mark.SetOpacity (0);
+
+glow = Sprite (glow_img);
+glow.SetPosition (ox, oy, 1);
+glow.SetOpacity (0);
+
+# brand-main 画布原点 viewBox (139, 28.7)
+main_x = ox + (139 + 8) * SCALE;
+main_y = oy + (28.7 + 2) * SCALE;
+main = Sprite (main_img);
+main.SetPosition (main_x, main_y, 2);
+main.SetOpacity (0);
+
+# brand-sub 画布原点 viewBox (141, 70.5)
+sub_x = ox + (141 + 8) * SCALE;
+sub_y = oy + (70.5 + 2) * SCALE;
+sub = Sprite (sub_img);
+sub.SetPosition (sub_x, sub_y, 2);
+sub.SetOpacity (0);
+
+bar_w = barbg_img.GetWidth ();    # 480
+bar_h = barbg_img.GetHeight ();   # 10
+bar_x = (screen_w - bar_w) / 2;
+bar_y = oy + CONTENT_H + 48;
+barbg = Sprite (barbg_img);
+barbg.SetPosition (bar_x, bar_y, 4);
+barbg.SetOpacity (0.9);
+barfg = Sprite (barfg_img);
+barfg.SetPosition (bar_x, bar_y, 5);
+barfg.SetOpacity (0.95);
+barfg.SetClip (0, 0, 0, bar_h);
+
+dot_a = Sprite (dot_img);
+dot_a.SetOpacity (0);
+dot_b = Sprite (dot_img);
+dot_b.SetOpacity (0);
+DOT_HALF = 28;
+
+# ---------------- 折线路径表 ----------------
+# 每段 [x0, y0, dx, dy, len]，单位 viewBox
+flow_a = [ [18, 24, 25, 36, 43.83], [43, 60, -25, 36, 43.83] ];
+flow_a_total = 87.66;
+flow_b = [ [43, 60, 20, -30, 36.06], [63, 30, 20, 60, 63.25],
+           [83, 90, 20, -60, 63.25], [103, 30, 20, 30, 36.06] ];
+flow_b_total = 198.62;
+
+fun seg_pos (segs, nsegs, total, dist) {
+    local.d = dist;
+    local.guard = 0;
+    while (local.d >= total and local.guard < 8) {
+        local.d = local.d - total;
+        local.guard = local.guard + 1;
+    }
+    local.i = 0;
+    while (local.i < nsegs) {
+        local.seg = segs[local.i];
+        local.len = local.seg[4];
+        if (local.d <= local.len) {
+            local.t = local.d / local.len;
+            local.x = local.seg[0] + local.seg[2] * local.t;
+            local.y = local.seg[1] + local.seg[3] * local.t;
+            return [ox + (local.x + 8) * SCALE - DOT_HALF,
+                    oy + (local.y + 2) * SCALE - DOT_HALF];
+        }
+        local.d = local.d - local.len;
+        local.i = local.i + 1;
+    }
+    local.last = segs[nsegs - 1];
+    return [ox + (local.last[0] + local.last[2] + 8) * SCALE - DOT_HALF,
+            oy + (local.last[1] + local.last[3] + 2) * SCALE - DOT_HALF];
+}
+
+# ---------------- 工具函数 ----------------
+fun clamp01 (x) {
+    if (x < 0) { return 0; }
+    if (x > 1) { return 1; }
+    return x;
+}
+
+fun ease_out_cubic (x) {
+    local.u = 1 - x;
+    return 1 - local.u * local.u * local.u;
+}
+
+fun ease_out (x) {
+    local.u = 1 - x;
+    return 1 - local.u * local.u;
+}
+
+# 光点包络：0-12% 淡入，70-100% 淡出（对标效果稿 flowRun 关键帧）
+fun flow_opacity (phase) {
+    if (phase < 0.12) { return 0.95 * phase / 0.12; }
+    if (phase > 0.70) { return 0.95 * (1 - phase) / 0.30; }
+    return 0.95;
+}
+
+# ---------------- 状态 ----------------
+global.t = 0;
+global.progress = 0;
+global.quitting = 0;
+global.fade = 1;
+global.pw_active = 0;
+
+# ---------------- 回调 ----------------
+fun boot_progress_callback (duration, progress) {
+    global.progress = progress;
+}
+
+fun message_callback (text) {
+    # 开机日志文本无字库可渲染，忽略（进度条仍推进）
+}
+
+fun quit_callback () {
+    global.quitting = 1;
+}
+
+fun display_normal_callback () {
+    global.pw_active = 0;
+}
+
+fun display_password_callback (prompt, bullets) {
+    # 极简密码提示：沿用流动光点作输入指示，live 默认无加密卷，极少触发
+    global.pw_active = 1;
+}
+
+# ---------------- 主循环（约 50Hz） ----------------
+fun refresh_callback () {
+    global.t = global.t + 0.02;
+    local.t = global.t;
+
+    if (global.quitting == 1) {
+        global.fade = global.fade - 0.15;
+        if (global.fade < 0) { global.fade = 0; }
+    }
+    local.fade = global.fade;
+
+    # 阶段 1：描边绘制（0.15s -> 1.10s，clip 渐显近似）
+    local.dp = clamp01 ((local.t - 0.15) / 0.95);
+    if (local.dp > 0) {
+        mark.SetOpacity (1 * local.fade);
+        mark.SetClip (0, 0, ease_out_cubic (local.dp) * mark_w, mark_h);
+    }
+
+    # 阶段 4a：主标题浮现（0.95s -> 1.60s）
+    local.mp = clamp01 ((local.t - 0.95) / 0.65);
+    if (local.mp > 0) {
+        local.e = ease_out (local.mp);
+        main.SetOpacity (local.e * local.fade);
+        main.SetPosition (main_x, main_y + (1 - local.e) * 16, 2);
+    }
+
+    # 阶段 4b：副标题浮现（1.30s -> 2.10s）
+    local.sp = clamp01 ((local.t - 1.30) / 0.80);
+    if (local.sp > 0) {
+        local.e2 = ease_out (local.sp);
+        sub.SetOpacity (local.e2 * local.fade);
+        sub.SetPosition (sub_x, sub_y + (1 - local.e2) * 8, 2);
+    }
+
+    # 阶段 2：呼吸辉光（1.35s 起，周期 3s）
+    if (local.t > 1.35) {
+        local.ph = (local.t - 1.35) * 2 * Math.Pi / 3.0;
+        local.g = 0.28 + 0.30 * (0.5 + 0.5 * Math.Sin (local.ph));
+        glow.SetOpacity (local.g * local.fade);
+    }
+
+    # 阶段 3：流动光点（1.50s 起，周期 1.9s，B 点相位 +0.22s）
+    if (local.t > 1.50) {
+        local.cyc = 1.9;
+        local.ta = (local.t - 1.50) / local.cyc;
+        local.ta = local.ta - Math.Int (local.ta);
+        local.pa = seg_pos (flow_a, 2, flow_a_total, local.ta * flow_a_total);
+        dot_a.SetPosition (local.pa[0], local.pa[1], 3);
+        dot_a.SetOpacity (flow_opacity (local.ta) * local.fade);
+
+        local.tb = (local.t - 1.50 - 0.22) / local.cyc;
+        if (local.tb > 0) {
+            local.tb = local.tb - Math.Int (local.tb);
+            local.pb = seg_pos (flow_b, 4, flow_b_total, local.tb * flow_b_total);
+            dot_b.SetPosition (local.pb[0], local.pb[1], 3);
+            dot_b.SetOpacity (flow_opacity (local.tb) * local.fade);
+        }
+    }
+
+    # 进度条
+    barfg.SetClip (0, 0, clamp01 (global.progress) * bar_w, bar_h);
+
+    # 退出淡出
+    if (global.fade == 0) {
+        mark.SetOpacity (0);
+        glow.SetOpacity (0);
+        main.SetOpacity (0);
+        sub.SetOpacity (0);
+        dot_a.SetOpacity (0);
+        dot_b.SetOpacity (0);
+        barbg.SetOpacity (0);
+        barfg.SetOpacity (0);
+    }
+}
+
+Plymouth.SetBootProgressFunction (boot_progress_callback);
+Plymouth.SetDisplayMessageFunction (message_callback);
+Plymouth.SetQuitFunction (quit_callback);
+Plymouth.SetDisplayNormalFunction (display_normal_callback);
+Plymouth.SetDisplayPasswordFunction (display_password_callback);
+Plymouth.SetRefreshFunction (refresh_callback);

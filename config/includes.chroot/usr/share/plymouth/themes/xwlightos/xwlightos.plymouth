@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=XWLightOS
+Description=XWLightOS boot splash: stroke draw, breathing glow, flowing light dots, staged text reveal
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/xwlightos
+ScriptFile=/usr/share/plymouth/themes/xwlightos/xwlightos.script

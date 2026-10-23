@@ -14,6 +14,10 @@ firmware-realtek
 firmware-misc-nonfree
 firmware-amd-graphics
 firmware-intel-sound
+# 开机动画：Plymouth（script 主题 xwlightos，复刻用户 2026-10-23 邮件效果稿：
+# 描边绘制→呼吸辉光→流动光点→文字浮现）。内核 cmdline 已带 splash，
+# 默认主题由 1630 钩子设为 xwlightos，随 initramfs 进镜像。
+plymouth
 
 # GNOME desktop, minimal set (X11 session for VM compatibility) + GDM.
 # Replaces the full gnome-core metapackage: only the shell, session,

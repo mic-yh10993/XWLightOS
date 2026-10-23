@@ -1,0 +1,37 @@
+#!/bin/bash
+set -eu
+
+# XWLightOS 开机动画：把 Plymouth 默认主题设为 xwlightos。
+# （用户 2026-10-23 邮件：开机动画按效果稿实现——几何符号描边绘制、
+# 呼吸辉光、沿路径流动的光点、文字逐段浮现；用 Plymouth 主题复刻。）
+#
+# 顺序保证：chroot 钩子全部跑在 live-build 的 initramfs 阶段之前，
+# Debian 的 plymouth 包自带 /usr/share/initramfs-tools/hooks/plymouth，
+# 会在 update-initramfs 时把此处设定的默认主题打进 initrd，
+# 开机 early-userspace 即可显示动画（cmdline 已有 splash）。
+THEME_DIR=/usr/share/plymouth/themes/xwlightos
+[ -f "$THEME_DIR/xwlightos.plymouth" ] || {
+    echo "XWLightOS: plymouth theme descriptor missing: $THEME_DIR/xwlightos.plymouth" >&2
+    exit 1
+}
+[ -f "$THEME_DIR/xwlightos.script" ] || {
+    echo "XWLightOS: plymouth theme script missing: $THEME_DIR/xwlightos.script" >&2
+    exit 1
+}
+for asset in mark.png mark-glow.png brand-main.png brand-sub.png \
+             dot.png bar-bg.png bar-fg.png; do
+    [ -s "$THEME_DIR/$asset" ] || {
+        echo "XWLightOS: plymouth theme asset missing: $THEME_DIR/$asset" >&2
+        exit 1
+    }
+done
+command -v plymouth-set-default-theme >/dev/null 2>&1 || {
+    echo "XWLightOS: plymouth is not installed (package list must include it)" >&2
+    exit 1
+}
+plymouth-set-default-theme xwlightos
+grep -q '^Theme=xwlightos$' /etc/plymouth/plymouthd.conf || {
+    echo "XWLightOS: failed to set plymouth default theme to xwlightos" >&2
+    exit 1
+}
+echo "XWLightOS: plymouth default theme set to xwlightos"
