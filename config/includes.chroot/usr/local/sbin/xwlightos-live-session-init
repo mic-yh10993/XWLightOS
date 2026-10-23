@@ -15,7 +15,9 @@ fi
 if ! id user >/dev/null 2>&1; then
     echo 'xwlightos-live-session-init: live user missing, recreating' >&2
     useradd --create-home --shell /bin/bash --user-group user
-    for group in audio video plugdev netdev render input; do
+    # Keep the repair path identical to the build-time 1700 hook: the live
+    # user belongs to the sudo group for passwordless escalation.
+    for group in audio video plugdev netdev render input sudo; do
         if getent group "$group" >/dev/null 2>&1; then
             usermod --append --groups "$group" user
         fi

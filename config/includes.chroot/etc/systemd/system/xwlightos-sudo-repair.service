@@ -1,0 +1,12 @@
+[Unit]
+Description=Ensure the installed XWLightOS user keeps sudo membership
+After=local-fs.target systemd-tmpfiles-setup.service
+Before=gdm.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/xwlightos-sudo-repair
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

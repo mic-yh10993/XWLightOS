@@ -2,7 +2,8 @@
 # Verify the finished XWLightOS 1.0 ISO, not merely the source configuration.
 # This is intentionally read-only: it extracts selected files from the final
 # squashfs and checks installer-critical paths, package entry points and the
-# narrow Live-session sudo rule.
+# live-session privilege policy (passwordless sudo for the disposable live
+# user; installed systems must never inherit it).
 set -euo pipefail
 
 validation_error() {
@@ -439,13 +440,40 @@ grep -q -E '^[[:space:]]*module:[[:space:]]*shellprocess[[:space:]]*$' "$SETTING
 grep -q -E '^[[:space:]]*config:[[:space:]]*xwlightos-postinstall\.conf[[:space:]]*$' "$SETTINGS"
 grep -q -E '^[[:space:]]*-[[:space:]]*shellprocess@xwlightos-postinstall[[:space:]]*$' "$SETTINGS"
 
-# The passwordless exception belongs only to the disposable Live user and only
-# to the Calamares binary. Broad NOPASSWD rules are explicitly rejected.
-SUDOERS="$WORK/xwlightos-installer.sudoers"
-cat_image_file 'etc/sudoers.d/xwlightos-installer' "$SUDOERS"
-grep -q -E '^user ALL=\(root\) NOPASSWD: SETENV: /usr/bin/calamares$' "$SUDOERS"
-if grep -q -E 'NOPASSWD:[[:space:]]*(ALL|ALL[[:space:]]*$)' "$SUDOERS"; then
-    echo 'Live installer sudoers rule is broader than Calamares only' >&2
+# Live privilege policy (user instruction 2026-10-23): the disposable live
+# user escalates to root without a password, like any conventional live CD.
+# The rule must be mode 0440 (sudo silently ignores anything else), must be
+# syntactically valid, and must never leak into an installed system (the
+# Calamares postinstall removes it; assertions below).
+SUDOERS="$WORK/xwlightos-live.sudoers"
+cat_image_file 'etc/sudoers.d/xwlightos-live' "$SUDOERS"
+grep -q -E '^user ALL=\(ALL\) NOPASSWD: ALL$' "$SUDOERS"
+[ "$(stat -c '%a' "$FULL_ROOT/etc/sudoers.d/xwlightos-live")" = 440 ] || {
+    echo 'live sudoers file is not mode 0440; sudo would ignore it' >&2
+    exit 1
+}
+if grep -qx 'etc/sudoers.d/xwlightos-installer' "$LIST"; then
+    echo 'superseded narrow live sudoers rule still present' >&2
+    exit 1
+fi
+# The live user must actually resolve to the sudo group in the image.
+LIVE_GROUP="$WORK/live-group"
+cat_image_file 'etc/group' "$LIVE_GROUP"
+grep -q -E '^sudo:[^:]*:[^:]*:([^:,]*,)*user(,|$)' "$LIVE_GROUP" || {
+    echo 'live user is not in the sudo group' >&2
+    exit 1
+}
+# Installed path: the postinstall must drop the live sudoers files, grant
+# sudo-group membership to the Calamares-created account (and fail loudly
+# rather than ship a sudo-less system), and arm the first-boot repair net.
+grep -q 'rm -f /etc/sudoers.d/xwlightos-live /etc/sudoers.d/xwlightos-installer' "$TARGET_POSTINSTALL"
+grep -q 'systemctl enable xwlightos-sudo-repair.service' "$TARGET_POSTINSTALL"
+grep -q 'refusing to ship a sudo-less system' "$TARGET_POSTINSTALL"
+require_path 'usr/local/libexec/xwlightos-sudo-repair'
+require_path 'etc/systemd/system/xwlightos-sudo-repair.service'
+# The installed-only repair unit must not be enabled in the live image.
+if grep -qx 'etc/systemd/system/multi-user.target.wants/xwlightos-sudo-repair.service' "$LIST"; then
+    echo 'installed-only sudo repair unit is enabled in the live image' >&2
     exit 1
 fi
 

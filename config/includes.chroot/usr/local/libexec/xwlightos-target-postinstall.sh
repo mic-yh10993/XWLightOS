@@ -14,6 +14,10 @@ fi
 rm -f /etc/systemd/system/xwlightos-live-session-init.service \
       /etc/systemd/system/multi-user.target.wants/xwlightos-live-session-init.service \
       /usr/local/sbin/xwlightos-live-session-init
+# The live session's passwordless sudo rule must never survive into the
+# installed system. The installed account gets sudo through sudo-group
+# membership instead (granted and verified below).
+rm -f /etc/sudoers.d/xwlightos-live /etc/sudoers.d/xwlightos-installer
 rm -rf /etc/lightdm /etc/systemd/system/lightdm.service.d
 rm -f /etc/xdg/autostart/xwlightos-desktop-trust.desktop
 # The Live account is created at boot and must never be selected should its
@@ -89,10 +93,31 @@ fi
 
 # Preserve the password entered in Calamares and make the created human user
 # eligible for sudo without changing or resetting its password.
-if getent group sudo >/dev/null 2>&1; then
-    if [ -n "$installed_account" ]; then
-        usermod -aG sudo "$installed_account" >/dev/null 2>&1 || true
+#
+# The Calamares users module assigns its defaultGroups (which include sudo)
+# with a single atomic `usermod -aG`: if any one of those groups is missing
+# in the target, the whole command fails and the new account ends up with NO
+# supplementary groups at all. Repair that here group by group, so one
+# missing group can never silently strip sudo (or audio/video/plugdev).
+for grp in cdrom floppy sudo audio dip video plugdev netdev lpadmin scanner bluetooth; do
+    if getent group "$grp" >/dev/null 2>&1; then
+        usermod -aG "$grp" "$installed_account" >/dev/null 2>&1 || \
+            echo "XWLightOS: could not add $installed_account to group $grp" >&2
+    else
+        echo "XWLightOS: group $grp missing in target, skipped" >&2
     fi
+done
+# The installed account must be able to sudo. Fail the installation loudly
+# here instead of shipping a system whose owner cannot administrate it.
+if ! id -nG "$installed_account" 2>/dev/null | tr ' ' '\n' | grep -qx sudo; then
+    echo "XWLightOS: $installed_account is not in the sudo group; refusing to ship a sudo-less system" >&2
+    exit 1
+fi
+# Second layer behind the grant above: a first-boot repair net re-checks the
+# recorded installed account before GDM starts, in case anything later in
+# the install sequence drops the membership again.
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl enable xwlightos-sudo-repair.service >/dev/null 2>&1 || true
 fi
 
 # Refresh device state and initramfs so firmware already present in the target
