@@ -72,4 +72,4 @@ autohide-in-fullscreen=true
 # XWLightOS 已移除 AI 组件：旧的 Super+Shift+A 唤起 AI 聊天快捷键同步移除
 #（其命令 /usr/local/bin/xwlightos-ai-chat 已不存在，留着是死快捷键）。
 [org/gnome/settings-daemon/plugins/media-keys]
-custom-keybindings=[]
+custom-keybindings=@as []
