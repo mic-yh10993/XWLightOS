@@ -731,9 +731,12 @@ grep -q '<family>DejaVu Sans Mono</family>' "$FONTCONF"
 grep -q '<family>Noto Sans CJK SC</family>' "$FONTCONF"
 ! grep -q '<test name="lang" compare="contains"><string>zh</string></test>' "$FONTCONF"
 
-# Firefox ESR 默认配置（用户 2026-10-19 邮件指令）：默认搜索引擎必应，
-# 主页 bing.com。通过 Enterprise policies.json 落盘，Debian firefox-esr
-# 的标准路径为 /usr/lib/firefox-esr/distribution/policies.json。
+# Firefox ESR 默认配置：默认搜索引擎必应（用户 2026-10-19 邮件指令），
+# 主页为本地 XWLightOS 主页 html（用户 2026-10-23 邮件指令：换成用户给的
+# html，liveCD 与安装好的系统都要改，不再是 bing.com）。通过 Enterprise
+# policies.json 落盘，Debian firefox-esr 的标准路径为
+# /usr/lib/firefox-esr/distribution/policies.json。
+require_path 'usr/share/xwlightos/homepage.html'
 FF_POLICIES="$WORK/firefox-policies.json"
 cat_image_file 'usr/lib/firefox-esr/distribution/policies.json' "$FF_POLICIES"
 python3 - "$FF_POLICIES" <<'PYEOF'
@@ -743,8 +746,11 @@ import sys
 with open(sys.argv[1], encoding="utf-8") as f:
     pol = json.load(f)["policies"]
 assert pol["SearchEngines"]["Default"] == "Bing", "default search engine is not Bing"
-assert pol["Homepage"]["URL"] == "https://www.bing.com", "homepage is not bing.com"
-print("XWLightOS: Firefox default search=Bing, homepage=bing.com")
+assert pol["Homepage"]["URL"] == "file:///usr/share/xwlightos/homepage.html", "homepage is not the local XWLightOS homepage html"
+bms = pol["ManagedBookmarks"]
+assert any(b.get("name") == "XWLightOS主页" and b.get("url") == "file:///usr/share/xwlightos/homepage.html" for b in bms), "XWLightOS homepage bookmark missing"
+assert any(b.get("name") == "哔哩哔哩" and b.get("url") == "https://space.bilibili.com/1978487514" for b in bms), "bilibili bookmark missing"
+print("XWLightOS: Firefox default search=Bing, homepage=local html, bookmarks OK")
 PYEOF
 
 # All Apps must not surface session/power helpers as regular applications.  This
