@@ -111,6 +111,59 @@ for deb in "$EDU_DIR"/*.deb; do
     HOME=/root apt-get install -y --no-install-recommends "$deb"
 done
 
+# --- 钉钉 (DingTalk)：清理厂商捆绑的陈旧系统库（修法移植自 WinduxEdu） ---
+# 根因（已从 com.alibabainc.dingtalk 8.2.8.260818002 实包核验）：
+#  Elevator.sh 先 cd 进 files/<版本>/ 再启动主程序，而主程序 RUNPATH=./plugins/dtwebview/:./，
+#  于是该目录下捆绑的陈旧库优先于系统库被加载；实测捆绑 libm.so.6 只提供到
+#  GLIBC_2.28，而主程序直接 NEEDED 系统 libgtk-3.so.0（要求 GLIBC_2.33/2.38），
+#  链接期报 "GLIBC_2.3x not found"，钉钉启动即死（用户 2026-10-23「钉钉打不开」）。
+#  厂商 postinst 本来会按发行版删除这些陈旧库并 chmod 4755 chrome-sandbox，
+#  但删除循环写在 `for file in $(ls /home)` 里面，构建 chroot 的 /home 为空，
+#  循环体一次都不执行。这里在同样的发行版条件下重跑该规则。
+DT_FILES=/opt/apps/com.alibabainc.dingtalk/files
+if [ -d "$DT_FILES" ]; then
+    find "$DT_FILES" \( \
+            -name 'libm.so.6' -o \
+            -name 'libstdc++.so.6*' -o \
+            -name 'libgbm.so*' -o \
+            -name 'libGLX.so*' -o \
+            -name 'libGLdispatch.so*' -o \
+            -name 'libffi.so.6.0.4' -o \
+            -name 'libharfbuzz.so*' \) \
+        \( -type f -o -type l \) -delete
+    # 同一被跳过的循环负责给 Chromium 沙箱助手加 setuid 位；
+    # 没有它，钉钉内嵌网页视图拒绝启动。
+    find "$DT_FILES" -name chrome-sandbox -type f -exec chmod 4755 {} +
+    for stale in libm.so.6 libstdc++.so.6 libstdc++.so.6.0.25 \
+        libgbm.so.1.0.0 libGLX.so.0.0.0 libGLdispatch.so.0.0.0; do
+        hit="$(find "$DT_FILES" -name "$stale" \( -type f -o -type l \) -print -quit)"
+        if [ -n "$hit" ]; then
+            echo "XWLightOS: DingTalk still ships an incompatible bundled library: $stale" >&2
+            exit 1
+        fi
+    done
+    echo "XWLightOS: DingTalk stale bundled libraries removed, chrome-sandbox setuid set"
+else
+    echo "XWLightOS: NOTE: DingTalk not installed, skipping stale-library cleanup" >&2
+fi
+unset DT_FILES stale hit
+
+# --- 希沃视频展台：librectification.so 需要 GTK2（构建期断言） ---
+# 根因见 xwlightos-desktop.list.chroot 中 libgtk2.0-0 的注释。
+# 此处断言构建产物里该 native 库的 GTK2 依赖确实可解析，缺失则构建失败，
+# 避免「打开全黑」带着未声明的依赖出厂。
+EASICAMERA_LIB=/opt/apps/com.seewo.easicamera/files/lib/librectification.so
+if [ -f "$EASICAMERA_LIB" ]; then
+    for _gtk2lib in libgtk-x11-2.0.so.0 libgdk-x11-2.0.so.0; do
+        if [ ! -f "/usr/lib/x86_64-linux-gnu/$_gtk2lib" ]; then
+            echo "XWLightOS: missing $_gtk2lib (libgtk2.0-0) required by Seewo video booth" >&2
+            exit 1
+        fi
+    done
+    echo "XWLightOS: Seewo video booth GTK2 dependencies present"
+fi
+unset EASICAMERA_LIB _gtk2lib
+
 # --- Seewo whiteboard daemon: ensure it is enabled at boot ---
 if [ -f /usr/lib/systemd/system/com.cvte.maxhub.alfred.service ] || \
    [ -f /lib/systemd/system/com.cvte.maxhub.alfred.service ]; then
