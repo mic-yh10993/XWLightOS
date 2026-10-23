@@ -1,0 +1,9 @@
+# XWLightOS live session: the disposable live user may escalate to root
+# without a password (conventional live-CD behavior; the live user has an
+# empty password, so any password prompt would be meaningless).
+#
+# LIVE ONLY. This file must never survive into an installed system: the
+# Calamares postinstall step removes it, and the installed account gets
+# sudo through sudo-group membership instead (verified before the
+# installation is allowed to finish).
+user ALL=(ALL) NOPASSWD: ALL

@@ -1,0 +1,42 @@
+#!/bin/sh
+# First-boot repair net for installed XWLightOS systems: make sure the
+# Calamares-created account (recorded in /etc/xwlightos/session-user by the
+# installer postinstall step) is a member of the sudo group.
+#
+# This is the second layer behind the postinstall-time grant. It is
+# idempotent and quiet when the invariant already holds.
+#
+# It never runs on a live boot: the live session has its own passwordless
+# sudo rule and must not be reconfigured here. It never touches the
+# disposable live `user` account.
+set -eu
+
+SESSION_USER_FILE=/etc/xwlightos/session-user
+
+if [ -d /run/live ]; then
+    exit 0
+fi
+[ -f "$SESSION_USER_FILE" ] || exit 0
+account=$(sed -n '1p' "$SESSION_USER_FILE" | tr -d '[:space:]')
+[ -n "$account" ] || exit 0
+case "$account" in
+    user|live|root|nobody) exit 0 ;;
+esac
+id "$account" >/dev/null 2>&1 || {
+    echo "xwlightos-sudo-repair: recorded account $account does not exist" >&2
+    exit 0
+}
+if id -nG "$account" 2>/dev/null | tr ' ' '\n' | grep -qx sudo; then
+    exit 0
+fi
+getent group sudo >/dev/null 2>&1 || {
+    echo 'xwlightos-sudo-repair: sudo group missing, cannot repair' >&2
+    exit 1
+}
+usermod -aG sudo "$account"
+if id -nG "$account" 2>/dev/null | tr ' ' '\n' | grep -qx sudo; then
+    echo "xwlightos-sudo-repair: restored sudo membership for $account" >&2
+else
+    echo "xwlightos-sudo-repair: failed to restore sudo membership for $account" >&2
+    exit 1
+fi

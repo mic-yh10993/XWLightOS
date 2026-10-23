@@ -6,9 +6,9 @@ if ! command -v calamares >/dev/null 2>&1; then
     exit 1
 fi
 
-# In the disposable LiveCD, the dedicated sudoers rule grants only this
-# installer binary passwordless root execution. This avoids asking the Live
-# user for a password that does not exist while keeping other commands unprivileged.
+# In the disposable live session the live user escalates without a password
+# (see /etc/sudoers.d/xwlightos-live), so this wrapper never asks the live
+# user for a password that does not exist.
 # Preserve a usable X11 session even when the wrapper is started from a desktop
 # file through a privilege boundary.
 export LANG=zh_CN.UTF-8
