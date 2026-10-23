@@ -35,3 +35,18 @@ grep -q '^Theme=xwlightos$' /etc/plymouth/plymouthd.conf || {
     exit 1
 }
 echo "XWLightOS: plymouth default theme set to xwlightos"
+# 内核 postinst 那次 update-initramfs 发生在默认主题还是 Debian 自带时
+# （本钩子跑在全部包安装之后），必须在这里重建 initrd 才能把 xwlightos
+# 打进去——开机 early-userspace 的动画靠 initrd 里的那份主题；否则最终
+# ISO 的 initrd 里是默认主题，校验脚本的 lsinitramfs 断言必挂
+# （run 39968933420 教训）。
+update-initramfs -u -k all
+_kver="$(ls -t /lib/modules | head -n 1)"
+[ -n "$_kver" ] || { echo "XWLightOS: no kernel modules found for initrd check" >&2; exit 1; }
+if command -v lsinitramfs >/dev/null 2>&1; then
+    lsinitramfs "/boot/initrd.img-${_kver}" | grep -q 'usr/share/plymouth/themes/xwlightos/xwlightos.script' || {
+        echo "XWLightOS: rebuilt initrd lacks the xwlightos plymouth theme" >&2
+        exit 1
+    }
+fi
+echo "XWLightOS: initrd rebuilt with the xwlightos plymouth theme (kernel ${_kver})"

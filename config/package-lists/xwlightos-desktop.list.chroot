@@ -18,6 +18,10 @@ firmware-intel-sound
 # 描边绘制→呼吸辉光→流动光点→文字浮现）。内核 cmdline 已带 splash，
 # 默认主题由 1630 钩子设为 xwlightos，随 initramfs 进镜像。
 plymouth
+# plymouth-themes：提供 label.so。Debian 的 plymouth initramfs 钩子在
+# update-initramfs 时若缺 label.so 会告警（run 39968933420 实锤 W:），
+# 且钩子会 cp /etc/fonts/fonts.conf 进 initrd（见 includes.chroot 预置）。
+plymouth-themes
 
 # GNOME desktop, minimal set (X11 session for VM compatibility) + GDM.
 # Replaces the full gnome-core metapackage: only the shell, session,
