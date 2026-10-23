@@ -108,4 +108,46 @@ for _app in com.seewo.easicamera com.seewo.easicare; do
 done
 unset _app _dt _src
 
+# --- 希沃管家 .desktop 补装（2026-10-23 从 WinduxEdu 拉 3.0.6.716 实包解包核验）---
+# 根因：com.seewo.terminalmanager 的 deb 数据里
+# /usr/share/applications/com.seewo.terminalmanager.desktop 是 0 字节占位文件；
+# 厂商 postinst 的 update_desktop_icon() 只把真实 .desktop（含 EXE/Icon 路径替换）
+# 写到 /opt/apps/.../entries/applications/ 和 /etc/xdg/autostart/，
+# 从不写 /usr/share/applications/。因此即便 postinst 在 chroot 里正常跑完，
+# GNOME 应用网格/dock 也永远看不到希沃管家——包进了镜像，图标是空壳。
+# 修法：亲手把可用 .desktop 落到标准位置。注意 0 字节占位文件"存在但为空"，
+# 必须用 -s 判空而非 -f 判存在，否则占位会被误判为已安装。
+TM_DT=/usr/share/applications/com.seewo.terminalmanager.desktop
+TM_ENTRIES=/opt/apps/com.seewo.terminalmanager/entries/applications/com.seewo.terminalmanager.desktop
+TM_TEMPLATE=/usr/share/com.seewo.terminalmanager/custom/neutral/applications/com.seewo.terminalmanager.desktop
+TM_BIN=/opt/apps/com.seewo.terminalmanager/files/presentation/SeewoServiceAssistant
+TM_ICON_DIR=/opt/apps/com.seewo.terminalmanager/entries/icons
+if [ ! -s "$TM_DT" ]; then
+    if [ -s "$TM_ENTRIES" ]; then
+        cp -f "$TM_ENTRIES" "$TM_DT"
+        echo "XWLightOS: installed $TM_DT from postinst-generated entries"
+    elif [ -f "$TM_TEMPLATE" ] && [ -x "$TM_BIN" ]; then
+        # postinst 未跑或 entries 未生成时的纯手动兜底：复刻 postinst 的替换逻辑
+        cp -f "$TM_TEMPLATE" "$TM_DT"
+        sed -i "s|EXE|$TM_BIN|g" "$TM_DT"
+        if [ -f "$TM_ICON_DIR/hicolor/scalable/apps/com.seewo.terminalmanager.svg" ]; then
+            sed -i "s|^Icon=.*|Icon=$TM_ICON_DIR/hicolor/scalable/apps/com.seewo.terminalmanager.svg|" "$TM_DT"
+        fi
+        echo "XWLightOS: installed $TM_DT from vendor template (manual fallback)"
+    else
+        echo "XWLightOS: WARNING: 希沃管家 desktop 无可用来源" >&2
+    fi
+else
+    echo "XWLightOS: $TM_DT present (non-empty)"
+fi
+# 门禁：最终 .desktop 的 Exec 必须指向真实二进制，不能残留 EXE 占位或指向空壳
+grep -q '^Exec=.*SeewoServiceAssistant' "$TM_DT" || {
+    echo "XWLightOS: ERROR: 希沃管家 .desktop Exec 无效，构建中止" >&2
+    exit 1
+}
+# 图标路径有效性只告警不断言（svg 缺失时 GNOME 会回退为默认图标，不致命）
+grep -q '^Icon=/' "$TM_DT" && _icon="$(sed -n 's/^Icon=//p' "$TM_DT" | head -1)" && \
+    [ -f "$_icon" ] || echo "XWLightOS: WARNING: 希沃管家 Icon 路径不可用: ${_icon:-unknown}" >&2
+unset TM_DT TM_ENTRIES TM_TEMPLATE TM_BIN TM_ICON_DIR _icon
+
 echo "XWLightOS: EasiNote5 launcher fix complete"
