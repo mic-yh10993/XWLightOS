@@ -126,6 +126,19 @@ require_path 'usr/share/icons/WhiteSur'
 require_path 'usr/share/icons/WhiteSur-light'
 # WhiteSur GDM 登录主题（1560 钩子，等价于上游 tweaks.sh -g）：版本标记文件。
 require_path 'etc/xwlightos/whitesur-gdm-theme'
+# 用户 2026-10-23 邮件：安装必须全程离线。bootloader-config 补丁（1565 钩子）
+# 只在目标已带 grub2-common（grub-install/update-grub）与对应平台模块时才
+# 跳过 apt；这里断言镜像里四者齐全，否则补丁回退到 apt、断网安装必挂。
+require_path 'usr/sbin/update-grub'
+require_path 'usr/sbin/grub-install'
+require_path 'usr/lib/grub/x86_64-efi/modinfo.sh'
+require_path 'usr/lib/grub/i386-pc/modinfo.sh'
+BOOTLOADER_CONFIG="$WORK/bootloader-config"
+cat_image_file 'usr/sbin/bootloader-config' "$BOOTLOADER_CONFIG"
+grep -q 'skipping apt (offline install)' "$BOOTLOADER_CONFIG" || {
+    echo 'bootloader-config offline patch is missing (offline install would fail)' >&2
+    exit 1
+}
 # Build 56 回归断言（Run 39043461212）：编译进 gresource 的资源列表里必须有
 # 默认 shell 样式表 gnome-shell.css，否则 gnome-shell 回退无样式表可用、
 # 会话渲染不出来、QEMU 烟测失败。
@@ -413,6 +426,20 @@ cat_image_file 'usr/local/libexec/xwlightos-installed-cleanup' "$INSTALLED_CLEAN
 grep -q 'for home_dir in /home/\* /root /etc/skel; do' "$INSTALLED_CLEANUP"
 grep -q 'clean_desktop_dir "\$home_dir/Desktop"' "$INSTALLED_CLEANUP"
 grep -q "'/etc/skel/Desktop/Install XWLightOS.desktop'" "$INSTALLED_CLEANUP"
+# 用户 2026-10-23 邮件第 10 项：安装完成后 Calamares 及相关包必须卸载、
+# 提权配置必须清掉，不在已安装系统里残留。
+grep -q 'apt-get purge -y calamares calamares-settings-debian' "$INSTALLED_CLEANUP" || {
+    echo 'installed cleanup does not purge the Calamares packages' >&2
+    exit 1
+}
+grep -q 'apt-get autoremove --purge -y' "$INSTALLED_CLEANUP" || {
+    echo 'installed cleanup does not autoremove Calamares dependencies' >&2
+    exit 1
+}
+grep -q '/etc/sudoers.d/xwlightos-installer' "$INSTALLED_CLEANUP" || {
+    echo 'installed cleanup does not remove the installer sudoers entry' >&2
+    exit 1
+}
 CLEANUP_SERVICE="$WORK/xwlightos-installed-cleanup.service"
 cat_image_file 'etc/systemd/system/xwlightos-installed-cleanup.service' "$CLEANUP_SERVICE"
 grep -q '^Before=gdm.service$' "$CLEANUP_SERVICE"
