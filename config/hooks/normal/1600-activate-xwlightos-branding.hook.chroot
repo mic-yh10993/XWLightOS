@@ -47,13 +47,22 @@ chmod 0755 /usr/local/libexec/xwlightos-target-postinstall.sh
 
 # XWLightOS installs fully offline: unpackfs copies the live filesystem to the
 # target, so no apt operations are needed or permitted during installation.
-# The `packages` module is the only apt-capable Calamares module (verified
-# against calamares 3.2.61 sources: every other module, including
-# `bootloader`, only runs local tools); removing it from the sequence plus
-# the empty operations.conf below guarantees the installer never touches
-# the network. GRUB reaches the target through unpackfs (grub-pc-bin /
-# grub-efi-amd64-bin are in the package list) and the `bootloader` module
-# installs it to disk with in-target grub-install/grub-mkconfig, no apt.
+# The `packages` module is the only apt-capable *upstream* Calamares module
+# (verified against calamares 3.2.61 sources), but Debian inserts its own
+# `bootloader-config` process module BEFORE `bootloader`: /usr/sbin/
+# bootloader-config chroots into the target and runs
+# `apt-get -y install grub-efi-amd64` (UEFI) or `grub-pc` (BIOS). That script
+# has no `set -e`: when apt fails offline, the trailing
+# `chroot $CHROOT /usr/sbin/update-grub` dies with command-not-found because
+# grub2-common never got installed — that is the exit 127 from the
+# 2026-10-23 user report (see docs/offline-bootloader-root-cause.md).
+# Fix: grub2-common, the GRUB platform modules (grub-pc-bin /
+# grub-efi-amd64-bin) and shim-signed are preinstalled in the image and ride
+# to the target via unpackfs, and the 1565 hook patches bootloader-config
+# with an offline fast-path (skip apt when the target already has them).
+# Removing the `packages` module from the sequence plus the empty
+# operations.conf below still guarantees the installer never touches the
+# network for anything else.
 if grep -qE '^[[:space:]]*-[[:space:]]*packages[[:space:]]*$' "$SETTINGS"; then
     sed -i -E '/^[[:space:]]*-[[:space:]]*packages[[:space:]]*$/d' "$SETTINGS"
     echo "XWLightOS: removed packages module from Calamares sequence (offline install)"
@@ -146,17 +155,27 @@ printf 'XWLightOS 1.0\n' > /etc/issue.net
 # the XWLightOS theme assignment after both theme assets have been staged.  This
 # prevents a missing file from becoming a boot-time GRUB theme warning.
 # Offline-install guarantee (user 2026-10-18: installer must not download
-# GRUB): the Calamares `bootloader` module runs grub-install/grub-mkconfig
-# INSIDE the target and never calls apt (source-verified). It can only work
-# offline if the GRUB platform modules are really in the image (they ride to
-# the target via unpackfs). Fail the build if a package-list change ever
-# drops them, instead of shipping an installer whose bootloader step breaks.
+# GRUB; user 2026-10-23: bootloader-config exit 127 root-caused to an apt
+# call in Debian's bootloader-config wrapper): the patched
+# /usr/sbin/bootloader-config (1565 hook) skips apt only when the target
+# already carries grub2-common (grub-install/update-grub) plus the
+# firmware-specific platform modules.  They ride to the target via unpackfs,
+# so fail the build if a package-list change ever drops them, instead of
+# shipping an installer whose bootloader step breaks.
 for grub_platform_dir in /usr/lib/grub/i386-pc /usr/lib/grub/x86_64-efi; do
     [ -f "$grub_platform_dir/modinfo.sh" ] || {
         echo "XWLightOS: GRUB platform modules missing: $grub_platform_dir (offline bootloader install would fail)" >&2
         exit 1
     }
 done
+command -v grub-install >/dev/null 2>&1 || {
+    echo "XWLightOS: grub2-common (grub-install) is missing (offline bootloader install would fail)" >&2
+    exit 1
+}
+command -v update-grub >/dev/null 2>&1 || {
+    echo "XWLightOS: grub2-common (update-grub) is missing (offline bootloader install would fail)" >&2
+    exit 1
+}
 if [ -f /etc/default/grub ] && \
    [ -s /boot/grub/themes/xwlightos/theme.txt ] && \
    [ -s /boot/grub/themes/xwlightos/xwlightos-aurora-wallpaper.png ]; then

@@ -1,0 +1,91 @@
+#!/bin/sh
+set -eu
+
+# XWLightOS 必须全程离线可安装（用户 2026-10-23 邮件：真机安装时
+# Calamares 报 </usr/sbin/bootloader-config/> exit 127）。
+#
+# 根因（已实锤，calamares-settings-debian 12.0.9-1+deb12u2 的
+# /usr/sbin/bootloader-config 全文见仓库 docs/offline-bootloader-root-cause.md）：
+# Debian 在 Calamares exec 序列里加了一个 `bootloader-config` process 模块，
+# 它在安装目标里 chroot 执行 apt-get install grub-efi-amd64（UEFI）或
+# grub-pc（BIOS）。脚本没有 set -e：apt 因断网失败（exit 100）后继续执行，
+# 最后的 `chroot $CHROOT /usr/sbin/update-grub` 因 grub2-common 未装上而
+# command not found——这就是截图里 exit 127 的完整链条。
+#
+# 修法：GRUB 平台包（grub-pc-bin/grub-efi-amd64-bin）与 grub2-common、
+# shim-signed 已预装进 live 镜像并随 unpackfs 进目标（见 package list 与
+# 1600 钩子的构建期断言），这里给脚本加上"已预装则跳过 apt"的快速路径；
+# 只有包真的缺失时才回退到原来的 apt 安装（有网机器行为不变）。
+# 不预装 grub-efi-amd64/grub-pc 元包：两者互斥（Conflicts），无法共存。
+
+TARGET_SCRIPT=/usr/sbin/bootloader-config
+[ -f "$TARGET_SCRIPT" ] || {
+    echo "XWLightOS: $TARGET_SCRIPT is missing, cannot patch for offline install" >&2
+    exit 1
+}
+
+cat > "$TARGET_SCRIPT" <<'PATCHED_EOF'
+#!/bin/bash
+# XWLightOS offline-install patch of /usr/sbin/bootloader-config from
+# calamares-settings-debian (Debian bookworm 12.0.9-1+deb12u2).
+# Kept verbatim: LUKS branch, CHROOT detection, os-prober re-enable,
+# final update-grub. Changed: each apt-get install gains an offline
+# fast-path — the GRUB platform modules, grub2-common and shim-signed are
+# preinstalled in the Live image and ride to the target via unpackfs, so
+# when they are already present the installer must not touch the network.
+# Only when they are really missing do we fall back to the original
+# apt-get install (online installs keep working).
+
+CHROOT=$(mount | grep proc | grep calamares | awk '{print $3}' | sed -e "s#/proc##g")
+
+# Install luks utilities if needed.
+# Also, set secure permissions for the initramfs if we're configuring
+# full-disk-encryption. The initramfs is re-generated later in the
+# installation process so we only set the permissions snippet without
+# regenerating the initramfs right now:
+if [ "$(mount | grep $CHROOT" " | cut -c -16)" = "/dev/mapper/luks" ]; then
+    echo "UMASK=0077" > $CHROOT/etc/initramfs-tools/conf.d/initramfs-permissions
+    chroot $CHROOT apt-get -y install cryptsetup-initramfs cryptsetup keyutils
+fi
+
+echo "Running bootloader-config..."
+
+# Offline fast-path: grub2-common provides grub-install/update-grub and the
+# firmware-specific platform modules live under usr/lib/grub/<platform>.
+# Both are preinstalled in the image; skip apt when the target has them.
+target_has_grub() {
+    # $1: platform module dir relative to target, e.g. usr/lib/grub/x86_64-efi
+    chroot "$CHROOT" dpkg-query -W -f='${Status}' grub2-common 2>/dev/null | \
+        grep -q 'install ok installed' && \
+    [ -d "$CHROOT/$1" ]
+}
+
+if [ -d /sys/firmware/efi/efivars ]; then
+    echo " * Installing grub-efi (uefi)..."
+    if target_has_grub usr/lib/grub/x86_64-efi; then
+        echo " * grub-efi platform already present in target, skipping apt (offline install)"
+    else
+        DEBIAN_FRONTEND=noninteractive chroot $CHROOT apt-get -y install grub-efi-amd64
+    fi
+else
+    echo " * install grub... (bios)"
+    if target_has_grub usr/lib/grub/i386-pc; then
+        echo " * grub-pc platform already present in target, skipping apt (offline install)"
+    else
+        DEBIAN_FRONTEND=noninteractive chroot $CHROOT apt-get -y install grub-pc
+    fi
+fi
+
+# Re-enable os-prober:
+sed -i "s/#GRUB_DISABLE_OS_PROBER=false/# OS_PROBER re-enabled by Debian Calamares installation:\nGRUB_DISABLE_OS_PROBER=false/g" $CHROOT/etc/default/grub
+chroot $CHROOT /usr/sbin/update-grub
+PATCHED_EOF
+
+chmod 0755 "$TARGET_SCRIPT"
+
+# 构建期自检：补丁必须包含离线快速路径标记，否则视为打补丁失败。
+grep -q 'skipping apt (offline install)' "$TARGET_SCRIPT" || {
+    echo "XWLightOS: bootloader-config offline patch marker missing" >&2
+    exit 1
+}
+echo "XWLightOS: patched $TARGET_SCRIPT for offline install"

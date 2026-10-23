@@ -132,8 +132,14 @@ ntfs-3g
 mtools
 parted
 grub-common
+grub2-common
 grub-pc-bin
 grub-efi-amd64-bin
+# UEFI Secure Boot 链：grub-efi-amd64-bin 里的 grubx64.efi 需经 shim 加载。
+# live-build 用 --apt-recommends false，shim-signed 必须显式列出。
+# 注意：grub-efi-amd64 与 grub-pc 互斥（Conflicts），不能同时预装；
+# bootloader-config 补丁（1565 钩子）让安装时按需跳过 apt。
+shim-signed
 syslinux-utils
 efibootmgr
 os-prober

@@ -74,3 +74,23 @@ if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
     update-desktop-database /usr/local/share/applications >/dev/null 2>&1 || true
 fi
+
+# 用户 2026-10-23 邮件第 10 项：安装器在正常安装系统后必须删除，不在已安装
+# 系统里残留。本脚本只在安装成功的系统上运行：服务单元由
+# xwlightos-target-postinstall.sh 在目标 chroot 里 enable（live 镜像里默认不
+# 启用），且在 gdm 启动前执行。purge 不需要联网；任何失败都不得阻塞登录。
+if command -v dpkg-query >/dev/null 2>&1 && \
+   dpkg-query -W -f='${Status}' calamares 2>/dev/null | grep -q 'install ok installed'; then
+    DEBIAN_FRONTEND=noninteractive apt-get purge -y calamares calamares-settings-debian >/dev/null 2>&1 || true
+    # 清掉 calamares 拉进来、且已无人依赖的包（如 libcalamares*）。
+    DEBIAN_FRONTEND=noninteractive apt-get autoremove --purge -y >/dev/null 2>&1 || true
+fi
+# 安装器提权配置只为 live 下运行 Calamares 服务，随包一起清掉。
+rm -f /etc/sudoers.d/xwlightos-installer \
+      /etc/polkit-1/localauthority/50-local.d/xwlightos-calamares.pkla \
+      /etc/polkit-1/rules.d/49-xwlightos-calamares.rules
+
+# 只跑一次：装完即删，之后不再执行。
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl disable xwlightos-installed-cleanup.service >/dev/null 2>&1 || true
+fi
