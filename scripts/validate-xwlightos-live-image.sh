@@ -121,6 +121,8 @@ require_path 'etc/gdm3/daemon.conf'
 require_path 'etc/dconf/db/local.d/00-xwlightos-gnome'
 require_path 'usr/share/themes/WhiteSur-Dark'
 require_path 'usr/share/themes/WhiteSur-Dark/gnome-shell'
+# dconf gtk-theme='WhiteSur-Dark' 供 GTK3 老应用：gtk-3.0 必须真实存在。
+require_path 'usr/share/themes/WhiteSur-Dark/gtk-3.0'
 require_path 'usr/share/themes/WhiteSur-Light'
 require_path 'usr/share/themes/WhiteSur-Light/gnome-shell'
 require_path 'usr/share/icons/WhiteSur'
@@ -312,6 +314,7 @@ grep -q "^logo='/usr/share/xwlightos/branding/xwlightos-mark.svg'$" "$GDM_BRAND_
 # 用户 2026-10-23 邮件：系统图标换成新的 420x120 SVG（XW 几何符号 +
 # "XW LightOS" + "by SYSTEM-Intel-MIC"）。旧的 256x256 方块标若还在，
 # 说明替换漏了地方。
+
 grep -q 'viewBox="0 0 420 120"' "$GDM_BRAND_WORK/usr/share/xwlightos/branding/xwlightos-mark.svg" \
     || { echo 'XWLightOS mark SVG is not the new 420x120 user-supplied logo' >&2; exit 1; }
 grep -q 'by SYSTEM-Intel-MIC' "$GDM_BRAND_WORK/usr/share/xwlightos/branding/xwlightos-mark.svg" \
@@ -334,6 +337,10 @@ grep -q '^Theme=xwlightos$' "$PLYMOUTH_WORK/etc/plymouth/plymouthd.conf" \
     || { echo 'plymouth default theme is not xwlightos (1630 hook did not run or failed)' >&2; exit 1; }
 lsinitramfs "$INITRD" | grep -q 'usr/share/plymouth/themes/xwlightos/xwlightos.script' \
     || { echo 'plymouth xwlightos theme is not inside initrd (boot splash would not show)' >&2; exit 1; }
+# GDM 登录页光标主题（01-xwlightos-branding）：greeter 不读用户会话的 dconf，
+# 不显式设置就永远是 Adwaita 黑指针。
+grep -q "^cursor-theme='WhiteSur-cursors'$" "$GDM_BRAND_WORK/etc/dconf/db/gdm.d/01-xwlightos-branding" \
+    || { echo 'GDM greeter cursor-theme is not WhiteSur-cursors (login screen pointer would stay Adwaita)' >&2; exit 1; }
 # 用户会话 dconf profile 必须含 system-db:local，否则 /etc/dconf/db/local.d/
 # 下的全部桌面默认（WhiteSur 主题、扩展启用、dock、输入法）会被会话静默忽略
 # ——登录页有主题而桌面没有，就是这个原因（用户 2026-10-18 真机反馈）。
@@ -379,41 +386,35 @@ grep -q "^intellihide=false$" "$GNOME_DEFAULTS" \
 grep -q "^autohide-in-fullscreen=true$" "$GNOME_DEFAULTS" \
     || { echo 'dash-to-dock autohide-in-fullscreen is not enabled' >&2; exit 1; }
 # 用户 2026-10-17 邮件指令的全局默认扩展（不可缺项）。
-# 用户 2026-10-19 邮件指令：system-monitor（paradoxxxzero 版，
-# UUID system-monitor@paradoxxx.zero.gmail.com，1610 钩子安装）已加入 enabled。
-# 保留第三方理由（2026-10-19 再确认）：亲手下载 Debian bookworm 官方
-# gnome-shell-extensions_43.1-1_all.deb 列出 11 个扩展，无 system-monitor；
-# 上游官方仓库早已不再维护该扩展，官方渠道无货，只能用第三方维护版。
+# 用户 2026-10-23 指令：性能监视改用 Debian 官方 gnome-system-monitor 应用，
+# paradoxxxzero 顶栏 system-monitor 扩展已移除（1610 钩子删除），此处不再断言；
+# 且 enabled-extensions 里不得再引用它的 UUID（GNOME 会静默跳过，留着是脏配置）。
 for _ext in 'apps-menu@gnome-shell-extensions.gcampax.github.com' \
              'ding@rastersoft.com' \
              'native-window-placement@gnome-shell-extensions.gcampax.github.com' \
              'places-menu@gnome-shell-extensions.gcampax.github.com' \
-             'drive-menu@gnome-shell-extensions.gcampax.github.com' \
-             'system-monitor@paradoxxx.zero.gmail.com'; do
+             'drive-menu@gnome-shell-extensions.gcampax.github.com'; do
     grep -q "$_ext" "$GNOME_DEFAULTS" || {
         echo "enabled-extensions missing $_ext" >&2
         exit 1
     }
 done
+grep -q 'system-monitor@paradoxxx' "$GNOME_DEFAULTS" && {
+    echo 'enabled-extensions still references the removed paradoxxxzero system-monitor extension' >&2
+    exit 1
+} || true
+# 1610 钩子已删除：paradoxxxzero 扩展文件不得再出现在镜像里。
+grep -q -E '(^|/)usr/share/gnome-shell/extensions/system-monitor@paradoxxx\.zero\.gmail\.com' "$LIST" && {
+    echo 'removed system-monitor@paradoxxx.zero.gmail.com extension still in final ISO' >&2
+    exit 1
+} || true
 # 注意：light-style 已于 2026-10-19 从构建移除（#61/#62 构建失败根因）——
 # GNOME 官方 43.1 仓库里没有该扩展，且它依赖 GNOME 45+ 的 API，在 GNOME 43
 # 上从原理上跑不起来；浅色效果由 dconf color-scheme='prefer-light' 实现，
 # 故此处不再断言 light-style（断言了反而构建失败）。
-# 1610 钩子安装的 system-monitor：文件必须真实存在。
-for _udir in 'system-monitor@paradoxxx.zero.gmail.com'; do
-    _meta="$WORK/ext-${_udir}-metadata"
-    cat_image_file "usr/share/gnome-shell/extensions/${_udir}/metadata.json" "$_meta"
-    [ -s "$_meta" ] || {
-        echo "extension ${_udir} metadata.json missing from image" >&2
-        exit 1
-    }
-    _js="$WORK/ext-${_udir}-extension"
-    cat_image_file "usr/share/gnome-shell/extensions/${_udir}/extension.js" "$_js"
-    [ -s "$_js" ] || {
-        echo "extension ${_udir} extension.js missing from image" >&2
-        exit 1
-    }
-done
+# 用户 2026-10-23 指令：性能监视工具换成 Debian 官方 gnome-system-monitor
+# 应用（package list 显式声明），顶栏扩展版已移除。
+require_path 'usr/bin/gnome-system-monitor'
 # libadwaita/GTK4 应用主题（1550 钩子装进 /etc/skel/.config/gtk-4.0/，
 # 上游 install.sh -l 的等效做法；没有它 Nautilus 等只会显示原生 Adwaita）。
 SKEL_GTK4="$WORK/skel-gtk4.css"
@@ -428,6 +429,24 @@ grep -q "^\[org/gnome/shell/extensions/user-theme\]$" "$GNOME_DEFAULTS"
 grep -q "^name='WhiteSur-Light'$" "$GNOME_DEFAULTS"
 # 用户 2026-10-17 邮件指令：窗口按钮放右上角。
 grep -q "^button-layout=':minimize,maximize,close'$" "$GNOME_DEFAULTS"
+# 光标主题三处必须一致（用户 2026-10-23「Mac 主题没完全用上」：
+# 之前只断言了文件存在，从不断言 dconf 与 X11 默认，登录页/根窗口的
+# 指针一直是 Adwaita）。
+# ① 桌面会话 dconf。
+grep -q "^cursor-theme='WhiteSur-cursors'$" "$GNOME_DEFAULTS" \
+    || { echo 'dconf cursor-theme is not WhiteSur-cursors' >&2; exit 1; }
+# ② X11 系统默认光标（1550 钩子注册）：根窗口/GDM/会话启动瞬间的指针。
+CURSOR_DEFAULT_FILE="$FULL_ROOT/usr/share/icons/default/index.theme"
+[ -f "$CURSOR_DEFAULT_FILE" ] \
+    || { echo 'X11 default cursor index.theme is missing' >&2; exit 1; }
+grep -q 'WhiteSur-cursors' "$CURSOR_DEFAULT_FILE" \
+    || { echo 'X11 default cursor is not WhiteSur-cursors (root window / GDM would stay Adwaita)' >&2; exit 1; }
+# ③ dconf 里不得再有指向已删除 AI 组件的死快捷键（/usr/local/bin/xwlightos-ai-chat
+# 已不存在，校验脚本 elsewhere 断言它必须不存在）。
+grep -q 'xwlightos-ai-chat' "$GNOME_DEFAULTS" && {
+    echo 'dconf still references the removed xwlightos-ai-chat binary (dead keybinding)' >&2
+    exit 1
+} || true
 # WhiteSur GDM 登录主题版本标记（1560 钩子写入）。
 GDM_THEME_MARKER="$WORK/whitesur-gdm-theme"
 cat_image_file 'etc/xwlightos/whitesur-gdm-theme' "$GDM_THEME_MARKER"

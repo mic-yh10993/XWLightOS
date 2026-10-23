@@ -34,6 +34,12 @@ done
     echo "XWLightOS: WhiteSur-Dark gnome-shell theme missing after install" >&2
     exit 1
 }
+# dconf 的 gtk-theme='WhiteSur-Dark' 供 GTK3 老应用使用：gtk-3.0 目录必须真实存在，
+# 否则这些应用回退 Adwaita = "主题没用上"。
+[ -d /usr/share/themes/WhiteSur-Dark/gtk-3.0 ] || {
+    echo "XWLightOS: WhiteSur-Dark gtk-3.0 theme missing after install" >&2
+    exit 1
+}
 # Build 56 教训：用户会话的 Shell 主题是 WhiteSur-Light（user-theme），
 # 它的 gnome-shell.css 必须真实存在，否则会话回退到 gresource 默认样式表。
 [ -f /usr/share/themes/WhiteSur-Light/gnome-shell/gnome-shell.css ] || {
@@ -84,6 +90,28 @@ cd "WhiteSur-cursors-${CURSOR_REV}"
 cd "$WORKDIR"
 [ -d /usr/share/icons/WhiteSur-cursors ] || {
     echo "XWLightOS: WhiteSur-cursors directory missing after install" >&2
+    exit 1
+}
+
+# X11 系统默认光标（之前漏了 = "光标主题没完全用上" 的一项）：
+# dconf 的 cursor-theme 只覆盖 GNOME 会话内的 GTK 应用；X11 根窗口、
+# GDM 登录页、会话启动瞬间的指针走 Xcursor 的
+# /usr/share/icons/default/index.theme（Debian 经 update-alternatives
+# x-cursor-theme 管理），默认是 Adwaita 黑指针。这里把它指向 WhiteSur。
+CURSOR_DEFAULT_LINK=/usr/share/icons/default/index.theme
+if [ -f /usr/share/icons/WhiteSur-cursors/index.theme ]; then
+    mkdir -p /usr/share/icons/default
+    if command -v update-alternatives >/dev/null 2>&1; then
+        update-alternatives --install "$CURSOR_DEFAULT_LINK" x-cursor-theme \
+            /usr/share/icons/WhiteSur-cursors/index.theme 90
+        update-alternatives --set x-cursor-theme \
+            /usr/share/icons/WhiteSur-cursors/index.theme
+    else
+        printf '[Icon Theme]\nInherits=WhiteSur-cursors\n' > "$CURSOR_DEFAULT_LINK"
+    fi
+fi
+[ "$(readlink -f "$CURSOR_DEFAULT_LINK")" = "/usr/share/icons/WhiteSur-cursors/index.theme" ] || {
+    echo "XWLightOS: X11 default cursor is not WhiteSur-cursors (root window / GDM would stay Adwaita)" >&2
     exit 1
 }
 
