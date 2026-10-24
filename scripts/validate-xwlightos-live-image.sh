@@ -385,12 +385,12 @@ grep -q 'dash-to-dock@micxgx.gmail.com' "$GNOME_DEFAULTS"
 #（工具栏出现时不隐藏 dock）：模式只认最大化窗口，工具栏不触发隐藏。
 grep -q "^autohide=false$" "$GNOME_DEFAULTS" \
     || { echo 'dash-to-dock autohide is not disabled (dock would stay hidden)' >&2; exit 1; }
-grep -q "^intellihide=true$" "$GNOME_DEFAULTS" \
-    || { echo 'dash-to-dock intellihide is not enabled' >&2; exit 1; }
+grep -q "^intellihide=false$" "$GNOME_DEFAULTS" \
+    || { echo 'dash-to-dock intellihide is not disabled (user requires intelligent hiding OFF by default)' >&2; exit 1; }
 grep -q "^intellihide-mode='MAXIMIZED_WINDOWS'$" "$GNOME_DEFAULTS" \
     || { echo 'dash-to-dock intellihide-mode is not MAXIMIZED_WINDOWS (whiteboard toolbar would hide the dock)' >&2; exit 1; }
-grep -q "^autohide-in-fullscreen=true$" "$GNOME_DEFAULTS" \
-    || { echo 'dash-to-dock autohide-in-fullscreen is not enabled' >&2; exit 1; }
+grep -q "^autohide-in-fullscreen=false$" "$GNOME_DEFAULTS" \
+    || { echo 'dash-to-dock autohide-in-fullscreen is not disabled (user requires dock never hidden)' >&2; exit 1; }
 # 用户 2026-10-17 邮件指令的全局默认扩展（不可缺项）。
 # 用户 2026-10-23 指令：性能监视改用 Debian 官方 gnome-system-monitor 应用，
 # paradoxxxzero 顶栏 system-monitor 扩展已移除（1610 钩子删除），此处不再断言；

@@ -69,18 +69,19 @@ dash-max-icon-size=48
 show-trash=false
 show-mounts=false
 running-indicator-style='DOTS'
-# 用户 2026-10-24 邮件第 5 项：dash to dock 默认不智能隐藏——把智能隐藏
-# 设为默认开启。调和 2026-10-23 邮件指令（白板工具栏出现时不隐藏 dock）：
-# intellihide-mode 用 MAXIMIZED_WINDOWS——只有最大化窗口占住 dock 区域时
-# 才躲；工具栏只是普通置顶小窗口（不最大化），几何上也碰不到底部 dock，
-# 不会再触发隐藏。autohide 仍关（autohide=true 是常年隐藏、悬停才出，
-# 不是智能隐藏）；autohide-in-fullscreen=true 保留，真正全屏时仍隐藏。
+# 用户 2026-10-24 邮件第 5 项：dash to dock 默认不智能隐藏——智能隐藏
+# 默认关闭，dock 常驻不躲（2026-10-24 19:34 用户纠正：此前 8a8b2e1 把
+# “默认不智能隐藏”理解反、错设成开启，已改回关闭）。autohide 仍关
+# （autohide=true 是常年隐藏、悬停才出）；全屏时也不隐藏
+# （autohide-in-fullscreen=false，用户 19:35 实测：不隐藏不影响
+# 希沃白板等功能，三个隐藏开关全关）。
 # intellihide-mode 取值已对 bookworm dash-to-dock 75-1 的 schema 核验：
-# MAXIMIZED_WINDOWS 是合法枚举值。
+# MAXIMIZED_WINDOWS 是合法枚举值；智能隐藏关闭时该值不起作用，留着
+# 以备用户日后手动开启智能隐藏时行为合理。
 autohide=false
-intellihide=true
+intellihide=false
 intellihide-mode='MAXIMIZED_WINDOWS'
-autohide-in-fullscreen=true
+autohide-in-fullscreen=false
 
 # XWLightOS 已移除 AI 组件：旧的 Super+Shift+A 唤起 AI 聊天快捷键同步移除
 #（其命令对应的二进制已不存在，留着是死快捷键）。
