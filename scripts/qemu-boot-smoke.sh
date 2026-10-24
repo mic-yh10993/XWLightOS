@@ -54,11 +54,13 @@ MONITOR="$WORK/monitor.sock"
 FRAME="${XWLIGHTOS_QEMU_SMOKE_FRAME:-${ISO}.${MODE}.ppm}"
 LOG="$WORK/qemu.log"
 # Guest serial console capture: the kernel cmdline (see build.yml
-# --bootappend-live) maps /dev/console to ttyS0 and journald forwards the
-# whole journal there, so GDM/accountsservice/PAM decisions land in this
-# file. 2026-10-17 教训：Build #52 的烟测用 -serial none，guest 端零日志，
-# 自动登录失败时完全无法区分"GDM 没尝试"还是"尝试后会话失败"。串口只做诊断，
-# 不参与门禁判定。
+# --bootappend-live) maps /dev/console to ttyS0, so kernel messages land
+# in this file. journald no longer forwards the journal there (removed
+# 2026-10-24: forwarding re-enables boot-time console text that masks the
+# Plymouth splash on real hardware). 2026-10-17 教训：Build #52 的烟测用
+# -serial none，guest 端零日志，自动登录失败时完全无法区分"GDM 没尝试"还是
+# "尝试后会话失败"。串口只做诊断，不参与门禁判定；GDM 自动登录标记缺失时
+# 只记一条 note，不判失败。
 SERIAL_LOG="$WORK/serial-guest.log"
 rm -f "$FRAME"
 

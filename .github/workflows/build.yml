@@ -141,11 +141,16 @@ jobs:
           # lb config) as the escape hatch for extra mkisofs flags.
           # Serial console for the QEMU smoke test: console=tty0 keeps boot
           # messages on VGA; console=ttyS0 maps /dev/console to the serial
-          # port and journald forwards the whole journal there, so the smoke
-          # test can capture guest-side GDM/accountsservice logs over
-          # -serial file:. Harmless on real hardware (no serial output
-          # device -> messages simply go nowhere). It is baked into the
-          # lb config command below via --bootappend-live.
+          # port so kernel messages still land in the smoke test capture
+          # over -serial file:. journald forwarding is deliberately NOT
+          # enabled here: systemd.journald.forward_to_console=1 re-enables
+          # boot-time console text that masks the Plymouth splash on real
+          # hardware (user 2026-10-24 report: splash never shows, only
+          # scrolling text), and the old "harmless on real hardware"
+          # assumption does not hold on all boards. Trade-off: the smoke
+          # test serial log now carries kernel messages, and the GDM
+          # autologin marker in it is best-effort (the smoke script
+          # already treats a missing marker as a note, not a failure).
           # NOTE: never put comment lines between the \-continuations of the
           # lb config command below; bash strips the backslash-newline before
           # parsing comments, which terminates the command early and turns the
@@ -174,7 +179,7 @@ jobs:
             --keyring-packages "debian-archive-keyring" \
             --binary-images iso-hybrid \
             --compression gzip \
-            --bootappend-live "components quiet splash console=tty0 console=ttyS0,115200n8 systemd.journald.forward_to_console=1" \
+            --bootappend-live "components quiet splash console=tty0 console=ttyS0,115200n8" \
             --iso-application "XWLightOS Live" \
             --iso-publisher "SYSTEM-Intel-MIC" \
             --iso-volume "XWLightOS 1.0" \
