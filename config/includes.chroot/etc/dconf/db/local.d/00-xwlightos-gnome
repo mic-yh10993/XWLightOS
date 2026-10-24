@@ -73,3 +73,15 @@ autohide-in-fullscreen=true
 #（其命令对应的二进制已不存在，留着是死快捷键）。
 [org/gnome/settings-daemon/plugins/media-keys]
 custom-keybindings=@as []
+
+# 用户 2026-10-24 指令：默认插入 U 盘自动挂载，并自动用文件管理器打开。
+[org/gnome/desktop/media-handling]
+automount=true
+automount-open=true
+
+# 用户 2026-10-24 指令：桌面保持干净——ding 不显示主目录/回收站等系统图标，
+# 桌面只呈现用户自己放的文件/文件夹（应用快捷方式由桌面清理服务拦截）。
+[org/gnome/shell/extensions/ding]
+show-home=false
+show-trash=false
+show-volumes=false

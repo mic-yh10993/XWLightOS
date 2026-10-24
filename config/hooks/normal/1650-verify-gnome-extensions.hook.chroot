@@ -1,0 +1,71 @@
+#!/bin/sh
+# Verify the GNOME Shell extensions that dconf claims to enable really
+# exist in the image and support Shell 43, and that an "Extensions"
+# entry point is present.
+#
+# Root cause of the 2026-10-24 user report ("no Extensions entry,
+# system monitor and Dash to Dock gone, shell theme not applied"):
+# nothing in the build ever checked the extension FILES - the image
+# validator only greps the dconf enabled-extensions strings. A missing
+# or version-incompatible extension therefore shipped silently and
+# GNOME dropped it at login. Also, gnome-shell-extension-prefs (the
+# org.gnome.Extensions app) was not in the package list at all, and
+# GNOME 43's Tweaks no longer has an extensions page, so the system
+# genuinely had no Extensions entry point.
+set -eu
+
+EXT_ROOT=/usr/share/gnome-shell/extensions
+DCONF_FILE=/etc/dconf/db/local.d/00-xwlightos-gnome
+
+[ -f "$DCONF_FILE" ] || { echo "XWLightOS: dconf GNOME defaults missing" >&2; exit 1; }
+
+UUIDS="$(sed -n 's/^enabled-extensions=\[\(.*\)\]$/\1/p' "$DCONF_FILE" | tr -d "'" | tr ',' ' ')"
+[ -n "$UUIDS" ] || { echo "XWLightOS: enabled-extensions list is empty/unparseable" >&2; exit 1; }
+
+fail=0
+for uuid in $UUIDS; do
+    dir="$EXT_ROOT/$uuid"
+    if [ ! -d "$dir" ]; then
+        echo "XWLightOS: enabled extension not installed: $uuid" >&2
+        fail=1
+        continue
+    fi
+    if [ ! -f "$dir/metadata.json" ]; then
+        echo "XWLightOS: extension lacks metadata.json: $uuid" >&2
+        fail=1
+        continue
+    fi
+    if ! grep -Eq '"43(\.[0-9]+)?"' "$dir/metadata.json"; then
+        echo "XWLightOS: extension metadata does not list Shell 43: $uuid" >&2
+        grep -A3 'shell-version' "$dir/metadata.json" >&2 || true
+        fail=1
+    fi
+done
+[ "$fail" -eq 0 ] || { echo "XWLightOS: GNOME extension verification failed" >&2; exit 1; }
+echo "XWLightOS: all dconf-enabled extensions present and Shell-43 compatible: $UUIDS"
+
+# The Extensions entry point (user report: no entry existed at all).
+[ -f /usr/share/applications/org.gnome.Extensions.desktop ] || {
+    echo "XWLightOS: org.gnome.Extensions.desktop missing (gnome-shell-extension-prefs not installed)" >&2
+    exit 1
+}
+command -v gnome-extensions >/dev/null 2>&1 || {
+    echo "XWLightOS: gnome-extensions CLI missing (gnome-shell package incomplete)" >&2
+    exit 1
+}
+# The application the user asked for instead of the removed top-bar
+# extension: the official system monitor app must really be there.
+[ -x /usr/bin/gnome-system-monitor ] || {
+    echo "XWLightOS: gnome-system-monitor binary missing" >&2
+    exit 1
+}
+# user-theme target: the WhiteSur-Light shell stylesheet must exist.
+[ -f /usr/share/themes/WhiteSur-Light/gnome-shell/gnome-shell.css ] || {
+    echo "XWLightOS: WhiteSur-Light shell theme missing (user-theme would fall back)" >&2
+    exit 1
+}
+grep -q 'XWLightOS-APPGRID-CONTRAST' /usr/share/themes/WhiteSur-Light/gnome-shell/gnome-shell.css || {
+    echo "XWLightOS: app-grid contrast override missing from WhiteSur-Light shell css" >&2
+    exit 1
+}
+echo "XWLightOS: extensions entry point, system monitor and shell theme verified"

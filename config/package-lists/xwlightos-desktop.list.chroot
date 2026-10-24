@@ -59,6 +59,9 @@ gvfs
 gnome-menus
 gdm3
 gnome-shell-extension-dashtodock
+# “扩展”入口应用：GNOME 43 的 Tweaks 已不带扩展管理页，没有这个包系统里
+# 就根本没有“扩展”入口（用户 2026-10-24 反馈）。官方 org.gnome.Extensions。
+gnome-shell-extension-prefs
 gnome-shell-extension-appindicator
 # Desktop Icons NG (ding)：用户 2026-10-17 邮件要求安装并全局默认启用，
 # 在桌面上显示"此电脑"等图标（macOS 风格桌面不可缺）。

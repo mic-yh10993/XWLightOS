@@ -118,4 +118,41 @@ if command -v gtk-update-icon-cache >/dev/null 2>&1; then
     gtk-update-icon-cache -f /usr/share/icons/WhiteSur >/dev/null 2>&1 || true
 fi
 
+
+# --- 程序栏黑底黑字修复（用户 2026-10-24 真机反馈第 9 项）---
+# WhiteSur 的 gnome-shell.css 在 GNOME 43 上 app-grid/文件夹弹窗的背景与
+# 图目标签颜色对比不足（深色背景叠深色标签 = 看不见）。在主题 CSS 末尾
+# 追加 XWLightOS 对比度覆盖（标记 XWLightOS-APPGRID-CONTRAST），后加载者
+# 优先，保证程序栏与文件夹弹窗内文字与背景强对比。
+for _variant in Light Dark; do
+    _css="/usr/share/themes/WhiteSur-${_variant}/gnome-shell/gnome-shell.css"
+    [ -f "$_css" ] || continue
+    if [ "$_variant" = "Light" ]; then
+        cat >> "$_css" <<'EOF'
+
+/* XWLightOS-APPGRID-CONTRAST (user report 2026-10-24: app grid black-on-black) */
+.app-folder-dialog { background-color: #f4f4f8; color: #23232d; }
+.app-folder-dialog .overview-icon StLabel,
+.app-well-app .overview-icon StLabel,
+.icon-grid .overview-icon StLabel,
+.search-section-content .overview-icon StLabel { color: #23232d; text-shadow: none; }
+EOF
+    else
+        cat >> "$_css" <<'EOF'
+
+/* XWLightOS-APPGRID-CONTRAST (user report 2026-10-24: app grid black-on-black) */
+.app-folder-dialog { background-color: #17171f; color: #f2f2f7; }
+.app-folder-dialog .overview-icon StLabel,
+.app-well-app .overview-icon StLabel,
+.icon-grid .overview-icon StLabel,
+.search-section-content .overview-icon StLabel { color: #f2f2f7; text-shadow: none; }
+EOF
+    fi
+    grep -q 'XWLightOS-APPGRID-CONTRAST' "$_css" || {
+        echo "XWLightOS: app-grid contrast override missing in $_css" >&2
+        exit 1
+    }
+done
+unset _variant _css
+
 echo "XWLightOS: WhiteSur theme installation complete"
