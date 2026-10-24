@@ -503,6 +503,32 @@ grep -q '/etc/sudoers.d/xwlightos-installer' "$INSTALLED_CLEANUP" || {
     echo 'installed cleanup does not remove the installer sudoers entry' >&2
     exit 1
 }
+# Regression test for the Build 28 install failure: clean_desktop_dir used
+# to return 1 on an existing but empty Desktop dir, and set -e then killed
+# the cleanup helper (and postinstall) silently with exit 1 and no output.
+# The trigger is deterministic: the helper first deletes the skel Desktop
+# installer entry, leaving that directory empty for the later sweep.
+# This test extracts only the function and runs it against scratch dirs;
+# the full helper is never executed here because it touches absolute paths.
+CLEANUP_FUNC_FILE="$WORK/clean_desktop_dir.func"
+sed -n '/^clean_desktop_dir() {/,/^}/p' "$INSTALLED_CLEANUP" > "$CLEANUP_FUNC_FILE"
+[ -s "$CLEANUP_FUNC_FILE" ] || {
+    echo 'installed cleanup clean_desktop_dir function not found' >&2
+    exit 1
+}
+CLEANUP_TEST_ROOT="$WORK/cleanup-test"
+rm -rf "$CLEANUP_TEST_ROOT"
+mkdir -p "$CLEANUP_TEST_ROOT/empty/Desktop" "$CLEANUP_TEST_ROOT/full/Desktop"
+printf '[Desktop Entry]\nName=Test\n' > "$CLEANUP_TEST_ROOT/full/Desktop/test.desktop"
+if ! sh -eu -c '. "$1"; clean_desktop_dir "$2"; clean_desktop_dir "$3"; echo SURVIVED' sh "$CLEANUP_FUNC_FILE" "$CLEANUP_TEST_ROOT/empty/Desktop" "$CLEANUP_TEST_ROOT/full/Desktop" | grep -q SURVIVED; then
+    echo 'installed cleanup clean_desktop_dir fails on an empty Desktop dir' >&2
+    exit 1
+fi
+[ -f "$CLEANUP_TEST_ROOT/full/Desktop/test.desktop" ] && {
+    echo 'installed cleanup did not remove a Desktop shortcut' >&2
+    exit 1
+}
+rm -rf "$CLEANUP_TEST_ROOT" "$CLEANUP_FUNC_FILE"
 CLEANUP_SERVICE="$WORK/xwlightos-installed-cleanup.service"
 cat_image_file 'etc/systemd/system/xwlightos-installed-cleanup.service' "$CLEANUP_SERVICE"
 grep -q '^Before=gdm.service$' "$CLEANUP_SERVICE"

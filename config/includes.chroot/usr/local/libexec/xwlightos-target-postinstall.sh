@@ -56,7 +56,13 @@ fi
 # installed-only cleaner so the system menu, inherited skeleton Desktop and
 # already-created user Desktop/XDG directories are handled as one operation.
 if [ -x /usr/local/libexec/xwlightos-installed-cleanup ]; then
-    /usr/local/libexec/xwlightos-installed-cleanup
+    # 2026-10-24 Build 28 安装失败教训：此处原先是无保护调用，清理脚本
+    # 一旦静默失败，set -e 直接杀掉本脚本，Calamares 只报 exit 1 且无输出，
+    # 后续 GRUB、sudo 修复、initramfs 全部没跑。失败必须大声报出来。
+    if ! /usr/local/libexec/xwlightos-installed-cleanup; then
+        echo 'XWLightOS: installed cleanup failed; refusing to continue a half-cleaned install' >&2
+        exit 1
+    fi
 else
     echo 'XWLightOS: installed-only installer cleanup helper is missing' >&2
     exit 1
