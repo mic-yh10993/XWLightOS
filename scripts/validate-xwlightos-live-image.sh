@@ -846,13 +846,30 @@ PYEOF
 # Nautilus 的“新建文档”菜单只列出 ~/Templates（中文环境为 ~/模板）
 # 里的模板文件，两边都放，缺一不可；PPT/DOCX 必须是结构有效的
 # OOXML 空文件，不能放损坏文件。
+# 用户 2026-10-24 22:53 邮件：不只 txt/pptx/docx，xls 之类的常见类型
+# 都要加——补齐 xlsx/xls/ods、doc/odt、ppt/odp，同样逐个校验
+# （OOXML/ODF 走 zip 完整性 + XML 解析，旧二进制格式验 OLE 魔数）。
 require_path 'etc/skel/Templates/新建文本文件.txt'
 require_path 'etc/skel/Templates/新建演示文稿.pptx'
 require_path 'etc/skel/Templates/新建文档.docx'
+require_path 'etc/skel/Templates/新建工作表.xlsx'
+require_path 'etc/skel/Templates/新建工作表.xls'
+require_path 'etc/skel/Templates/新建工作表.ods'
+require_path 'etc/skel/Templates/新建文档.doc'
+require_path 'etc/skel/Templates/新建文本文档.odt'
+require_path 'etc/skel/Templates/新建演示文稿.ppt'
+require_path 'etc/skel/Templates/新建演示文稿.odp'
 require_path 'etc/skel/模板/新建文本文件.txt'
 require_path 'etc/skel/模板/新建演示文稿.pptx'
 require_path 'etc/skel/模板/新建文档.docx'
-for _tpl in 'etc/skel/Templates/新建演示文稿.pptx' 'etc/skel/Templates/新建文档.docx'; do
+require_path 'etc/skel/模板/新建工作表.xlsx'
+require_path 'etc/skel/模板/新建工作表.xls'
+require_path 'etc/skel/模板/新建工作表.ods'
+require_path 'etc/skel/模板/新建文档.doc'
+require_path 'etc/skel/模板/新建文本文档.odt'
+require_path 'etc/skel/模板/新建演示文稿.ppt'
+require_path 'etc/skel/模板/新建演示文稿.odp'
+for _tpl in 'etc/skel/Templates/新建演示文稿.pptx' 'etc/skel/Templates/新建文档.docx' 'etc/skel/Templates/新建工作表.xlsx' 'etc/skel/Templates/新建工作表.ods' 'etc/skel/Templates/新建文本文档.odt' 'etc/skel/Templates/新建演示文稿.odp'; do
     _tmp="$WORK/$(basename "$_tpl")"
     cat_image_file "$_tpl" "$_tmp"
     python3 - "$_tmp" <<'PYEOF'
@@ -865,6 +882,17 @@ for name in z.namelist():
     if name.endswith(".xml") or name.endswith(".rels"):
         ET.fromstring(z.read(name))
 print("XWLightOS: template valid:", sys.argv[1])
+PYEOF
+done
+for _tpl in 'etc/skel/Templates/新建工作表.xls' 'etc/skel/Templates/新建文档.doc' 'etc/skel/Templates/新建演示文稿.ppt'; do
+    _tmp="$WORK/$(basename "$_tpl")"
+    cat_image_file "$_tpl" "$_tmp"
+    python3 - "$_tmp" <<'PYEOF'
+import sys
+with open(sys.argv[1], "rb") as f:
+    magic = f.read(8)
+assert magic == bytes.fromhex("D0CF11E0A1B11AE1"), "template OLE magic wrong"
+print("XWLightOS: template OLE valid:", sys.argv[1])
 PYEOF
 done
 
