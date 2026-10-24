@@ -747,14 +747,9 @@ grep -q '<family>Noto Sans CJK SC</family>' "$FONTCONF"
 # policies.json 落盘，Debian firefox-esr 的标准路径为
 # /usr/lib/firefox-esr/distribution/policies.json。
 require_path 'usr/share/xwlightos/homepage.html'
-# 用户 2026-10-24 指令：主页文件必须逐字节是用户原文件（聊天补发版，
-# 23657 字节，CRLF），任何改写/格式化都会改变 md5。
-HP_FILE="$WORK/homepage.html"
-cat_image_file 'usr/share/xwlightos/homepage.html' "$HP_FILE"
-[ "$(stat -c '%s' "$HP_FILE")" = "23657" ] || {
-    echo 'homepage.html size is not the user original 23657 bytes' >&2; exit 1; }
-[ "$(md5sum "$HP_FILE" | cut -d' ' -f1)" = "bcc3c9808b1ceb155cbd3cfbbbe55e2f" ] || {
-    echo 'homepage.html md5 is not the user original bcc3c9808b1ceb155cbd3cfbbbe55e2f' >&2; exit 1; }
+# 用户 2026-10-24 指令：主页 html 不做字节数/md5 校验，用户以后可能自己
+# 改 html；只要求仓库里的文件原样落盘、不被构建改写（includes.chroot
+# 文件即原样拷贝，无任何改写步骤）。
 FF_POLICIES="$WORK/firefox-policies.json"
 cat_image_file 'usr/lib/firefox-esr/distribution/policies.json' "$FF_POLICIES"
 python3 - "$FF_POLICIES" <<'PYEOF'
@@ -776,7 +771,7 @@ assert pol["OverrideFirstRunPage"] == "", "first-run page is not disabled"
 assert pol["OverridePostUpdatePage"] == "", "post-update page is not disabled"
 assert pol["RequestedLocales"][0] == "zh-CN", "Firefox default locale is not zh-CN"
 assert pol["DisplayBookmarksToolbar"] == "always", "bookmarks toolbar is not always shown"
-print("XWLightOS: Firefox search=Bing, homepage=user-original html (md5 verified), toolbar bookmarks OK, first-run off, zh-CN")
+print("XWLightOS: Firefox search=Bing, homepage=user html as-is, toolbar bookmarks OK, first-run off, zh-CN")
 PYEOF
 
 # All Apps must not surface session/power helpers as regular applications.  This
