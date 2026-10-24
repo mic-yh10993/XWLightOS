@@ -29,6 +29,11 @@ button-layout=':minimize,maximize,close'
 # 注意：Debian 的 gnome-shell-extension-appindicator 装出来的 UUID 是
 # ubuntu-appindicators@ubuntu.com，不是上游的 appindicatorsupport@rgcjonas.gmail.com，
 # 写错会导致 1650 钩子校验失败、构建红灯（2026-10-24 实测）。
+# 用户 2026-10-24 邮件第 4 项问“为什么多了 Ubuntu 的扩展”：这是 Debian
+# 打包时起的名字——它就是上游 AppIndicator 扩展同一份代码的 Debian 版，
+# 不是装了 Ubuntu 系统，也不是多余软件；它负责 QQ/微信/钉钉等应用的
+# 顶栏托盘图标，关掉它这些应用的托盘图标就没了。扩展应用里显示的
+# “Ubuntu AppIndicators”就是它，可在扩展应用里开关，但不建议删。
 enabled-extensions=['apps-menu@gnome-shell-extensions.gcampax.github.com', 'dash-to-dock@micxgx.gmail.com', 'ding@rastersoft.com', 'native-window-placement@gnome-shell-extensions.gcampax.github.com', 'places-menu@gnome-shell-extensions.gcampax.github.com', 'drive-menu@gnome-shell-extensions.gcampax.github.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'ubuntu-appindicators@ubuntu.com']
 # 用户 2026-10-20 邮件指令：固定栏固定 7 个应用——希沃白板、希沃视频展台、
 # 班级优化大师、ONLYOFFICE、钉钉、微信、QQ（按此顺序）。
@@ -39,7 +44,12 @@ enabled-extensions=['apps-menu@gnome-shell-extensions.gcampax.github.com', 'dash
 #  com.alibabainc.dingtalk.desktop / wechat.desktop / qq.desktop /
 #  org.gnome.Nautilus.desktop（文件）/ firefox-esr.desktop。
 # 注意：XWLightOS 已移除 AI 组件，旧的 AI 聊天/manager 固定项同步移除。
-favorite-apps=['org.gnome.Nautilus.desktop', 'firefox-esr.desktop', 'com.seewo.easinote5.desktop', 'com.seewo.easicamera.desktop', 'com.seewo.easicare.desktop', 'onlyoffice-desktopeditors.desktop', 'com.alibabainc.dingtalk.desktop', 'wechat.desktop', 'qq.desktop']
+# 用户 2026-10-24 邮件第 4 项“系统监视没有”：二进制与 .desktop 其实都在
+# 镜像里（1650 钩子断言 /usr/bin/gnome-system-monitor，Build 28 构建日志
+# 有安装记录），缺的是可见性——它不在固定栏里。把系统监视器钉到固定栏
+# 末尾，dock 上直接可见；中文名是“系统监视器”，应用网格里搜“系统监视”
+# 也能找到。
+favorite-apps=['org.gnome.Nautilus.desktop', 'firefox-esr.desktop', 'com.seewo.easinote5.desktop', 'com.seewo.easicamera.desktop', 'com.seewo.easicare.desktop', 'onlyoffice-desktopeditors.desktop', 'com.alibabainc.dingtalk.desktop', 'wechat.desktop', 'qq.desktop', 'gnome-system-monitor.desktop']
 
 [org/gnome/shell/extensions/user-theme]
 # 用户 2026-10-17 邮件指令：Shell 主题用 WhiteSur-Light。
