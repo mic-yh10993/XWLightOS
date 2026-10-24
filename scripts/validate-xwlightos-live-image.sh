@@ -381,11 +381,14 @@ grep -q "^gtk-theme='WhiteSur-Dark'$" "$GNOME_DEFAULTS"
 # 用户 2026-10-17 邮件指令：图标 WhiteSur-light、Shell WhiteSur-Light。
 grep -q "^icon-theme='WhiteSur-light'$" "$GNOME_DEFAULTS"
 grep -q 'dash-to-dock@micxgx.gmail.com' "$GNOME_DEFAULTS"
-# 用户 2026-10-23 邮件指令：工具栏在时不隐藏 dock，只有全屏窗口才隐藏 dock。
+# 用户 2026-10-24 邮件第 5 项：智能隐藏默认开启；调和 2026-10-23 邮件指令
+#（工具栏出现时不隐藏 dock）：模式只认最大化窗口，工具栏不触发隐藏。
 grep -q "^autohide=false$" "$GNOME_DEFAULTS" \
     || { echo 'dash-to-dock autohide is not disabled (dock would stay hidden)' >&2; exit 1; }
-grep -q "^intellihide=false$" "$GNOME_DEFAULTS" \
-    || { echo 'dash-to-dock intellihide is not disabled' >&2; exit 1; }
+grep -q "^intellihide=true$" "$GNOME_DEFAULTS" \
+    || { echo 'dash-to-dock intellihide is not enabled' >&2; exit 1; }
+grep -q "^intellihide-mode='MAXIMIZED_WINDOWS'$" "$GNOME_DEFAULTS" \
+    || { echo 'dash-to-dock intellihide-mode is not MAXIMIZED_WINDOWS (whiteboard toolbar would hide the dock)' >&2; exit 1; }
 grep -q "^autohide-in-fullscreen=true$" "$GNOME_DEFAULTS" \
     || { echo 'dash-to-dock autohide-in-fullscreen is not enabled' >&2; exit 1; }
 # 用户 2026-10-17 邮件指令的全局默认扩展（不可缺项）。

@@ -69,17 +69,17 @@ dash-max-icon-size=48
 show-trash=false
 show-mounts=false
 running-indicator-style='DOTS'
-# 用户 2026-10-23 邮件指令：希沃白板工具栏出现时不隐藏 dock，只有白板主窗口
-# 全屏时才隐藏 dock。
-# 根因：dash-to-dock 默认 autohide=true（dock 常年隐藏、悬停才出）且
-# intellihide=true（FOCUS_APPLICATION_WINDOWS：被聚焦窗口占住 dock 区域就躲），
-# 工具栏置顶/白板主窗口最大化都会把 dock 藏起来。
-# 修法（只动判定逻辑，不碰工具栏守护）：dock 常驻显示，intellihide 也关掉，
-# 只保留 autohide-in-fullscreen=true——GNOME 的全屏状态跟踪对 Qt 窗口同样有效，
-# 白板主窗口真正全屏时 dock 自动隐藏，退出全屏即恢复；工具栏只是普通置顶小
-# 窗口，不再触发任何隐藏。
+# 用户 2026-10-24 邮件第 5 项：dash to dock 默认不智能隐藏——把智能隐藏
+# 设为默认开启。调和 2026-10-23 邮件指令（白板工具栏出现时不隐藏 dock）：
+# intellihide-mode 用 MAXIMIZED_WINDOWS——只有最大化窗口占住 dock 区域时
+# 才躲；工具栏只是普通置顶小窗口（不最大化），几何上也碰不到底部 dock，
+# 不会再触发隐藏。autohide 仍关（autohide=true 是常年隐藏、悬停才出，
+# 不是智能隐藏）；autohide-in-fullscreen=true 保留，真正全屏时仍隐藏。
+# intellihide-mode 取值已对 bookworm dash-to-dock 75-1 的 schema 核验：
+# MAXIMIZED_WINDOWS 是合法枚举值。
 autohide=false
-intellihide=false
+intellihide=true
+intellihide-mode='MAXIMIZED_WINDOWS'
 autohide-in-fullscreen=true
 
 # XWLightOS 已移除 AI 组件：旧的 Super+Shift+A 唤起 AI 聊天快捷键同步移除
