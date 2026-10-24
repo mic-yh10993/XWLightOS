@@ -44,9 +44,16 @@ update-initramfs -u -k all
 _kver="$(ls -t /lib/modules | head -n 1)"
 [ -n "$_kver" ] || { echo "XWLightOS: no kernel modules found for initrd check" >&2; exit 1; }
 if command -v lsinitramfs >/dev/null 2>&1; then
-    lsinitramfs "/boot/initrd.img-${_kver}" | grep -q 'usr/share/plymouth/themes/xwlightos/xwlightos.script' || {
-        echo "XWLightOS: rebuilt initrd lacks the xwlightos plymouth theme" >&2
-        exit 1
-    }
+    # 用户 2026-10-24 邮件《很大问题》第 4 项：开机动画仍滚屏。
+    # 此前只校验了脚本文件本身进没进 initrd；脚本在真机上加载 7 张
+    # 图片，缺任何一张都会导致主题加载失败、回落到文字滚动——而缺图
+    # 的情况旧校验根本发现不了。这里把全部资产逐一核对进 initrd。
+    for _asset in xwlightos.script xwlightos.plymouth mark.png mark-glow.png \
+                 brand-main.png brand-sub.png dot.png bar-bg.png bar-fg.png; do
+        lsinitramfs "/boot/initrd.img-${_kver}" | grep -q "usr/share/plymouth/themes/xwlightos/${_asset}" || {
+            echo "XWLightOS: rebuilt initrd lacks plymouth theme asset ${_asset} (theme would fall back to text scrolling)" >&2
+            exit 1
+        }
+    done
 fi
 echo "XWLightOS: initrd rebuilt with the xwlightos plymouth theme (kernel ${_kver})"
