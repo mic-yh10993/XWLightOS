@@ -26,7 +26,7 @@ Presentation {
     }
 
     Slide {
-        centeredText: qsTr("欢迎安装 XWLightOS 1.0\nAI Agent 操作系统：GNOME 桌面 + macOS 风格主题，基于 Debian 构建")
+        centeredText: qsTr("欢迎安装 XWLightOS 1.0\n教育版操作系统：GNOME 桌面 + macOS 风格主题，基于 Debian 构建")
     }
 
     Slide {
