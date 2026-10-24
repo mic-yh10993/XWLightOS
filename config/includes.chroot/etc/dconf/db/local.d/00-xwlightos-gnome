@@ -26,7 +26,10 @@ button-layout=':minimize,maximize,close'
 # 用户 2026-10-23 指令：性能监视工具换成 Debian 官方 gnome-system-monitor
 # 应用（见 xwlightos-desktop.list.chroot）；paradoxxxzero 的顶栏
 # system-monitor 扩展同步移除，不与应用版并存（功能重复、视觉混乱）。
-enabled-extensions=['apps-menu@gnome-shell-extensions.gcampax.github.com', 'dash-to-dock@micxgx.gmail.com', 'ding@rastersoft.com', 'native-window-placement@gnome-shell-extensions.gcampax.github.com', 'places-menu@gnome-shell-extensions.gcampax.github.com', 'drive-menu@gnome-shell-extensions.gcampax.github.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'appindicatorsupport@rgcjonas.gmail.com']
+# 注意：Debian 的 gnome-shell-extension-appindicator 装出来的 UUID 是
+# ubuntu-appindicators@ubuntu.com，不是上游的 appindicatorsupport@rgcjonas.gmail.com，
+# 写错会导致 1650 钩子校验失败、构建红灯（2026-10-24 实测）。
+enabled-extensions=['apps-menu@gnome-shell-extensions.gcampax.github.com', 'dash-to-dock@micxgx.gmail.com', 'ding@rastersoft.com', 'native-window-placement@gnome-shell-extensions.gcampax.github.com', 'places-menu@gnome-shell-extensions.gcampax.github.com', 'drive-menu@gnome-shell-extensions.gcampax.github.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'ubuntu-appindicators@ubuntu.com']
 # 用户 2026-10-20 邮件指令：固定栏固定 7 个应用——希沃白板、希沃视频展台、
 # 班级优化大师、ONLYOFFICE、钉钉、微信、QQ（按此顺序）。
 # 用户 2026-10-20 邮件指令：dock 栏把"文件"和 Firefox 加回去，放最前面。
