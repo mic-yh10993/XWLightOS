@@ -47,6 +47,24 @@ fi
 install -Dm644 /dev/stdin /etc/xwlightos/session-user <<EOF
 $installed_account
 EOF
+# Deep-chain fix (user mail 2026-10-24 22:40: why do boot-animation and
+# font-color fixes keep not landing): the live session forces X11 via
+# AccountsService (the 1700 hook writes XSession=gnome-xorg for the
+# live 'user'), but the installed account never got such a file --
+# this script deletes the live one above and writes nothing for the
+# new account. GDM then starts the installed user on its default
+# session, which on bookworm is Wayland when available. Every
+# session-level fix validated on the live X11 session then silently
+# stops applying on the installed system: /etc/X11/Xsession.d and
+# /etc/profile.d are never sourced (fcitx5 IM variables, Qt theme),
+# and X11-oriented components run under a session they were never
+# tested in. Force X11 for the installed account exactly like the
+# live user, so installed == live.
+install -d -m 0755 /var/lib/AccountsService/users
+cat > "/var/lib/AccountsService/users/$installed_account" <<'ACCEOF'
+[User]
+XSession=gnome-xorg
+ACCEOF
 # 用户 2026-10-24 邮件《很大问题》第 8 项：侧边栏默认不开机启动。
 # 新装系统的用户家目录来自 /etc/skel（已含 sidebar-off 标志），但这里
 # 再给本次安装的账号显式写一份，防 skel 复制链路有任何一环漏掉：

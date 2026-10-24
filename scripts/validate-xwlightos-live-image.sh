@@ -734,6 +734,8 @@ cat_image_file 'etc/environment' "$SYS_ENV"
 grep -q '^GTK_IM_MODULE=fcitx$' "$SYS_ENV"
 grep -q '^QT_IM_MODULE=fcitx$' "$SYS_ENV"
 grep -q '^XMODIFIERS=@im=fcitx$' "$SYS_ENV"
+grep -q '^QT_QPA_PLATFORMTHEME=gtk2$' "$SYS_ENV" || {
+    echo 'system environment lacks Qt platform theme (Qt apps would drift off WhiteSur-Light)' >&2; exit 1; }
 # Shift 切换的结构性门禁：skel 配置必须同时有左右 Shift 触发键，
 # 且 profile 必须同时含 keyboard（英文端）与 pinyin（中文端），
 # 缺任一端 AltTrigger 切换就没有两个落点。
@@ -967,6 +969,14 @@ grep -q '^GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"$' "$GRUBD_FILE" || {
     echo 'grub.d lacks quiet splash (installed boot would scroll text, no splash)' >&2; exit 1; }
 grep -q 'GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"' "$TARGET_POSTINSTALL" || {
     echo 'target postinstall grub.d lacks quiet splash' >&2; exit 1; }
+# Deep-chain fix (user mail 2026-10-24 22:40): the installed account
+# must be forced onto the X11 session like the live user, otherwise
+# every session-level fix validated on live X11 silently stops
+# applying on the installed system (Wayland default on bookworm).
+grep -q 'XSession=gnome-xorg' "$TARGET_POSTINSTALL" || {
+    echo 'target postinstall does not force X11 session for installed account' >&2; exit 1; }
+grep -q 'var/lib/AccountsService/users' "$TARGET_POSTINSTALL" || {
+    echo 'target postinstall writes no AccountsService session file' >&2; exit 1; }
 # 4 扩展入口与扩展文件门禁（1650 钩子在构建期同口径断言，这里查成品）。
 require_path 'usr/share/applications/org.gnome.Extensions.desktop'
 require_path 'usr/bin/gnome-extensions'

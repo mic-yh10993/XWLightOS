@@ -24,3 +24,10 @@
 GTK_IM_MODULE=fcitx
 QT_IM_MODULE=fcitx
 XMODIFIERS=@im=fcitx
+#
+# Qt theme (deep-chain fix, user mail 2026-10-24 22:40: font-color
+# fixes keep not landing): Qt5 apps follow the GTK2 WhiteSur-Light
+# theme only when QT_QPA_PLATFORMTHEME=gtk2 reaches the session, but
+# the profile.d copy is never sourced by a GDM-started GNOME session
+# on its default path. Same pam_env channel as the IM variables above.
+QT_QPA_PLATFORMTHEME=gtk2
