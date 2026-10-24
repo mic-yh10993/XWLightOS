@@ -72,11 +72,19 @@ def set_service(unit, on, parent):
     cmd = ["pkexec", "systemctl", action, "--now", unit]
     res = subprocess.run(cmd, capture_output=True, text=True)
     if res.returncode != 0:
+        # 用户 2026-10-24 邮件《很大问题》第 3 项：请求 root 权限失败
+        # 不要自动重试。一次拨动只请求一次授权：失败就明确提示一次，
+        # 绝不再次弹出授权框（回弹拨动开关时必须被 _busy 守卫挡住，
+        # 不能靠 handler_block 一道防线，见 on_service）。
+        if res.returncode == 126:
+            msg = "已取消授权，未作任何更改。"
+        else:
+            msg = "设置失败：%s" % (res.stderr.strip() or unit)
         dlg = Gtk.MessageDialog(
             transient_for=parent, modal=True,
             message_type=Gtk.MessageType.ERROR,
             buttons=Gtk.ButtonsType.OK,
-            text="设置失败：%s" % (res.stderr.strip() or unit))
+            text=msg)
         dlg.run()
         dlg.destroy()
         return False
@@ -137,6 +145,11 @@ class Row(Gtk.Box):
 class Window(Gtk.Window):
     def __init__(self):
         super().__init__(title="XWLightOS 设置")
+        # 拨动开关时正在请求授权/执行 systemctl 的重入守卫：失败回弹
+        # 开关时若再次触发 on_service，就会第二次弹出授权框——用户
+        # 2026-10-24 第 3 项明确要求失败不自动重试，因此回弹必须被
+        # 这道标志挡住，不能只依赖 handler_block_by_func。
+        self._busy = False
         self.set_default_size(520, 320)
         self.set_border_width(8)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
@@ -180,11 +193,22 @@ class Window(Gtk.Window):
         self.add(box)
 
     def on_service(self, switch, _param, unit, row):
+        # 回弹/重入守卫：一次拨动只走一次授权流程。回弹本身也在守卫
+        # 内完成，即使 handler_block 失效也不会再次触发授权。
+        if self._busy:
+            return
         want = switch.get_active()
-        if not set_service(unit, want, self):
-            switch.handler_block_by_func(self.on_service)
-            switch.set_active(not want)
-            switch.handler_unblock_by_func(self.on_service)
+        self._busy = True
+        try:
+            ok = set_service(unit, want, self)
+            if not ok:
+                switch.handler_block_by_func(self.on_service)
+                try:
+                    switch.set_active(not want)
+                finally:
+                    switch.handler_unblock_by_func(self.on_service)
+        finally:
+            self._busy = False
 
     def on_sidebar(self, switch, _param):
         set_sidebar(switch.get_active())
