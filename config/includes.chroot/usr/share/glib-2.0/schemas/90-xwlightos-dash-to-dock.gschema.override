@@ -8,10 +8,11 @@
 # override rewrites the schema default itself (compiled by
 # glib-compile-schemas in the 1700 hook): even if the dconf database
 # is bypassed for any reason, the out-of-the-box behaviour is dock
-# resident, hiding only in fullscreen -- exactly the 2026-10-24 user
-# requirement (normal apps never hide the dock; whiteboard, video
-# booth, PPT projection and other fullscreen apps do).
+# never hidden. User mail 2026-10-24 22:40 latest requirement ("force
+# never hide, same as before") supersedes the 2026-10-24 19:43
+# requirement ("resident normally, hidden only for fullscreen apps"):
+# all three hiding switches are off, fullscreen apps do not hide it.
 [org.gnome.shell.extensions.dash-to-dock]
 intellihide=false
 autohide=false
-autohide-in-fullscreen=true
+autohide-in-fullscreen=false

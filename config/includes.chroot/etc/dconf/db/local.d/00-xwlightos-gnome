@@ -94,9 +94,12 @@ running-indicator-style='DOTS'
 # gschema 覆盖（/usr/share/glib-2.0/schemas/90-xwlightos-dash-to-dock.gschema.override，
 # 1700 钩子编译）：把 schema 默认本身改成与本节一致，dconf 库即使被绕过，
 # 默认也是关闭的。两层都写死，缺一不可。
+# 用户 2026-10-24 22:40 最新要求：dock 直接强制永不隐藏。
+# 该要求取代 19:43 的“平时常驻、全屏应用才隐藏”：autohide-in-fullscreen
+# 也关掉，三个开关全关；gschema 覆盖层同步改。
 autohide=false
 intellihide=false
-autohide-in-fullscreen=true
+autohide-in-fullscreen=false
 
 # XWLightOS 已移除 AI 组件：旧的 Super+Shift+A 唤起 AI 聊天快捷键同步移除
 #（其命令对应的二进制已不存在，留着是死快捷键）。

@@ -383,13 +383,15 @@ grep -q "^gtk-theme='WhiteSur-Light'$" "$GNOME_DEFAULTS"
 # 用户 2026-10-17 邮件指令：图标 WhiteSur-light、Shell WhiteSur-Light。
 grep -q "^icon-theme='WhiteSur-light'$" "$GNOME_DEFAULTS"
 grep -q 'dash-to-dock@micxgx.gmail.com' "$GNOME_DEFAULTS"
-# 用户 2026-10-23 邮件指令：工具栏在时不隐藏 dock，只有全屏窗口才隐藏 dock。
+# 用户 2026-10-24 22:40 最新要求：dock 直接强制永不隐藏。
+# 该要求取代 2026-10-24 19:43 的“平时常驻、全屏应用才隐藏”：
+# 三个隐藏开关全关，全屏应用也不隐藏。
 grep -q "^autohide=false$" "$GNOME_DEFAULTS" \
     || { echo 'dash-to-dock autohide is not disabled (dock would stay hidden)' >&2; exit 1; }
 grep -q "^intellihide=false$" "$GNOME_DEFAULTS" \
     || { echo 'dash-to-dock intellihide is not disabled' >&2; exit 1; }
-grep -q "^autohide-in-fullscreen=true$" "$GNOME_DEFAULTS" \
-    || { echo 'dash-to-dock autohide-in-fullscreen is not enabled' >&2; exit 1; }
+grep -q "^autohide-in-fullscreen=false$" "$GNOME_DEFAULTS" \
+    || { echo 'dash-to-dock autohide-in-fullscreen is not disabled (user requires dock never hidden)' >&2; exit 1; }
 # 用户 2026-10-24 邮件《很大问题》第 1 项：智能隐藏强制写死关闭。
 # dconf 默认之外另有一层 gschema 覆盖：即使 dconf 库被绕过，schema
 # 默认本身也是关闭的。两层缺一不可，这里两边都断言。
@@ -399,8 +401,8 @@ grep -q "^intellihide=false$" "$GSCHEMA_OVERRIDE" \
     || { echo 'dash-to-dock schema override does not force intellihide off' >&2; exit 1; }
 grep -q "^autohide=false$" "$GSCHEMA_OVERRIDE" \
     || { echo 'dash-to-dock schema override does not force autohide off' >&2; exit 1; }
-grep -q "^autohide-in-fullscreen=true$" "$GSCHEMA_OVERRIDE" \
-    || { echo 'dash-to-dock schema override lost fullscreen hiding' >&2; exit 1; }
+grep -q "^autohide-in-fullscreen=false$" "$GSCHEMA_OVERRIDE" \
+    || { echo 'dash-to-dock schema override does not force fullscreen hiding off (user requires dock never hidden)' >&2; exit 1; }
 # 用户 2026-10-24 邮件第 6 项：状态栏监控扩展必须启用。
 # （2026-10-23 曾移除顶栏 system-monitor 扩展的旧注释已作废：用户
 # 2026-10-24 明确要求恢复 Debian 官方打包的顶栏监控扩展。）
