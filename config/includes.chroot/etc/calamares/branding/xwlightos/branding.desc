@@ -1,7 +1,7 @@
 ---
 componentName: xwlightos
 welcomeStyleCalamares: false
-welcomeExpandingLogo: true
+welcomeExpandingLogo: false
 windowExpanding: normal
 windowSize: 1024px,650px
 windowPlacement: center
@@ -22,10 +22,10 @@ strings:
     releaseNotesUrl: https://github.com/SYSTEM-Intel-MIC/xwlightos/releases
 
 images:
-    productIcon: "xwlightos-mark.svg"
-    productLogo: "xwlightos-mark.svg"
+    productIcon: "xwlightos-logo.svg"
+    productLogo: "xwlightos-logo.svg"
     productWallpaper: "xwlightos-aurora-wallpaper.png"
-    productWelcome: "xwlightos-mark.svg"
+    productWelcome: "xwlightos-logo.svg"
 
 style:
     sidebarBackground: "#082353"

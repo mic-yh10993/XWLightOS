@@ -4,7 +4,7 @@
 # (1560 hook, tweaks.sh -g equivalent): BigSur-like wallpaper baked into the
 # gnome-shell gresource, not a neutral dark default.
 [org/gnome/login-screen]
-logo='/usr/share/xwlightos/branding/xwlightos-mark.svg'
+logo='/usr/share/xwlightos/branding/xwlightos-logo.svg'
 
 # The greeter runs outside the user session, so the desktop
 # cursor-theme default does not reach it: set it here explicitly, otherwise
