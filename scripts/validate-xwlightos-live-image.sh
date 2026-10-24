@@ -304,13 +304,16 @@ rm -rf "$GDM_BRAND_WORK"
 unsquashfs -f -d "$GDM_BRAND_WORK" "$FS" \
     etc/dconf/profile/gdm etc/dconf/db/gdm.d/01-xwlightos-branding \
     usr/share/xwlightos/branding/xwlightos-mark.svg \
+    usr/share/xwlightos/branding/xwlightos-logo.svg \
     >/dev/null 2>&1
 grep -q '^system-db:gdm$' "$GDM_BRAND_WORK/etc/dconf/profile/gdm" \
     || { echo 'gdm dconf profile lacks system-db:gdm (greeter branding keyfile would be ignored)' >&2; exit 1; }
-grep -q "^logo='/usr/share/xwlightos/branding/xwlightos-mark.svg'$" "$GDM_BRAND_WORK/etc/dconf/db/gdm.d/01-xwlightos-branding" \
-    || { echo 'GDM greeter logo override is missing (Debian logo would stay on the login screen)' >&2; exit 1; }
-[ -s "$GDM_BRAND_WORK/usr/share/xwlightos/branding/xwlightos-mark.svg" ] \
-    || { echo 'XWLightOS mark SVG for the GDM greeter logo is missing' >&2; exit 1; }
+# 用户 2026-10-24 指令：方形槽位（GDM 徽标/安装器）只用纯 Logo（无文字、
+# 方形画布），420x120 带文字横幅被压窄变形。mark.svg 横幅保留作横幅用途。
+grep -q "^logo='/usr/share/xwlightos/branding/xwlightos-logo.svg'$" "$GDM_BRAND_WORK/etc/dconf/db/gdm.d/01-xwlightos-branding" \
+    || { echo 'GDM greeter logo override is not the pure logo (banner would be squeezed)' >&2; exit 1; }
+[ -s "$GDM_BRAND_WORK/usr/share/xwlightos/branding/xwlightos-logo.svg" ] \
+    || { echo 'XWLightOS pure logo SVG for the GDM greeter is missing' >&2; exit 1; }
 # 用户 2026-10-23 邮件：系统图标换成新的 420x120 SVG（XW 几何符号 +
 # "XW LightOS" + "by SYSTEM-Intel-MIC"）。旧的 256x256 方块标若还在，
 # 说明替换漏了地方。
@@ -640,7 +643,14 @@ done
 # shortcut, and the multi-window seed in the skeleton config.
 require_path 'usr/bin/onlyoffice-desktopeditors'
 require_path 'usr/share/applications/onlyoffice-desktopeditors.desktop'
-require_path 'etc/skel/Desktop/ONLYOFFICE.desktop'
+# 用户 2026-10-24 指令：桌面保持干净，skel Desktop 不得预置 ONLYOFFICE/
+# 终端等应用快捷方式（清理服务与安装后 cleanup 做运行时兜底）。
+if grep -qx 'etc/skel/Desktop/ONLYOFFICE.desktop' "$LIST"; then
+    echo 'skel Desktop still seeds an ONLYOFFICE shortcut (desktop must stay clean)' >&2; exit 1
+fi
+if grep -qx 'etc/skel/Desktop/终端.desktop' "$LIST"; then
+    echo 'skel Desktop still seeds a terminal shortcut (desktop must stay clean)' >&2; exit 1
+fi
 OO_CONF="$WORK/DesktopEditors.conf"
 cat_image_file 'etc/skel/.config/onlyoffice/DesktopEditors.conf' "$OO_CONF"
 # 9.4.0 semantics (verified in the shipped index.html settings JS):
@@ -737,6 +747,14 @@ grep -q '<family>Noto Sans CJK SC</family>' "$FONTCONF"
 # policies.json 落盘，Debian firefox-esr 的标准路径为
 # /usr/lib/firefox-esr/distribution/policies.json。
 require_path 'usr/share/xwlightos/homepage.html'
+# 用户 2026-10-24 指令：主页文件必须逐字节是用户原文件（聊天补发版，
+# 23657 字节，CRLF），任何改写/格式化都会改变 md5。
+HP_FILE="$WORK/homepage.html"
+cat_image_file 'usr/share/xwlightos/homepage.html' "$HP_FILE"
+[ "$(stat -c '%s' "$HP_FILE")" = "23657" ] || {
+    echo 'homepage.html size is not the user original 23657 bytes' >&2; exit 1; }
+[ "$(md5sum "$HP_FILE" | cut -d' ' -f1)" = "bcc3c9808b1ceb155cbd3cfbbbe55e2f" ] || {
+    echo 'homepage.html md5 is not the user original bcc3c9808b1ceb155cbd3cfbbbe55e2f' >&2; exit 1; }
 FF_POLICIES="$WORK/firefox-policies.json"
 cat_image_file 'usr/lib/firefox-esr/distribution/policies.json' "$FF_POLICIES"
 python3 - "$FF_POLICIES" <<'PYEOF'
@@ -747,10 +765,18 @@ with open(sys.argv[1], encoding="utf-8") as f:
     pol = json.load(f)["policies"]
 assert pol["SearchEngines"]["Default"] == "Bing", "default search engine is not Bing"
 assert pol["Homepage"]["URL"] == "file:///usr/share/xwlightos/homepage.html", "homepage is not the local XWLightOS homepage html"
-bms = pol["ManagedBookmarks"]
-assert any(b.get("name") == "XWLightOS主页" and b.get("url") == "file:///usr/share/xwlightos/homepage.html" for b in bms), "XWLightOS homepage bookmark missing"
-assert any(b.get("name") == "哔哩哔哩" and b.get("url") == "https://space.bilibili.com/1978487514" for b in bms), "bilibili bookmark missing"
-print("XWLightOS: Firefox default search=Bing, homepage=local html, bookmarks OK")
+# 用户 2026-10-24 指令：收藏直接放收藏栏、不许套文件夹。Mozilla 官方文档：
+# ManagedBookmarks 必然生成文件夹按钮，故改用 Bookmarks 策略 Placement=toolbar。
+assert "ManagedBookmarks" not in pol, "ManagedBookmarks would wrap bookmarks in a folder"
+bms = pol["Bookmarks"]
+assert any(b.get("Title") == "XWLightOS主页" and b.get("URL") == "file:///usr/share/xwlightos/homepage.html" and b.get("Placement") == "toolbar" for b in bms), "XWLightOS homepage toolbar bookmark missing"
+assert any(b.get("Title") == "哔哩哔哩" and b.get("URL") == "https://space.bilibili.com/1978487514" and b.get("Placement") == "toolbar" for b in bms), "bilibili toolbar bookmark missing"
+# 打开不弹首次使用/升级页、直接进主页；默认中文；收藏栏常显。
+assert pol["OverrideFirstRunPage"] == "", "first-run page is not disabled"
+assert pol["OverridePostUpdatePage"] == "", "post-update page is not disabled"
+assert pol["RequestedLocales"][0] == "zh-CN", "Firefox default locale is not zh-CN"
+assert pol["DisplayBookmarksToolbar"] == "always", "bookmarks toolbar is not always shown"
+print("XWLightOS: Firefox search=Bing, homepage=user-original html (md5 verified), toolbar bookmarks OK, first-run off, zh-CN")
 PYEOF
 
 # All Apps must not surface session/power helpers as regular applications.  This
@@ -767,5 +793,73 @@ for desktop_file in "$FULL_ROOT"/usr/share/applications/*.desktop "$FULL_ROOT"/u
         exit 1
     fi
 done
+
+
+# ===== Build 26 真机反馈断言（用户 2026-10-24，Build 25 测后 10+1 项）=====
+# 1/2 安装器图标：纯 Logo（方形 viewBox、无文字）、Calamares 引用 logo 文件、
+# installer 图标主题文件真实存在（旧 Icon=xwlightos-installer 无文件可解析）。
+LOGO_FILE="$WORK/xwlightos-logo.svg"
+cat_image_file 'usr/share/xwlightos/branding/xwlightos-logo.svg' "$LOGO_FILE"
+grep -q 'viewBox="0 0 120 120"' "$LOGO_FILE" || {
+    echo 'pure logo SVG is not the square 120x120 canvas' >&2; exit 1; }
+grep -q '<text' "$LOGO_FILE" && {
+    echo 'pure logo SVG still contains text elements' >&2; exit 1; } || true
+require_path 'usr/share/icons/hicolor/scalable/apps/xwlightos-installer.svg'
+BRANDING_DESC="$WORK/branding.desc"
+cat_image_file 'etc/calamares/branding/xwlightos/branding.desc' "$BRANDING_DESC"
+grep -q 'productIcon: "xwlightos-logo.svg"' "$BRANDING_DESC" || {
+    echo 'Calamares productIcon is not the pure logo' >&2; exit 1; }
+grep -q 'welcomeExpandingLogo: false' "$BRANDING_DESC" || {
+    echo 'Calamares welcomeExpandingLogo is not false (logo would stretch)' >&2; exit 1; }
+# 3 开机动画：Plymouth 脚本必须用 GetWidth/GetHeight 取屏幕尺寸
+#（旧版误用 GetX/GetY=原点坐标，内容被定位到屏幕外）；已装系统与 live 的
+# 内核命令行都必须带 quiet splash，否则全程滚屏、无动画。
+PLY_SCRIPT="$WORK/xwlightos.plymouth.script"
+cat_image_file 'usr/share/plymouth/themes/xwlightos/xwlightos.script' "$PLY_SCRIPT"
+grep -q 'Window.GetWidth ()' "$PLY_SCRIPT" || {
+    echo 'plymouth script does not use Window.GetWidth (animation positioned off-screen)' >&2; exit 1; }
+grep -q 'Window.GetX ()' "$PLY_SCRIPT" && {
+    echo 'plymouth script still misuses Window.GetX as screen width' >&2; exit 1; } || true
+GRUBD_FILE="$WORK/00-xwlightos-grubd.cfg"
+cat_image_file 'etc/default/grub.d/00-xwlightos.cfg' "$GRUBD_FILE"
+grep -q '^GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"$' "$GRUBD_FILE" || {
+    echo 'grub.d lacks quiet splash (installed boot would scroll text, no splash)' >&2; exit 1; }
+grep -q 'GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"' "$TARGET_POSTINSTALL" || {
+    echo 'target postinstall grub.d lacks quiet splash' >&2; exit 1; }
+# 4 扩展入口与扩展文件门禁（1650 钩子在构建期同口径断言，这里查成品）。
+require_path 'usr/share/applications/org.gnome.Extensions.desktop'
+require_path 'usr/bin/gnome-extensions'
+# 6 桌面清理服务与设置/启动器三件套必须进镜像。
+require_path 'usr/local/bin/xwlightos-desktop-cleaner'
+require_path 'usr/local/bin/xwlightos-sidebar-launcher'
+require_path 'usr/local/bin/xwlightos-settings'
+require_path 'usr/share/applications/xwlightos-settings.desktop'
+CLEANER_WANTS="$FULL_ROOT/etc/systemd/user/default.target.wants/xwlightos-desktop-cleaner.service"
+[ -e "$CLEANER_WANTS" ] || {
+    echo 'desktop cleaner user service is not enabled (dangling/missing wants symlink)' >&2; exit 1; }
+# 7 希沃厂商 unit 清单（1660 钩子生成）必须进镜像且含管家后端。
+SEEWO_INV="$WORK/seewo-vendor-units.txt"
+cat_image_file 'etc/xwlightos/seewo-vendor-units.txt' "$SEEWO_INV"
+grep -qx 'com.seewo.terminalmanager.service' "$SEEWO_INV" || {
+    echo 'seewo vendor unit inventory lacks com.seewo.terminalmanager.service (manager backend would not start)' >&2; exit 1; }
+grep -qi 'udi' "$SEEWO_INV" || {
+    echo 'seewo vendor unit inventory lacks the Udi unit' >&2; exit 1; }
+# 8 桌面/GRUB 壁纸必须是用户 2026-10-24 补发图（1672x941，PNG 落盘）。
+WALL_FILE="$WORK/xwlightos-wallpaper.png"
+cat_image_file 'usr/share/xwlightos/branding/xwlightos-aurora-wallpaper.png' "$WALL_FILE"
+[ "$(md5sum "$WALL_FILE" | cut -d' ' -f1)" = "eb051973b3cce6079660a3e16390e96e" ] || {
+    echo 'wallpaper is not the user-supplied 2026-10-24 image' >&2; exit 1; }
+# 9 WhiteSur-Light shell CSS 的程序栏对比度覆盖必须在成品里。
+SHELL_CSS="$WORK/whitesur-light-gnome-shell.css"
+cat_image_file 'usr/share/themes/WhiteSur-Light/gnome-shell/gnome-shell.css' "$SHELL_CSS"
+grep -q 'XWLightOS-APPGRID-CONTRAST' "$SHELL_CSS" || {
+    echo 'WhiteSur-Light shell css lacks the app-grid contrast override' >&2; exit 1; }
+# 10 U 盘自动挂载 + 自动打开（dconf 媒体处理）。
+grep -q '^automount=true$' "$GNOME_DEFAULTS" || {
+    echo 'GNOME automount is not enabled by default' >&2; exit 1; }
+grep -q '^automount-open=true$' "$GNOME_DEFAULTS" || {
+    echo 'GNOME automount-open is not enabled by default' >&2; exit 1; }
+grep -q '^show-home=false$' "$GNOME_DEFAULTS" || {
+    echo 'ding show-home is not disabled (desktop would show system icons)' >&2; exit 1; }
 
 printf 'XWLightOS 1.0 final ISO content validation passed: %s\n' "$ISO"
