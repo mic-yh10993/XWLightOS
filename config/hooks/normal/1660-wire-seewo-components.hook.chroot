@@ -18,6 +18,15 @@ set -eu
 INV=/etc/xwlightos/seewo-vendor-units.txt
 install -d -m 0755 /etc/xwlightos
 : > "$INV"
+# 用户 2026-10-24 邮件《很大问题》第 2 项：希沃管家后端开机自启失效。
+# 厂商 unit 有一行 EnvironmentFile=/etc/environment（无 '-' 前缀），
+# systemd 对缺失的 EnvironmentFile 是硬失败（服务根本起不来），而镜像
+# 此前根本没有 /etc/environment 这个文件。这里没有它就直接让构建失败，
+# 不能再把一个注定起不来的后端送到用户机器上。
+[ -f /etc/environment ] || {
+    echo "XWLightOS: /etc/environment missing, com.seewo.terminalmanager.service can never start (EnvironmentFile without dash prefix)" >&2
+    exit 1
+}
 for base in /usr/lib/systemd/system /lib/systemd/system; do
     [ -d "$base" ] || continue
     for unit in "$base"/*seewo* "$base"/*cvte* "$base"/*maxhub* \
@@ -40,6 +49,12 @@ while IFS= read -r name; do
     case "$name" in
         *update*|*upgrade*|*ota*) echo "XWLightOS: not enabling updater unit $name"; continue ;;
     esac
+    # 用户 2026-10-24 邮件《很大问题》第 8 项：侧边栏连同 Udi 组件默认
+    # 不开机启动（用户在设置里手动打开才启用）。Udi 系 unit 在此跳过，
+    # 与管家后端（第 2 项要求修好自启）是两个不同组件，不要混淆。
+    case "$name" in
+        *udi*|*Udi*) echo "XWLightOS: not enabling Udi unit $name by default (user turns it on in Settings)"; continue ;;
+    esac
     src=""
     for base in /usr/lib/systemd/system /lib/systemd/system; do
         [ -f "$base/$name" ] && { src="$base/$name"; break; }
@@ -51,18 +66,47 @@ done < "$INV"
 
 if grep -qx 'com.seewo.terminalmanager.service' "$INV"; then
     echo "XWLightOS: Seewo manager backend unit present and enabled"
+    # 启用必须落到 multi-user.target.wants 才算数：前面循环里 unit
+    # 若因路径问题被跳过，这里要大声失败，不能静默放行一个“看起来
+    # 启用了、实际开机不起”的后端（用户 2026-10-24 第 2 项）。
+    [ -L /etc/systemd/system/multi-user.target.wants/com.seewo.terminalmanager.service ] || {
+        echo "XWLightOS: terminalmanager unit found but not linked into multi-user.target.wants" >&2
+        exit 1
+    }
 else
     echo "XWLightOS: WARNING: com.seewo.terminalmanager.service NOT found in image (manager backend cannot start)" >&2
 fi
 if grep -qi 'udi' "$INV"; then
-    echo "XWLightOS: Udi component unit present and enabled"
+    echo "XWLightOS: Udi component unit present (not enabled by default; user turns it on in Settings)"
 else
     echo "XWLightOS: WARNING: no Udi unit found in image" >&2
 fi
 
 # --- Sidebar autostart rewiring ---
+# 用户 2026-10-24 邮件《很大问题》第 8 项：侧边栏默认不开机启动。
+# 实现方式是启动器 + 默认关闭标志（/etc/skel/.config/xwlightos/sidebar-off，
+# 新用户继承；设置工具拨动开关即改这个标志），而不是删启动项：用户在
+# 设置里打开后，下次登录启动器仍能正常起栏；彻底删了启动项就没法再开了。
+# 应用网格里的侧边栏图标则指向启动器的 --manual 模式（见启动器注释），
+# 用户手动点图标时不受关闭标志拦截。
 chmod 755 /usr/local/bin/xwlightos-sidebar-launcher /usr/local/bin/xwlightos-settings \
     /usr/local/bin/xwlightos-desktop-cleaner 2>/dev/null || true
+# 应用网格入口统一走稳定化启动器：厂商 .desktop 直接 Exec 厂商二进制，
+# 缺少启动器的工作目录/后端等待/日志，闪退时无从定位。
+for _appdt in /usr/share/applications/com.seewo.easisidebar.desktop; do
+    [ -f "$_appdt" ] || continue
+    if grep -q '^Exec=/usr/local/bin/xwlightos-sidebar-launcher --manual' "$_appdt"; then
+        echo "XWLightOS: sidebar app entry already rewired: $_appdt"
+    else
+        sed -i 's|^Exec=.*|Exec=/usr/local/bin/xwlightos-sidebar-launcher --manual|' "$_appdt"
+        grep -q '^Exec=/usr/local/bin/xwlightos-sidebar-launcher --manual' "$_appdt" || {
+            echo "XWLightOS: failed to rewire sidebar app entry $_appdt" >&2
+            exit 1
+        }
+        echo "XWLightOS: sidebar app entry rewired to stabilising launcher --manual: $_appdt"
+    fi
+done
+unset _appdt
 found=0
 for dt in /etc/xdg/autostart/*.desktop; do
     [ -f "$dt" ] || continue

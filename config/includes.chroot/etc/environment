@@ -1,0 +1,10 @@
+# XWLightOS: /etc/environment must exist.
+#
+# The Seewo manager backend unit com.seewo.terminalmanager.service
+# declares EnvironmentFile=/etc/environment WITHOUT the optional '-'
+# prefix, so systemd refuses to start the service at all when this
+# file is missing (no dash = missing file is a hard error, not a
+# silent skip). The live image previously shipped no such file, which
+# is a prime suspect for "manager backend autostart never comes up"
+# (user report 2026-10-24): Restart=always would only spin a service
+# that can never start. An empty file is a valid environment file.

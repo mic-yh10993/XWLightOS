@@ -12,6 +12,27 @@
 #   * logs stdout/stderr to ~/.local/share/xwlightos/easisidebar.log,
 #   * restarts the bar at most 3 times with backoff, then stays down
 #     (no crash loop burning CPU all day).
+#
+# User report 2026-10-24 ("very big problem" #8): the sidebar crashes
+# on XWLightOS but works on stock Debian 13, and it must NOT autostart
+# by default. Two real differences found from the vendor .deb itself:
+#   * the vendor user service runs the bar with
+#     WorkingDirectory=/opt/apps/com.seewo.easisidebar/files/bin/,
+#     while the old launcher ran it from the user's home directory;
+#     a .NET/Avalonia app resolving assets relative to its working
+#     directory is a classic crash source. This launcher now cds into
+#     the binary's directory before exec, exactly like the vendor unit.
+#   * the vendor postinst enables the user service only when a live
+#     user session exists at install time; at image build time there
+#     is none, so the service was never enabled for anyone. The
+#     launcher is therefore the only start path on XWLightOS, and it
+#     must mirror the vendor service environment (working directory,
+#     backend wait) instead of a bare Exec.
+# Default-off is implemented by the sidebar-off flag (shipped in
+# /etc/skel, so every new user starts with the sidebar off; the
+# Settings tool removes the flag when the user turns it on). Manual
+# starts (app-grid icon) use --manual, which bypasses the flag check
+# so a user who clicks the icon always gets the bar.
 set -u
 
 # 2026-10-24 侧边栏闪退修法：autostart 环境里 HOME 几乎不会缺失，但
@@ -19,16 +40,26 @@ set -u
 # 保证启动器永远不因环境变量问题静默死亡。
 if [ -z "${HOME:-}" ]; then HOME=/tmp; fi
 
+MANUAL=0
+if [ "${1:-}" = "--manual" ]; then MANUAL=1; fi
+
 FLAG_OFF="$HOME/.config/xwlightos/sidebar-off"
-[ -f "$FLAG_OFF" ] && exit 0
+if [ "$MANUAL" -eq 0 ]; then
+    [ -f "$FLAG_OFF" ] && exit 0
+fi
 
 LOG_DIR="$HOME/.local/share/xwlightos"
 mkdir -p "$LOG_DIR" 2>/dev/null || LOG_DIR=/tmp
 LOG="$LOG_DIR/easisidebar.log"
 
 # Discover the vendor entry point: a dedicated binary if present,
-# otherwise the Exec line of the vendor .desktop.
-CANDIDATES="/opt/apps/com.seewo.easisidebar/files/EasiSidebar \
+# otherwise the Exec line of the vendor .desktop. The vendor user
+# service runs files/bin/EasiSideBar (the postinst symlink
+# files/bin -> files/<version>), so that path is tried FIRST: the old
+# list missed it and fell through to the versioned .desktop Exec,
+# which runs the bar from the wrong working directory.
+CANDIDATES="/opt/apps/com.seewo.easisidebar/files/bin/EasiSideBar \
+/opt/apps/com.seewo.easisidebar/files/EasiSidebar \
 /opt/apps/com.seewo.easisidebar/files/com.seewo.easisidebar \
 /opt/apps/com.seewo.easisidebar/files/EasiSideBar"
 CMD=""
@@ -88,9 +119,13 @@ while [ "$attempt" -lt 3 ]; do
     # Word splitting of $CMD is intentional (Exec may carry arguments).
     # shellcheck disable=SC2086
     _start=$(date +%s)
-    $CMD >>"$LOG" 2>&1 &
-    pid=$!
-    wait "$pid" 2>/dev/null
+    # Run from the binary's own directory, exactly like the vendor user
+    # service (WorkingDirectory=.../files/bin/): the bar resolves
+    # assets relative to its working directory, and running it from
+    # $HOME is a crash source (user report 2026-10-24 #8).
+    _bin="${CMD%% *}"
+    _bindir="$(dirname "$_bin")"
+    (cd "$_bindir" 2>/dev/null && $CMD >>"$LOG" 2>&1)
     rc=$?
     _elapsed=$(( $(date +%s) - _start ))
     echo "xwlightos-sidebar: exited rc=$rc after ${_elapsed}s" >>"$LOG" 2>&1
@@ -108,7 +143,11 @@ while [ "$attempt" -lt 3 ]; do
             exit 0
         fi
     fi
-    [ -f "$FLAG_OFF" ] && exit 0
+    # 手动模式（--manual）是用户主动点图标启动，不受关闭标志影响；
+    # 自启模式下标志出现说明用户在设置里刚关掉它，立即停下不再重试。
+    if [ "$MANUAL" -eq 0 ]; then
+        [ -f "$FLAG_OFF" ] && exit 0
+    fi
     sleep 2
 done
 echo "xwlightos-sidebar: gave up after 3 attempts (see log)" >>"$LOG" 2>&1

@@ -47,6 +47,14 @@ fi
 install -Dm644 /dev/stdin /etc/xwlightos/session-user <<EOF
 $installed_account
 EOF
+# 用户 2026-10-24 邮件《很大问题》第 8 项：侧边栏默认不开机启动。
+# 新装系统的用户家目录来自 /etc/skel（已含 sidebar-off 标志），但这里
+# 再给本次安装的账号显式写一份，防 skel 复制链路有任何一环漏掉：
+# 标志存在时启动器直接退出，设置里打开后才会在下次登录起栏。
+# 非致命步骤：写失败绝不能拖垮安装。
+mkdir -p "/home/$installed_account/.config/xwlightos" 2>/dev/null || true
+printf 'off\n' > "/home/$installed_account/.config/xwlightos/sidebar-off" 2>/dev/null || true
+chown -R "$installed_account:$installed_account" "/home/$installed_account/.config/xwlightos" 2>/dev/null || true
 if command -v systemctl >/dev/null 2>&1; then
     systemctl enable xwlightos-installed-cleanup.service >/dev/null 2>&1 || true
     systemctl enable gdm.service >/dev/null 2>&1 || true
