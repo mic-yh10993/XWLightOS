@@ -52,6 +52,20 @@ LOG_DIR="$HOME/.local/share/xwlightos"
 mkdir -p "$LOG_DIR" 2>/dev/null || LOG_DIR=/tmp
 LOG="$LOG_DIR/easisidebar.log"
 
+# 2026-10-24 22:40 用户假设：侧边栏闪退是不是字体问题（此前 Debian
+# 打不开侧边栏是因为缺少字体）。验证结论见提交信息：系统级 CJK 字体
+# （fonts-noto-cjk）镜像里本来就有，fontconfig 缺字体只会 fallback
+# 成方框字、不会让 .NET 应用闪退；真正与字体相关的路径是厂商资源
+# 按工作目录相对解析（已由 cd 到二进制目录修法覆盖）。但厂商是否
+# 捆绑了专用字体、光凭现有材料无法证伪，因此这里把字体诊断写进日志：
+# 下次闪退时日志里直接能看到 CJK 字体数量与解析结果，不用再猜。
+if command -v fc-list >/dev/null 2>&1; then
+    echo "xwlightos-sidebar: fontconfig CJK fonts: $(fc-list :lang=zh 2>/dev/null | wc -l)" >>"$LOG" 2>&1 || true
+fi
+if command -v fc-match >/dev/null 2>&1; then
+    echo "xwlightos-sidebar: fc-match Noto Sans CJK SC: $(fc-match 'Noto Sans CJK SC' 2>/dev/null || echo 'no match')" >>"$LOG" 2>&1 || true
+fi
+
 # Discover the vendor entry point: a dedicated binary if present,
 # otherwise the Exec line of the vendor .desktop. The vendor user
 # service runs files/bin/EasiSideBar (the postinst symlink

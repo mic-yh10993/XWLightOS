@@ -983,6 +983,10 @@ require_path 'usr/bin/gnome-extensions'
 # 6 桌面清理服务与设置/启动器三件套必须进镜像。
 require_path 'usr/local/bin/xwlightos-desktop-cleaner'
 require_path 'usr/local/bin/xwlightos-sidebar-launcher'
+# 用户 2026-10-24 22:40 字体假设：启动器必须把 CJK 字体诊断写进日志，
+# 下次闪退时凭日志判断字体是否在场，不再凭猜测。
+grep -q 'fc-list :lang=zh' "$FULL_ROOT/usr/local/bin/xwlightos-sidebar-launcher" || {
+    echo 'sidebar launcher lacks font diagnostic logging' >&2; exit 1; }
 require_path 'usr/local/bin/xwlightos-settings'
 require_path 'usr/share/applications/xwlightos-settings.desktop'
 CLEANER_WANTS="$FULL_ROOT/etc/systemd/user/default.target.wants/xwlightos-desktop-cleaner.service"
