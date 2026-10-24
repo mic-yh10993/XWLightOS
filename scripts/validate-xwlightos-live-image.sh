@@ -377,7 +377,9 @@ grep -q 'XWLightOS' "$MOTD_WORK" \
     || { echo '/etc/motd is not XWLightOS-branded' >&2; exit 1; }
 GNOME_DEFAULTS="$WORK/00-xwlightos-gnome"
 cat_image_file 'etc/dconf/db/local.d/00-xwlightos-gnome' "$GNOME_DEFAULTS"
-grep -q "^gtk-theme='WhiteSur-Dark'$" "$GNOME_DEFAULTS"
+# 用户 2026-10-24 邮件第 9、11 项：过时应用也用 WhiteSur-Light，
+# 全应用统一浅色、不得黑字黑底。
+grep -q "^gtk-theme='WhiteSur-Light'$" "$GNOME_DEFAULTS"
 # 用户 2026-10-17 邮件指令：图标 WhiteSur-light、Shell WhiteSur-Light。
 grep -q "^icon-theme='WhiteSur-light'$" "$GNOME_DEFAULTS"
 grep -q 'dash-to-dock@micxgx.gmail.com' "$GNOME_DEFAULTS"
@@ -388,10 +390,27 @@ grep -q "^intellihide=false$" "$GNOME_DEFAULTS" \
     || { echo 'dash-to-dock intellihide is not disabled' >&2; exit 1; }
 grep -q "^autohide-in-fullscreen=true$" "$GNOME_DEFAULTS" \
     || { echo 'dash-to-dock autohide-in-fullscreen is not enabled' >&2; exit 1; }
-# 用户 2026-10-17 邮件指令的全局默认扩展（不可缺项）。
-# 用户 2026-10-23 指令：性能监视改用 Debian 官方 gnome-system-monitor 应用，
-# paradoxxxzero 顶栏 system-monitor 扩展已移除（1610 钩子删除），此处不再断言；
-# 且 enabled-extensions 里不得再引用它的 UUID（GNOME 会静默跳过，留着是脏配置）。
+# 用户 2026-10-24 邮件《很大问题》第 1 项：智能隐藏强制写死关闭。
+# dconf 默认之外另有一层 gschema 覆盖：即使 dconf 库被绕过，schema
+# 默认本身也是关闭的。两层缺一不可，这里两边都断言。
+GSCHEMA_OVERRIDE="$WORK/90-xwlightos-dash-to-dock.gschema.override"
+cat_image_file 'usr/share/glib-2.0/schemas/90-xwlightos-dash-to-dock.gschema.override' "$GSCHEMA_OVERRIDE"
+grep -q "^intellihide=false$" "$GSCHEMA_OVERRIDE" \
+    || { echo 'dash-to-dock schema override does not force intellihide off' >&2; exit 1; }
+grep -q "^autohide=false$" "$GSCHEMA_OVERRIDE" \
+    || { echo 'dash-to-dock schema override does not force autohide off' >&2; exit 1; }
+grep -q "^autohide-in-fullscreen=true$" "$GSCHEMA_OVERRIDE" \
+    || { echo 'dash-to-dock schema override lost fullscreen hiding' >&2; exit 1; }
+# 用户 2026-10-24 邮件第 6、10 项：状态栏监控与输入法面板扩展必须启用。
+# （2026-10-23 曾移除顶栏 system-monitor 扩展的旧注释已作废：用户
+# 2026-10-24 明确要求恢复 Debian 官方打包的顶栏监控扩展。）
+grep -q 'system-monitor@paradoxxx.zero.gmail.com' "$GNOME_DEFAULTS" \
+    || { echo 'enabled-extensions missing top-bar system-monitor' >&2; exit 1; }
+grep -q 'kimpanel@kde.org' "$GNOME_DEFAULTS" \
+    || { echo 'enabled-extensions missing kimpanel input method panel' >&2; exit 1; }
+# 用户 2026-10-24 邮件第 6、10 项：状态栏监控与输入法面板扩展必须启用。
+# （2026-10-23 曾移除顶栏 system-monitor 扩展的旧注释已作废：用户
+# 2026-10-24 明确要求恢复 Debian 官方打包的顶栏监控扩展。）
 for _ext in 'apps-menu@gnome-shell-extensions.gcampax.github.com' \
              'ding@rastersoft.com' \
              'native-window-placement@gnome-shell-extensions.gcampax.github.com' \
@@ -797,8 +816,57 @@ assert pol["OverrideFirstRunPage"] == "", "first-run page is not disabled"
 assert pol["OverridePostUpdatePage"] == "", "post-update page is not disabled"
 assert pol["RequestedLocales"][0] == "zh-CN", "Firefox default locale is not zh-CN"
 assert pol["DisplayBookmarksToolbar"] == "always", "bookmarks toolbar is not always shown"
-print("XWLightOS: Firefox search=Bing, homepage=user html as-is, toolbar bookmarks OK, first-run off, zh-CN")
+# 用户 2026-10-24 邮件《很大问题》第 5 项：新标签页也要打开用户主页。
+# Mozilla 官方文档明言 Homepage 策略不改变新标签页（新标签页设置只有
+# “Firefox 主页”和“空白页”两档），因此必须用扩展实现：策略强制安装
+# 本地新标签页扩展（重定向到 file:///usr/share/xwlightos/homepage.html）。
+ext = pol["ExtensionSettings"]["xwlightos-newtab@xwlightos.local"]
+assert ext["installation_mode"] == "force_installed", "new-tab extension is not force-installed"
+assert ext["install_url"] == "file:///usr/share/xwlightos/firefox-newtab.xpi", "new-tab extension URL is wrong"
+print("XWLightOS: Firefox search=Bing, homepage=user html as-is, toolbar bookmarks OK, first-run off, zh-CN, new-tab extension forced")
 PYEOF
+
+# 新标签页扩展本体必须落盘且 manifest 可解析（否则策略指向空文件）。
+require_path 'usr/share/xwlightos/firefox-newtab.xpi'
+FF_XPI="$WORK/firefox-newtab.xpi"
+cat_image_file 'usr/share/xwlightos/firefox-newtab.xpi' "$FF_XPI"
+python3 - "$FF_XPI" <<'PYEOF'
+import json
+import sys
+import zipfile
+z = zipfile.ZipFile(sys.argv[1])
+man = json.loads(z.read("manifest.json"))
+assert man["browser_specific_settings"]["gecko"]["id"] == "xwlightos-newtab@xwlightos.local", "new-tab extension id mismatch"
+assert man["chrome_url_overrides"]["newtab"] == "redirect.html", "new-tab override page missing"
+assert "redirect.html" in z.namelist(), "redirect page missing from xpi"
+print("XWLightOS: new-tab xpi valid")
+PYEOF
+
+# 用户 2026-10-24 邮件《很大问题》第 7 项：右键新建文本/PPT/DOC。
+# Nautilus 的“新建文档”菜单只列出 ~/Templates（中文环境为 ~/模板）
+# 里的模板文件，两边都放，缺一不可；PPT/DOCX 必须是结构有效的
+# OOXML 空文件，不能放损坏文件。
+require_path 'etc/skel/Templates/新建文本文件.txt'
+require_path 'etc/skel/Templates/新建演示文稿.pptx'
+require_path 'etc/skel/Templates/新建文档.docx'
+require_path 'etc/skel/模板/新建文本文件.txt'
+require_path 'etc/skel/模板/新建演示文稿.pptx'
+require_path 'etc/skel/模板/新建文档.docx'
+for _tpl in 'etc/skel/Templates/新建演示文稿.pptx' 'etc/skel/Templates/新建文档.docx'; do
+    _tmp="$WORK/$(basename "$_tpl")"
+    cat_image_file "$_tpl" "$_tmp"
+    python3 - "$_tmp" <<'PYEOF'
+import sys
+import zipfile
+from xml.etree import ElementTree as ET
+z = zipfile.ZipFile(sys.argv[1])
+assert z.testzip() is None, "template zip corrupt"
+for name in z.namelist():
+    if name.endswith(".xml") or name.endswith(".rels"):
+        ET.fromstring(z.read(name))
+print("XWLightOS: template valid:", sys.argv[1])
+PYEOF
+done
 
 # All Apps must not surface session/power helpers as regular applications.  This
 # validates the fully installed filesystem rather than trusting the source hook.
