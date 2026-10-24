@@ -67,6 +67,30 @@ if command -v dconf >/dev/null 2>&1; then
     }
 fi
 
+# Compile the GSettings schema overrides (dash-to-dock defaults are forced
+# at the schema level, see 90-xwlightos-dash-to-dock.gschema.override:
+# Debian's dashtodock 75-1 schema defaults to intellihide=true, and the
+# dconf layer alone proved not hard enough on real hardware). Without
+# this step the override file is inert text and fresh installs would
+# still open with intelligent hiding on.
+if command -v glib-compile-schemas >/dev/null 2>&1; then
+    glib-compile-schemas /usr/share/glib-2.0/schemas || {
+        echo 'XWLightOS: glib-compile-schemas failed' >&2
+        exit 1
+    }
+else
+    echo 'XWLightOS: glib-compile-schemas missing, schema overrides would not apply' >&2
+    exit 1
+fi
+[ -f /usr/share/glib-2.0/schemas/gschemas.compiled ] || {
+    echo 'XWLightOS: compiled GSettings schemas missing after glib-compile-schemas' >&2
+    exit 1
+}
+grep -q '^intellihide=false$' /usr/share/glib-2.0/schemas/90-xwlightos-dash-to-dock.gschema.override || {
+    echo 'XWLightOS: dash-to-dock schema override does not force intellihide off' >&2
+    exit 1
+}
+
 # live-build can install the generic live-config systemd backend independently
 # of the explicit package list. Its oneshot service runs Before=basic.target,
 # yet XWLightOS initializes its Live user and graphical session through the

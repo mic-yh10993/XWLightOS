@@ -1,0 +1,17 @@
+# XWLightOS: force dash-to-dock defaults at the schema level.
+#
+# Debian's gnome-shell-extension-dashtodock 75-1 ships schema defaults
+# intellihide=true and autohide=true (verified from the real .deb).
+# The dconf system default (local.d/00-xwlightos-gnome) already says
+# otherwise, but a fresh install still showed intelligent hiding ON,
+# so the dconf layer alone is not a hard enough guarantee. This
+# override rewrites the schema default itself (compiled by
+# glib-compile-schemas in the 1700 hook): even if the dconf database
+# is bypassed for any reason, the out-of-the-box behaviour is dock
+# resident, hiding only in fullscreen -- exactly the 2026-10-24 user
+# requirement (normal apps never hide the dock; whiteboard, video
+# booth, PPT projection and other fullscreen apps do).
+[org.gnome.shell.extensions.dash-to-dock]
+intellihide=false
+autohide=false
+autohide-in-fullscreen=true

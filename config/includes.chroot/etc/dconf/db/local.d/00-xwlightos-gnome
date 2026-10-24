@@ -2,13 +2,14 @@
 # Applied via `dconf update` in the 1700 hook.
 
 [org/gnome/desktop/interface]
-# 用户 2026-10-17 邮件指令：图标 WhiteSur-light、Shell WhiteSur-Light、
-# 过时应用程序（legacy GTK）WhiteSur-Dark。
+# 用户 2026-10-17 邮件指令：图标 WhiteSur-light、Shell WhiteSur-Light。
 # 用户 2026-10-18 邮件指令：系统默认主题色为白色。color-scheme 决定
-# libadwaita/GTK4 应用的浅色/深色外观，'prefer-light' 即默认白色；
-# GTK3 老应用仍走下面的 gtk-theme（过时应用 WhiteSur-Dark，保持 10-17 指令）。
+# libadwaita/GTK4 应用的浅色/深色外观，'prefer-light' 即默认白色。
+# 用户 2026-10-24 邮件第 9 项：过时应用程序也用 WhiteSur-Light（此前给
+# 老应用的 WhiteSur-Dark 已撤销）；第 11 项：所有应用黑字黑底看不见——
+# 深色主题与 prefer-light 混用是黑底黑字的来源之一，全部统一为浅色。
 color-scheme='prefer-light'
-gtk-theme='WhiteSur-Dark'
+gtk-theme='WhiteSur-Light'
 icon-theme='WhiteSur-light'
 cursor-theme='WhiteSur-cursors'
 font-name='Noto Sans CJK SC 11'
@@ -16,16 +17,17 @@ document-font-name='Noto Sans CJK SC 11'
 monospace-font-name='Noto Sans Mono CJK SC 11'
 
 [org/gnome/desktop/wm/preferences]
-theme='WhiteSur-Dark'
+theme='WhiteSur-Light'
 # 用户 2026-10-17 邮件指令：窗口按钮放右上角。
 button-layout=':minimize,maximize,close'
 
 [org/gnome/shell]
 # chroot 构建无显示、无重启：扩展启用走系统级 dconf 默认（dconf update 编译
 # 进 db），首次登录即生效，无需运行时 gnome-extensions enable。
-# 用户 2026-10-23 指令：性能监视工具换成 Debian 官方 gnome-system-monitor
-# 应用（见 xwlightos-desktop.list.chroot）；paradoxxxzero 的顶栏
-# system-monitor 扩展同步移除，不与应用版并存（功能重复、视觉混乱）。
+# 用户 2026-10-24 邮件《很大问题》第 6 项：状态栏监控要 Debian 自带的那种
+# 顶栏扩展（gnome-shell-extension-system-monitor，即 paradoxxxzero 顶栏扩展），
+# 不是独立的系统监控程序。2026-10-23 曾移除它的旧决定已被用户新要求推翻，
+# 此处重新启用；固定栏里系统监控程序的钉住同步取消（见 favorite-apps）。
 # 注意：Debian 的 gnome-shell-extension-appindicator 装出来的 UUID 是
 # ubuntu-appindicators@ubuntu.com，不是上游的 appindicatorsupport@rgcjonas.gmail.com，
 # 写错会导致 1650 钩子校验失败、构建红灯（2026-10-24 实测）。
@@ -34,7 +36,14 @@ button-layout=':minimize,maximize,close'
 # 不是装了 Ubuntu 系统，也不是多余软件；它负责 QQ/微信/钉钉等应用的
 # 顶栏托盘图标，关掉它这些应用的托盘图标就没了。扩展应用里显示的
 # “Ubuntu AppIndicators”就是它，可在扩展应用里开关，但不建议删。
-enabled-extensions=['apps-menu@gnome-shell-extensions.gcampax.github.com', 'dash-to-dock@micxgx.gmail.com', 'ding@rastersoft.com', 'native-window-placement@gnome-shell-extensions.gcampax.github.com', 'places-menu@gnome-shell-extensions.gcampax.github.com', 'drive-menu@gnome-shell-extensions.gcampax.github.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'ubuntu-appindicators@ubuntu.com']
+# 用户 2026-10-24 邮件第 6 项：要 Debian 13 Netinst 自带的那种状态栏
+# 监控（顶栏显示 CPU/内存/网络等），不要独立的系统监控程序——重新启用
+# Debian 官方打包的 paradoxxxzero 顶栏 system-monitor 扩展（bookworm 版
+# 40-5，Shell 43 兼容），并把固定栏里那个系统监视器程序去掉钉住。
+# 用户 2026-10-24 邮件第 10 项：装上输入法面板 GNOME Shell 扩展
+# （kimpanel@kde.org，Debian 官方包 gnome-shell-extension-kimpanel，
+# Shell 43 兼容；fcitx5 自带 kimpanel 插件，见 fcitx5-modules）。
+enabled-extensions=['apps-menu@gnome-shell-extensions.gcampax.github.com', 'dash-to-dock@micxgx.gmail.com', 'ding@rastersoft.com', 'native-window-placement@gnome-shell-extensions.gcampax.github.com', 'places-menu@gnome-shell-extensions.gcampax.github.com', 'drive-menu@gnome-shell-extensions.gcampax.github.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'ubuntu-appindicators@ubuntu.com', 'system-monitor@paradoxxx.zero.gmail.com', 'kimpanel@kde.org']
 # 用户 2026-10-20 邮件指令：固定栏固定 7 个应用——希沃白板、希沃视频展台、
 # 班级优化大师、ONLYOFFICE、钉钉、微信、QQ（按此顺序）。
 # 用户 2026-10-20 邮件指令：dock 栏把"文件"和 Firefox 加回去，放最前面。
@@ -44,12 +53,9 @@ enabled-extensions=['apps-menu@gnome-shell-extensions.gcampax.github.com', 'dash
 #  com.alibabainc.dingtalk.desktop / wechat.desktop / qq.desktop /
 #  org.gnome.Nautilus.desktop（文件）/ firefox-esr.desktop。
 # 注意：XWLightOS 已移除 AI 组件，旧的 AI 聊天/manager 固定项同步移除。
-# 用户 2026-10-24 邮件第 4 项“系统监视没有”：二进制与 .desktop 其实都在
-# 镜像里（1650 钩子断言 /usr/bin/gnome-system-monitor，Build 28 构建日志
-# 有安装记录），缺的是可见性——它不在固定栏里。把系统监视器钉到固定栏
-# 末尾，dock 上直接可见；中文名是“系统监视器”，应用网格里搜“系统监视”
-# 也能找到。
-favorite-apps=['org.gnome.Nautilus.desktop', 'firefox-esr.desktop', 'com.seewo.easinote5.desktop', 'com.seewo.easicamera.desktop', 'com.seewo.easicare.desktop', 'onlyoffice-desktopeditors.desktop', 'com.alibabainc.dingtalk.desktop', 'wechat.desktop', 'qq.desktop', 'gnome-system-monitor.desktop']
+# 用户 2026-10-24 邮件第 6 项：固定栏里那个系统监视器程序用户说没用，
+# 取消钉住（程序本身仍装着，顶栏扩展的菜单里也能打开它）。
+favorite-apps=['org.gnome.Nautilus.desktop', 'firefox-esr.desktop', 'com.seewo.easinote5.desktop', 'com.seewo.easicamera.desktop', 'com.seewo.easicare.desktop', 'onlyoffice-desktopeditors.desktop', 'com.alibabainc.dingtalk.desktop', 'wechat.desktop', 'qq.desktop']
 
 [org/gnome/shell/extensions/user-theme]
 # 用户 2026-10-17 邮件指令：Shell 主题用 WhiteSur-Light。
@@ -80,6 +86,14 @@ running-indicator-style='DOTS'
 # 窗口，不再触发任何隐藏。
 # 2026-10-24 用户邮件第 5 项后澄清（19:37）：只在设置页关智能隐藏就正常，
 # 其它开关不要动——故本节保持 Build 28 原样，不做额外改动。
+# 用户 2026-10-24 邮件《很大问题》第 1 项：dash to dock 一装上智能隐藏
+# 就是开着的，要求“强制写死关闭”。构建侧 dconf 早已写 intellihide=false
+# 但真机仍开着，根因是 Debian 版 dash-to-dock 75-1 的 schema 默认值本身
+# 就是 intellihide=true、autohide=true（实包 schema 核验）：只要系统 dconf
+# 库有任何一环没生效，默认值就赢。只写 dconf 默认不够硬，因此另加一层
+# gschema 覆盖（/usr/share/glib-2.0/schemas/90-xwlightos-dash-to-dock.gschema.override，
+# 1700 钩子编译）：把 schema 默认本身改成与本节一致，dconf 库即使被绕过，
+# 默认也是关闭的。两层都写死，缺一不可。
 autohide=false
 intellihide=false
 autohide-in-fullscreen=true
