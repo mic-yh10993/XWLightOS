@@ -14,6 +14,11 @@
 #     (no crash loop burning CPU all day).
 set -u
 
+# 2026-10-24 侧边栏闪退修法：autostart 环境里 HOME 几乎不会缺失，但
+# set -u 下 HOME 一旦未定义本脚本会立刻死掉且无日志。兜底到 /tmp，
+# 保证启动器永远不因环境变量问题静默死亡。
+if [ -z "${HOME:-}" ]; then HOME=/tmp; fi
+
 FLAG_OFF="$HOME/.config/xwlightos/sidebar-off"
 [ -f "$FLAG_OFF" ] && exit 0
 
@@ -35,15 +40,46 @@ if [ -z "$CMD" ]; then
               /etc/xdg/autostart/*sidebar*.desktop \
               /opt/apps/com.seewo.easisidebar/entries/applications/com.seewo.easisidebar.desktop; do
         [ -f "$dt" ] || continue
-        CMD="$(sed -n 's/^Exec=//p' "$dt" | head -n 1 | sed 's/ *%[A-Za-z]//g')"
+        # 2026-10-24 侧边栏闪退修法：/etc/xdg/autostart/*sidebar*.desktop
+        # 这个 glob 会命中启动器自己的 autostart 文件
+        # xwlightos-easisidebar.desktop；若此时厂商二进制与厂商 .desktop
+        # 均缺失，旧写法会把启动器自己的 Exec 读成 CMD 而自我执行，
+        # 表现为侧边栏“闪退”（实为递归启动）。跳过自身，CMD 等于自身
+        # 时也视为未找到。
+        case "$dt" in
+            */xwlightos-easisidebar.desktop) continue ;;
+        esac
+        _exec="$(sed -n 's/^Exec=//p' "$dt" | head -n 1 | sed 's/ *%[A-Za-z]//g')"
+        case "$_exec" in
+            */xwlightos-sidebar-launcher|*/xwlightos-sidebar-launcher\ *) continue ;;
+        esac
+        CMD="$_exec"
         [ -n "$CMD" ] && break
     done
 fi
+case "$CMD" in
+    */xwlightos-sidebar-launcher|*/xwlightos-sidebar-launcher\ *) CMD="" ;;
+esac
 [ -n "$CMD" ] || { echo "xwlightos-sidebar: vendor sidebar entry not found" >>"$LOG" 2>&1; exit 0; }
 
 export GDK_BACKEND=x11
 export QT_QPA_PLATFORM=xcb
 export ELECTRON_OZONE_PLATFORM_HINT=x11
+
+# 2026-10-24 侧边栏闪退修法：侧边栏依赖希沃管家后端服务
+# (com.seewo.terminalmanager.service)。登录后立即起栏时后端可能还没
+# 就绪，是经典的“起栏即崩”。先等后端 active（最多 15 秒），超时后仍
+# 起栏——绝不因后端故障无限阻塞登录；同时把后端状态写进日志，方便
+# 用户回传时定位。
+if command -v systemctl >/dev/null 2>&1; then
+    _wait=0
+    while [ "$_wait" -lt 15 ]; do
+        [ "$(systemctl is-active com.seewo.terminalmanager.service 2>/dev/null)" = "active" ] && break
+        sleep 2
+        _wait=$((_wait + 2))
+    done
+    echo "xwlightos-sidebar: backend states: terminalmanager=$(systemctl is-active com.seewo.terminalmanager.service 2>/dev/null || echo unknown)" >>"$LOG" 2>&1
+fi
 
 attempt=0
 while [ "$attempt" -lt 3 ]; do
@@ -51,11 +87,27 @@ while [ "$attempt" -lt 3 ]; do
     echo "xwlightos-sidebar: start attempt $attempt: $CMD" >>"$LOG" 2>&1
     # Word splitting of $CMD is intentional (Exec may carry arguments).
     # shellcheck disable=SC2086
+    _start=$(date +%s)
     $CMD >>"$LOG" 2>&1 &
     pid=$!
     wait "$pid" 2>/dev/null
     rc=$?
-    echo "xwlightos-sidebar: exited rc=$rc" >>"$LOG" 2>&1
+    _elapsed=$(( $(date +%s) - _start ))
+    echo "xwlightos-sidebar: exited rc=$rc after ${_elapsed}s" >>"$LOG" 2>&1
+    # 2026-10-24 侧边栏闪退修法：会 daemonize 的厂商二进制在 fork 后
+    # 父进程迅速返回，旧写法把“快速退出”一律算成一次崩溃，连烧 3 次。
+    # 若快速退出后侧边栏进程仍在，说明它已成功 daemonize，视为运行中。
+    # 匹配必须锚定在命令行开头或路径分隔符后，避免误命中命令行里仅
+    # 提到侧边栏名字的无关进程（如测试外壳、编辑器）。判定时先等 1 秒，
+    # 因为 daemon 进程启动（如解释器/ Electron 预热）可能比父进程退出慢，
+    # 立刻查会漏判、误烧一次尝试。
+    if [ "$rc" -eq 0 ] && [ "$_elapsed" -lt 3 ] && command -v pgrep >/dev/null 2>&1; then
+        sleep 1
+        if pgrep -f '(^|/)(EasiSidebar|easisidebar|EasiSideBar)( |$)' >/dev/null 2>&1; then
+            echo "xwlightos-sidebar: bar daemonized (still running after quick exit), treating as success" >>"$LOG" 2>&1
+            exit 0
+        fi
+    fi
     [ -f "$FLAG_OFF" ] && exit 0
     sleep 2
 done
