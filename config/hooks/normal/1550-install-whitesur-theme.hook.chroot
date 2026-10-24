@@ -34,10 +34,11 @@ done
     echo "XWLightOS: WhiteSur-Dark gnome-shell theme missing after install" >&2
     exit 1
 }
-# dconf 的 gtk-theme='WhiteSur-Dark' 供 GTK3 老应用使用：gtk-3.0 目录必须真实存在，
-# 否则这些应用回退 Adwaita = "主题没用上"。
-[ -d /usr/share/themes/WhiteSur-Dark/gtk-3.0 ] || {
-    echo "XWLightOS: WhiteSur-Dark gtk-3.0 theme missing after install" >&2
+# dconf 的 gtk-theme='WhiteSur-Light' 供 GTK3 应用使用：gtk-3.0 目录必须真实存在，
+# 否则这些应用回退 Adwaita = "主题没用上"。用户 2026-10-24 邮件第 9 项：
+# 过时应用程序也用 WhiteSur-Light，因此 Light 的 gtk-3.0 同样要断言。
+[ -d /usr/share/themes/WhiteSur-Light/gtk-3.0 ] || {
+    echo "XWLightOS: WhiteSur-Light gtk-3.0 theme missing after install" >&2
     exit 1
 }
 # Build 56 教训：用户会话的 Shell 主题是 WhiteSur-Light（user-theme），
