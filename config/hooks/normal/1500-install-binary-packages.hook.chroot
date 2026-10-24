@@ -34,10 +34,9 @@ Terminal=false
 Categories=System;TerminalEmulator;
 StartupWMClass=XTerm
 EOF
-install -d /etc/skel/Desktop
-install -Dm644 /usr/local/share/applications/xterm.desktop /etc/skel/Desktop/终端.desktop
-# XWLightOS no longer ships AI components; desktop gets the terminal launcher
-# and the installer entry only.
+# 用户 2026-10-24 指令：桌面保持干净，终端/ONLYOFFICE 等应用不得往桌面
+# 预置快捷方式（应用入口在程序栏/dock 即可）。skel Desktop 只保留 live 的
+# 安装器图标（来自 includes.chroot，安装后由 cleanup 删除）。
 # The raw Calamares entry would duplicate the XWLightOS installer launcher.
 rm -f /usr/share/applications/calamares.desktop
 
@@ -136,14 +135,9 @@ grep -q -E '^editorWindowMode *= *true$' "$OO_SKEL_CONF" || {
     echo "ONLYOFFICE multi-window mode was not seeded" >&2
     exit 1
 }
-# Desktop shortcut using the real entry id (strip menu-only flags like the
-# other skeleton launchers above).
-install -Dm644 "$OO_DESKTOP" /etc/skel/Desktop/ONLYOFFICE.desktop
-sed -i -e '/^NoDisplay=/d' -e '/^Hidden=/d' \
-    -e '/^OnlyShowIn=/d' -e '/^NotShowIn=/d' \
-    /etc/skel/Desktop/ONLYOFFICE.desktop
-grep -q '^Exec=' /etc/skel/Desktop/ONLYOFFICE.desktop || {
-    echo "ONLYOFFICE desktop shortcut is unusable" >&2
+# 用户 2026-10-24 指令：ONLYOFFICE 不再往桌面放快捷方式（见上）。
+grep -q '^Exec=' "$OO_DESKTOP" || {
+    echo "ONLYOFFICE desktop entry is unusable" >&2
     exit 1
 }
 if command -v desktop-file-validate >/dev/null 2>&1; then

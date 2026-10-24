@@ -1,0 +1,74 @@
+#!/usr/bin/python3
+# XWLightOS desktop cleaner (user service).
+#
+# User instruction 2026-10-24: nothing except the user's own file
+# operations may add content to the Desktop. Vendor apps (the Seewo
+# whiteboard's .sh copies a .desktop onto ~/Desktop on every launch,
+# installers seed skeleton shortcuts, ...) must not leave launchers
+# behind. This daemon watches the Desktop directories and removes
+# *.desktop files within seconds. Regular files and folders the user
+# puts there are never touched.
+#
+# Exception: the live-only "Install XWLightOS" launcher (it is the
+# install entry point on the LiveCD; the installed-system cleanup
+# removes it there, and this daemon only runs in live/installed user
+# sessions where that file may legitimately exist pre-install).
+import os
+import sys
+import time
+
+KEEP = {"Install XWLightOS.desktop"}
+POLL_SECONDS = 2
+
+
+def desktop_dirs():
+    home = os.path.expanduser("~")
+    dirs = []
+    xdg = os.environ.get("XDG_DESKTOP_DIR")
+    if xdg:
+        dirs.append(xdg)
+    cfg = os.path.join(home, ".config", "user-dirs.dirs")
+    if os.path.isfile(cfg):
+        try:
+            with open(cfg, encoding="utf-8", errors="ignore") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if line.startswith("XDG_DESKTOP_DIR="):
+                        val = line.split("=", 1)[1].strip().strip('"')
+                        dirs.append(val.replace("$HOME", home))
+        except OSError:
+            pass
+    dirs += [os.path.join(home, "Desktop"), os.path.join(home, "桌面")]
+    seen, out = set(), []
+    for d in dirs:
+        if d and d not in seen:
+            seen.add(d)
+            out.append(d)
+    return out
+
+
+def sweep():
+    for d in desktop_dirs():
+        try:
+            names = os.listdir(d)
+        except OSError:
+            continue
+        for name in names:
+            if not name.endswith(".desktop") or name in KEEP:
+                continue
+            path = os.path.join(d, name)
+            try:
+                if os.path.isfile(path):
+                    os.unlink(path)
+            except OSError:
+                pass
+
+
+def main():
+    while True:
+        sweep()
+        time.sleep(POLL_SECONDS)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

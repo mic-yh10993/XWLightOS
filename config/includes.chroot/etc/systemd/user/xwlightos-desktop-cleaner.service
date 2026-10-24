@@ -1,0 +1,13 @@
+[Unit]
+Description=XWLightOS desktop cleanliness guard (remove app-added launchers)
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/xwlightos-desktop-cleaner
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

@@ -24,8 +24,11 @@ remove_installer_entry() {
 clean_desktop_dir() {
     desktop_dir="$1"
     [ -d "$desktop_dir" ] || return 0
+    # 用户 2026-10-24 指令：已安装系统的桌面不留任何 .desktop 快捷方式
+    #（安装器、ONLYOFFICE、终端、希沃白板拷贝的都算）。普通文件/文件夹
+    # 是用户自己的操作成果，绝不动。此脚本只在已安装系统运行。
     for entry in "$desktop_dir"/*.desktop; do
-        remove_installer_entry "$entry"
+        [ -f "$entry" ] && rm -f "$entry"
     done
 }
 
