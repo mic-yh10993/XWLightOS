@@ -22,6 +22,18 @@ rm -f /usr/share/applications/kbd-layout-viewer5.desktop
     echo "XWLightOS: fcitx settings launcher is missing after prune" >&2
     exit 1
 }
+# 用户 2026-10-24 邮件《还有》：中文输入法又出问题。此前注释声称守护进程
+# 由 /etc/xdg/autostart/fcitx5.desktop 自启动，却从未校验过它存在——
+# fcitx5 主包本身并不带这个自启动文件，缺了它输入法根本不会启动。
+# 这里把它变成硬门禁；Shift 切换中英文的配置同样要核对（skel 配置）。
+[ -s /etc/xdg/autostart/fcitx5.desktop ] || {
+    echo "XWLightOS: fcitx5 autostart entry missing, input method would never start" >&2
+    exit 1
+}
+grep -q '^0=Shift_L$' /etc/skel/.config/fcitx5/config || {
+    echo "XWLightOS: fcitx5 Shift toggle (Shift_L AltTriggerKey) missing from skel config" >&2
+    exit 1
+}
 for gone in org.fcitx.Fcitx5.desktop fcitx5-configtool.desktop \
     org.fcitx.fcitx5-migrator.desktop kbd-layout-viewer5.desktop; do
     [ ! -e "/usr/share/applications/$gone" ] || {
