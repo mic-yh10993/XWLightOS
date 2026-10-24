@@ -401,13 +401,16 @@ grep -q "^autohide=false$" "$GSCHEMA_OVERRIDE" \
     || { echo 'dash-to-dock schema override does not force autohide off' >&2; exit 1; }
 grep -q "^autohide-in-fullscreen=true$" "$GSCHEMA_OVERRIDE" \
     || { echo 'dash-to-dock schema override lost fullscreen hiding' >&2; exit 1; }
-# 用户 2026-10-24 邮件第 6、10 项：状态栏监控与输入法面板扩展必须启用。
+# 用户 2026-10-24 邮件第 6 项：状态栏监控扩展必须启用。
 # （2026-10-23 曾移除顶栏 system-monitor 扩展的旧注释已作废：用户
 # 2026-10-24 明确要求恢复 Debian 官方打包的顶栏监控扩展。）
 grep -q 'system-monitor@paradoxxx.zero.gmail.com' "$GNOME_DEFAULTS" \
     || { echo 'enabled-extensions missing top-bar system-monitor' >&2; exit 1; }
-grep -q 'kimpanel@kde.org' "$GNOME_DEFAULTS" \
-    || { echo 'enabled-extensions missing kimpanel input method panel' >&2; exit 1; }
+# 用户 2026-10-24 22:53 邮件：Shift 切换是配置问题、不装扩展也行，
+# kimpanel 输入法面板扩展必须不在启用列表里。
+if grep -q 'kimpanel@kde.org' "$GNOME_DEFAULTS"; then
+    echo 'enabled-extensions still contains revoked kimpanel extension' >&2; exit 1
+fi
 # 用户 2026-10-24 邮件第 6、10 项：状态栏监控与输入法面板扩展必须启用。
 # （2026-10-23 曾移除顶栏 system-monitor 扩展的旧注释已作废：用户
 # 2026-10-24 明确要求恢复 Debian 官方打包的顶栏监控扩展。）
@@ -721,6 +724,25 @@ cat_image_file 'etc/X11/Xsession.d/90fcitx5-xwlightos' "$IM_ENV"
 grep -q '^export GTK_IM_MODULE=fcitx$' "$IM_ENV"
 grep -q '^export QT_IM_MODULE=fcitx$' "$IM_ENV"
 grep -q '^export XMODIFIERS=@im=fcitx$' "$IM_ENV"
+# 用户 2026-10-24 22:53 输入法修法：只写 Xsession.d/profile.d 不够，
+# GDM 默认路径的 GNOME 会话读不到它们；/etc/environment 经 pam_env
+# 对所有显示管理器登录生效（X11 与 Wayland 均可），必须同步写死。
+SYS_ENV="$WORK/sys-environment"
+cat_image_file 'etc/environment' "$SYS_ENV"
+grep -q '^GTK_IM_MODULE=fcitx$' "$SYS_ENV"
+grep -q '^QT_IM_MODULE=fcitx$' "$SYS_ENV"
+grep -q '^XMODIFIERS=@im=fcitx$' "$SYS_ENV"
+# Shift 切换的结构性门禁：skel 配置必须同时有左右 Shift 触发键，
+# 且 profile 必须同时含 keyboard（英文端）与 pinyin（中文端），
+# 缺任一端 AltTrigger 切换就没有两个落点。
+FCITX_CFG="$WORK/fcitx5-config"
+cat_image_file 'etc/skel/.config/fcitx5/config' "$FCITX_CFG"
+grep -q '^0=Shift_L$' "$FCITX_CFG"
+grep -q '^1=Shift_R$' "$FCITX_CFG"
+FCITX_PROFILE="$WORK/fcitx5-profile"
+cat_image_file 'etc/skel/.config/fcitx5/profile' "$FCITX_PROFILE"
+grep -q '^Name=keyboard-us$' "$FCITX_PROFILE"
+grep -q '^Name=pinyin$' "$FCITX_PROFILE"
 # 写错值的 90xwlightos-fcitx5-im（=fcitx5）必须不存在，否则会覆盖正确值
 # （用户 2026-10-18 真机反馈中文无法输入）。
 if grep -q -E '(^|/)etc/X11/Xsession\.d/90xwlightos-fcitx5-im$' "$LIST"; then

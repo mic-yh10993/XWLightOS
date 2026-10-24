@@ -8,3 +8,19 @@
 # is a prime suspect for "manager backend autostart never comes up"
 # (user report 2026-10-24): Restart=always would only spin a service
 # that can never start. An empty file is a valid environment file.
+#
+# XWLightOS input method framework (user mail 2026-10-24 22:53: Shift
+# toggle is a configuration problem, not an extension problem).
+# Root cause of "config present but not effective": the IM variables
+# previously lived ONLY in /etc/profile.d and /etc/X11/Xsession.d,
+# which reach login shells and X11 sessions started via Xsession --
+# but NOT a GDM-started GNOME session on its default path, and never
+# a Wayland session. /etc/environment is read by pam_env for every
+# display-manager login (X11 and Wayland alike) and by the systemd
+# user manager, so it is the one channel guaranteed to reach the
+# desktop session. Format here is VAR=value with no 'export' prefix
+# (pam_env and systemd EnvironmentFile both require that form).
+# The Xsession.d / profile.d copies stay as well (defense in depth).
+GTK_IM_MODULE=fcitx
+QT_IM_MODULE=fcitx
+XMODIFIERS=@im=fcitx
