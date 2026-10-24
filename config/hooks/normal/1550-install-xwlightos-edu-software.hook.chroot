@@ -176,12 +176,10 @@ if [ -f /usr/lib/systemd/system/com.cvte.maxhub.alfred.service ] || \
 fi
 
 # --- Seewo Terminal Manager daemon ---
-if [ -f /usr/lib/systemd/system/com.seewo.terminalmanager.service ]; then
-    mkdir -p /etc/systemd/system/multi-user.target.wants
-    ln -sfn /usr/lib/systemd/system/com.seewo.terminalmanager.service \
-        /etc/systemd/system/multi-user.target.wants/com.seewo.terminalmanager.service
-    echo "XWLightOS: Seewo Terminal Manager daemon enabled"
-fi
+# 历史写法只认 /usr/lib/systemd/system 一个路径、找不到就静默——真机反馈
+# 「管家后端似乎没起来」的嫌疑之一。启用动作现统一由 1660 钩子做全量
+# 枚举（两个路径都查、非更新类厂商 unit 全启用、缺失大声告警并留清单
+# /etc/xwlightos/seewo-vendor-units.txt），此处不再重复单点启用。
 
 # --- Disable Seewo OTA updates ---
 # 1. Mask vendor updater systemd units

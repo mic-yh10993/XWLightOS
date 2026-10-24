@@ -1,0 +1,63 @@
+#!/bin/sh
+# XWLightOS Seewo sidebar (com.seewo.easisidebar) stabilising launcher.
+#
+# Diagnosis (user report 2026-10-24: the Seewo sidebar keeps crashing):
+# the vendor sidebar is an X11-oriented floating bar. On a Wayland
+# session it loses the X11 window APIs it was built for and dies; it
+# also depends on the Udi hotspot service and the whiteboard's
+# swenserver being up. This wrapper:
+#   * honours the user's off switch (~/.config/xwlightos/sidebar-off,
+#     written by the XWLightOS Settings tool),
+#   * forces X11 backends (GDK_BACKEND/QT_QPA_PLATFORM=xcb, XWayland),
+#   * logs stdout/stderr to ~/.local/share/xwlightos/easisidebar.log,
+#   * restarts the bar at most 3 times with backoff, then stays down
+#     (no crash loop burning CPU all day).
+set -u
+
+FLAG_OFF="$HOME/.config/xwlightos/sidebar-off"
+[ -f "$FLAG_OFF" ] && exit 0
+
+LOG_DIR="$HOME/.local/share/xwlightos"
+mkdir -p "$LOG_DIR" 2>/dev/null || LOG_DIR=/tmp
+LOG="$LOG_DIR/easisidebar.log"
+
+# Discover the vendor entry point: a dedicated binary if present,
+# otherwise the Exec line of the vendor .desktop.
+CANDIDATES="/opt/apps/com.seewo.easisidebar/files/EasiSidebar \
+/opt/apps/com.seewo.easisidebar/files/com.seewo.easisidebar \
+/opt/apps/com.seewo.easisidebar/files/EasiSideBar"
+CMD=""
+for c in $CANDIDATES; do
+    [ -x "$c" ] && { CMD="$c"; break; }
+done
+if [ -z "$CMD" ]; then
+    for dt in /usr/share/applications/com.seewo.easisidebar.desktop \
+              /etc/xdg/autostart/*sidebar*.desktop \
+              /opt/apps/com.seewo.easisidebar/entries/applications/com.seewo.easisidebar.desktop; do
+        [ -f "$dt" ] || continue
+        CMD="$(sed -n 's/^Exec=//p' "$dt" | head -n 1 | sed 's/ *%[A-Za-z]//g')"
+        [ -n "$CMD" ] && break
+    done
+fi
+[ -n "$CMD" ] || { echo "xwlightos-sidebar: vendor sidebar entry not found" >>"$LOG" 2>&1; exit 0; }
+
+export GDK_BACKEND=x11
+export QT_QPA_PLATFORM=xcb
+export ELECTRON_OZONE_PLATFORM_HINT=x11
+
+attempt=0
+while [ "$attempt" -lt 3 ]; do
+    attempt=$((attempt + 1))
+    echo "xwlightos-sidebar: start attempt $attempt: $CMD" >>"$LOG" 2>&1
+    # Word splitting of $CMD is intentional (Exec may carry arguments).
+    # shellcheck disable=SC2086
+    $CMD >>"$LOG" 2>&1 &
+    pid=$!
+    wait "$pid" 2>/dev/null
+    rc=$?
+    echo "xwlightos-sidebar: exited rc=$rc" >>"$LOG" 2>&1
+    [ -f "$FLAG_OFF" ] && exit 0
+    sleep 2
+done
+echo "xwlightos-sidebar: gave up after 3 attempts (see log)" >>"$LOG" 2>&1
+exit 0

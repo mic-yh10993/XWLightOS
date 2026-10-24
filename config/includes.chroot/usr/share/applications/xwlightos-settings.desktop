@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=XWLightOS Settings
+Name[zh_CN]=XWLightOS 设置
+Comment=Toggle Seewo manager service, Udi component and sidebar autostart
+Comment[zh_CN]=设置希沃管家后端服务、Udi 组件、希沃侧边栏是否开机启动
+Exec=/usr/local/bin/xwlightos-settings
+Icon=preferences-system
+Terminal=false
+Categories=Settings;System;
+Keywords=settings;seewo;sidebar;设置;希沃;侧边栏;
+StartupNotify=true

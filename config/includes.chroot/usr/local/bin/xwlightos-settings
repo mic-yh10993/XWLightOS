@@ -1,0 +1,201 @@
+#!/usr/bin/python3
+# XWLightOS 设置 — small settings tool for the Seewo components.
+#
+# User instruction 2026-10-24: provide a settings program that can
+# toggle at boot:
+#   1. the Seewo manager (希沃管家) backend service
+#      (system service com.seewo.terminalmanager.service),
+#   2. the Udi component (system service, discovered by the *udi*
+#      unit glob, shipped as udi-hotspot-service),
+#   3. the Seewo sidebar (希沃侧边栏 com.seewo.easisidebar) autostart.
+#
+# The first two are system services: state is read with
+# `systemctl is-enabled` and changed with `pkexec systemctl
+# enable/disable --now`, so the toggles are real and persistent.
+# The sidebar is a per-user autostart: the toggle writes/removes the
+# off-flag honoured by /usr/local/bin/xwlightos-sidebar-launcher and
+# installs a per-user autostart override; turning it off also stops
+# the running bar.
+import glob
+import os
+import subprocess
+import sys
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gtk  # noqa: E402
+
+FLAG_OFF = os.path.expanduser("~/.config/xwlightos/sidebar-off")
+USER_AUTOSTART = os.path.expanduser("~/.config/autostart")
+SIDEBAR_OVERRIDE = os.path.join(
+    USER_AUTOSTART, "com.seewo.easisidebar.desktop"
+)
+
+
+def find_unit(patterns, fallback):
+    for pat in patterns:
+        for base in ("/usr/lib/systemd/system", "/lib/systemd/system",
+                     "/etc/systemd/system"):
+            hits = sorted(glob.glob(os.path.join(base, pat)))
+            if hits:
+                return os.path.basename(hits[0])
+    return fallback
+
+
+TM_UNIT = find_unit(["com.seewo.terminalmanager.service"],
+                    "com.seewo.terminalmanager.service")
+UDI_UNIT = find_unit(["*udi*.service", "*Udi*.service"],
+                     "udi-hotspot-service.service")
+
+
+def service_enabled(unit):
+    try:
+        out = subprocess.run(
+            ["systemctl", "is-enabled", unit],
+            capture_output=True, text=True, timeout=10)
+        return out.stdout.strip() == "enabled"
+    except Exception:
+        return False
+
+
+def service_present(unit):
+    for base in ("/usr/lib/systemd/system", "/lib/systemd/system",
+                 "/etc/systemd/system"):
+        if os.path.exists(os.path.join(base, unit)):
+            return True
+    return False
+
+
+def set_service(unit, on, parent):
+    action = "enable" if on else "disable"
+    cmd = ["pkexec", "systemctl", action, "--now", unit]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode != 0:
+        dlg = Gtk.MessageDialog(
+            transient_for=parent, modal=True,
+            message_type=Gtk.MessageType.ERROR,
+            buttons=Gtk.ButtonsType.OK,
+            text="设置失败：%s" % (res.stderr.strip() or unit))
+        dlg.run()
+        dlg.destroy()
+        return False
+    return True
+
+
+def sidebar_enabled():
+    return not os.path.exists(FLAG_OFF)
+
+
+def set_sidebar(on):
+    os.makedirs(os.path.dirname(FLAG_OFF), exist_ok=True)
+    os.makedirs(USER_AUTOSTART, exist_ok=True)
+    if on:
+        try:
+            os.unlink(FLAG_OFF)
+        except OSError:
+            pass
+        try:
+            os.unlink(SIDEBAR_OVERRIDE)
+        except OSError:
+            pass
+    else:
+        with open(FLAG_OFF, "w", encoding="utf-8") as fh:
+            fh.write("off\n")
+        with open(SIDEBAR_OVERRIDE, "w", encoding="utf-8") as fh:
+            fh.write("[Desktop Entry]\nType=Application\n"
+                     "Name=EasiSidebar (disabled by XWLightOS Settings)\n"
+                     "Exec=/bin/true\nHidden=true\n"
+                     "X-GNOME-Autostart-enabled=false\n")
+        subprocess.run(["pkill", "-f", "easisidebar"],
+                       capture_output=True)
+
+
+class Row(Gtk.Box):
+    def __init__(self, title, subtitle, initial, sensitive=True):
+        super().__init__(orientation=Gtk.Orientation.HORIZONTAL,
+                         spacing=12)
+        self.set_margin_top(10)
+        self.set_margin_bottom(10)
+        self.set_margin_start(14)
+        self.set_margin_end(14)
+        texts = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        lbl = Gtk.Label(label=title, xalign=0)
+        lbl.set_markup("<b>%s</b>" % title)
+        sub = Gtk.Label(label=subtitle, xalign=0)
+        sub.get_style_context().add_class("dim-label")
+        texts.pack_start(lbl, False, False, 0)
+        texts.pack_start(sub, False, False, 0)
+        self.pack_start(texts, True, True, 0)
+        self.switch = Gtk.Switch()
+        self.switch.set_active(initial)
+        self.switch.set_sensitive(sensitive)
+        self.switch.set_valign(Gtk.Align.CENTER)
+        self.pack_start(self.switch, False, False, 0)
+
+
+class Window(Gtk.Window):
+    def __init__(self):
+        super().__init__(title="XWLightOS 设置")
+        self.set_default_size(520, 320)
+        self.set_border_width(8)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        head = Gtk.Label(xalign=0)
+        head.set_markup("希沃组件开机启动设置（修改后重启生效，"
+                        "服务开关同时启停当前运行）")
+        head.set_margin_start(14)
+        box.pack_start(head, False, False, 6)
+
+        tm_ok = service_present(TM_UNIT)
+        self.row_tm = Row(
+            "希沃管家后端服务", "systemd 服务：%s" % TM_UNIT,
+            service_enabled(TM_UNIT) if tm_ok else False,
+            sensitive=tm_ok)
+        self.row_tm.switch.connect(
+            "notify::active", self.on_service, TM_UNIT, self.row_tm)
+        box.pack_start(self.row_tm, False, False, 0)
+
+        udi_ok = service_present(UDI_UNIT)
+        self.row_udi = Row(
+            "Udi 组件", "systemd 服务：%s" % UDI_UNIT,
+            service_enabled(UDI_UNIT) if udi_ok else False,
+            sensitive=udi_ok)
+        self.row_udi.switch.connect(
+            "notify::active", self.on_service, UDI_UNIT, self.row_udi)
+        box.pack_start(self.row_udi, False, False, 0)
+
+        self.row_sidebar = Row(
+            "希沃侧边栏", "用户自启：com.seewo.easisidebar"
+            "（经稳定化启动器运行，日志在 ~/.local/share/xwlightos/）",
+            sidebar_enabled())
+        self.row_sidebar.switch.connect("notify::active",
+                                        self.on_sidebar)
+        box.pack_start(self.row_sidebar, False, False, 0)
+
+        note = Gtk.Label(xalign=0)
+        note.set_markup("未安装的组件开关会变灰。侧边栏闪退时可先在这里"
+                        "关掉它，再看日志定位。")
+        note.set_margin_start(14)
+        box.pack_start(note, False, False, 8)
+        self.add(box)
+
+    def on_service(self, switch, _param, unit, row):
+        want = switch.get_active()
+        if not set_service(unit, want, self):
+            switch.handler_block_by_func(self.on_service)
+            switch.set_active(not want)
+            switch.handler_unblock_by_func(self.on_service)
+
+    def on_sidebar(self, switch, _param):
+        set_sidebar(switch.get_active())
+
+
+def main():
+    win = Window()
+    win.connect("destroy", Gtk.main_quit)
+    win.show_all()
+    Gtk.main()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
