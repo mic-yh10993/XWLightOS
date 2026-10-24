@@ -73,7 +73,7 @@ sudo lb config \
     --keyring-packages "debian-archive-keyring" \
     --binary-images iso-hybrid \
     --compression gzip \
-    --bootappend-live "components splash" \
+    --bootappend-live "components quiet splash" \
     --iso-application "XWLightOS Live" \
     --iso-publisher "SYSTEM-Intel-MIC" \
     --iso-volume "XWLightOS 1.0" \

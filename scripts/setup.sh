@@ -9,7 +9,7 @@ sudo lb config \
   --distribution bookworm \
   --architectures amd64 \
   --linux-flavours amd64 \
-  --bootappend-live "boot=live components splash" \
+  --bootappend-live "boot=live components quiet splash" \
   --binary-images iso-hybrid \
   --source false \
   --mode debian

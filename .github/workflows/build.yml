@@ -174,7 +174,7 @@ jobs:
             --keyring-packages "debian-archive-keyring" \
             --binary-images iso-hybrid \
             --compression gzip \
-            --bootappend-live "components splash console=tty0 console=ttyS0,115200n8 systemd.journald.forward_to_console=1" \
+            --bootappend-live "components quiet splash console=tty0 console=ttyS0,115200n8 systemd.journald.forward_to_console=1" \
             --iso-application "XWLightOS Live" \
             --iso-publisher "SYSTEM-Intel-MIC" \
             --iso-volume "XWLightOS 1.0" \

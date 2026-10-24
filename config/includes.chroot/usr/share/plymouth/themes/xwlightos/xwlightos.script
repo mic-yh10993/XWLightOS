@@ -18,8 +18,8 @@ CONTENT_H = 183;
 Window.SetBackgroundTopColor (0x05, 0x07, 0x0f);
 Window.SetBackgroundBottomColor (0x0a, 0x12, 0x26);
 
-screen_w = Window.GetX ();
-screen_h = Window.GetY ();
+screen_w = Window.GetWidth ();
+screen_h = Window.GetHeight ();
 ox = (screen_w - CONTENT_W) / 2;
 oy = (screen_h - CONTENT_H) / 2 - 40;
 

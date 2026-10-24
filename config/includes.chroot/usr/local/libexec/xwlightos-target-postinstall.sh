@@ -84,6 +84,7 @@ GRUB_TIMEOUT_STYLE=menu
 GRUB_TIMEOUT=6
 GRUB_DEFAULT=0
 GRUB_DISABLE_OS_PROBER=false
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"
 EOF
 else
     # Never leave a dangling GRUB_THEME which produces a boot-time error.
