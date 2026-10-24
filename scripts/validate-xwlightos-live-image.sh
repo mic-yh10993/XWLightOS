@@ -424,15 +424,11 @@ for _ext in 'apps-menu@gnome-shell-extensions.gcampax.github.com' \
         exit 1
     }
 done
-grep -q 'system-monitor@paradoxxx' "$GNOME_DEFAULTS" && {
-    echo 'enabled-extensions still references the removed paradoxxxzero system-monitor extension' >&2
-    exit 1
-} || true
-# 1610 钩子已删除：paradoxxxzero 扩展文件不得再出现在镜像里。
-grep -q -E '(^|/)usr/share/gnome-shell/extensions/system-monitor@paradoxxx\.zero\.gmail\.com' "$LIST" && {
-    echo 'removed system-monitor@paradoxxx.zero.gmail.com extension still in final ISO' >&2
-    exit 1
-} || true
+# 以下两处旧断言已作废（Build 32 失败根因，2026-10-25 修复）：
+# 10-23 移除顶栏 system-monitor 扩展时留下的“启用列表不得含该扩展、
+# 镜像里不得有该扩展文件”断言，与用户 2026-10-24 要求恢复该扩展
+# 直接冲突（前面刚断言必须启用，后面又断言不得出现，构建必红）。
+# 之前修法只改了注释、漏了这两处断言。现整段删除，不再断言。
 # 注意：light-style 已于 2026-10-19 从构建移除（#61/#62 构建失败根因）——
 # GNOME 官方 43.1 仓库里没有该扩展，且它依赖 GNOME 45+ 的 API，在 GNOME 43
 # 上从原理上跑不起来；浅色效果由 dconf color-scheme='prefer-light' 实现，
