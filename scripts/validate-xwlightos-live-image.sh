@@ -408,11 +408,9 @@ grep -q "^autohide-in-fullscreen=false$" "$GSCHEMA_OVERRIDE" \
 # 2026-10-24 明确要求恢复 Debian 官方打包的顶栏监控扩展。）
 grep -q 'system-monitor@paradoxxx.zero.gmail.com' "$GNOME_DEFAULTS" \
     || { echo 'enabled-extensions missing top-bar system-monitor' >&2; exit 1; }
-# 用户 2026-10-24 22:53 邮件：Shift 切换是配置问题、不装扩展也行，
-# kimpanel 输入法面板扩展必须不在启用列表里。
-if grep -q 'kimpanel@kde.org' "$GNOME_DEFAULTS"; then
-    echo 'enabled-extensions still contains revoked kimpanel extension' >&2; exit 1
-fi
+# 用户 2026-10-24 23:31 邮件：输入法面板扩展也要（重新加回启用）。
+grep -q 'kimpanel@kde.org' "$GNOME_DEFAULTS" \
+    || { echo 'enabled-extensions missing kimpanel input method panel extension' >&2; exit 1; }
 # 用户 2026-10-24 邮件第 6、10 项：状态栏监控与输入法面板扩展必须启用。
 # （2026-10-23 曾移除顶栏 system-monitor 扩展的旧注释已作废：用户
 # 2026-10-24 明确要求恢复 Debian 官方打包的顶栏监控扩展。）
