@@ -105,6 +105,11 @@ require_path 'usr/local/sbin/xwlightos-live-session-init'
 require_path 'usr/local/sbin/xwlightos-touchscreen-fix.sh'
 require_path 'etc/systemd/system/xwlightos-touchscreen-fix.service'
 require_path 'etc/xwlightos/touchscreen-known-ids.conf'
+# 诊断版（Build 40 触屏诊断，1621 钩子）：开机自动弹窗的诊断脚本、
+# 启动器与桌面自启动入口必须进镜像。正式版确认根因后删除。
+require_path 'usr/local/sbin/xwlightos-touch-diag.sh'
+require_path 'usr/local/sbin/xwlightos-touch-diag-launch.sh'
+require_path 'etc/xdg/autostart/xwlightos-touch-diag.desktop'
 # 用户 2026-10-19 邮件：完善驱动（显卡/摄像头/声卡）。新增驱动包必须进镜像。
 # 显卡：Vulkan（mesa-vulkan-drivers）、VDPAU（mesa-vdpau-drivers）、
 # 老 Intel VA-API（i965-va-driver）、vainfo 诊断工具。

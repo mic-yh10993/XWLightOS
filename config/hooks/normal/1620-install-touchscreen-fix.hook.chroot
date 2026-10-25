@@ -69,5 +69,11 @@ grep -q '^ExecStart=/usr/local/sbin/xwlightos-touchscreen-fix.sh$' \
     echo 'XWLightOS: xwlightos-touchscreen-fix.service lost its ExecStart' >&2
     exit 1
 }
+# 5. 修复脚本必须主动加载 hid-multitouch（Build 40 补，见脚本头注释）。
+# 非标设备不会触发该模块自动加载，缺了这行脚本会静默退出、修法等于没跑。
+grep -q 'modprobe hid-multitouch' /usr/local/sbin/xwlightos-touchscreen-fix.sh || {
+    echo 'XWLightOS: xwlightos-touchscreen-fix.sh lost modprobe hid-multitouch (fix would silently no-op)' >&2
+    exit 1
+}
 
 echo 'XWLightOS: touchscreen fix (1620) staged'

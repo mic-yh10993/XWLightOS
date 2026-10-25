@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+# 诊断版专用（Build 40 触屏诊断）：开机后自动弹终端显示触屏检测结果，
+# 用户无需任何操作、拍照即可。正式版确认根因后删除本文件与诊断脚本。
+Name=XWLightOS touchscreen diagnosis
+Exec=/usr/local/sbin/xwlightos-touch-diag-launch.sh
+OnlyShowIn=GNOME;
+X-GNOME-Autostart-enabled=true
+NoDisplay=true
+Terminal=false

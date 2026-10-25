@@ -10,6 +10,11 @@
 # 修法：用内核 new_id 机制把设备注册给 hid-multitouch，再 unbind/bind
 # 转交驱动。这是 Linux 社区对付非标红外框的标准做法。
 #
+# 前置（Build 40 补）：必须先主动加载 hid-multitouch。非标设备的模块
+# 别名匹配不上该驱动，内核不会自动加载它；此前脚本直接检查驱动目录，
+# 不存在就静默退出，修法等于没跑——这是 Build 39 上修法没起作用的
+# 第一嫌疑（全仓库此前没有任何地方加载它）。
+#
 # 两阶段（通用兼容优先，用户 2026-10-19 明确要求不只针对他这台机）：
 #   阶段一（通用兜底）：扫描被 hid-generic 占用的、名字含 touch 的设备，
 #     任何牌子红外框都管用，不依赖 VID:PID。
@@ -31,11 +36,15 @@ KNOWN_IDS_CONF="/etc/xwlightos/touchscreen-known-ids.conf"
 log() {
     echo "xwlightos-touchscreen-fix: $*" >&2
     logger -t xwlightos-touchscreen-fix "$*" 2>/dev/null || true
+    # 再写一份普通用户可读的日志：live 用户未必能读系统 journal，
+    # 诊断终端靠这个文件看脚本到底跑没跑、跑到哪一步。
+    echo "$(date '+%Y-%m-%d %H:%M:%S') xwlightos-touchscreen-fix: $*" >> /var/log/xwlightos-touchscreen-fix.log 2>/dev/null || true
 }
 
-# hid-multitouch 驱动不存在（极小概率）则直接退出，不报错。
+# 先主动加载 hid-multitouch（见文件头注释），再检查驱动目录。
+modprobe hid-multitouch 2>/dev/null || true
 [ -d "$MULTITOUCH_DRV" ] || {
-    log "hid-multitouch driver not present, nothing to do"
+    log "hid-multitouch driver not present after modprobe, nothing to do"
     exit 0
 }
 [ -d "$HID_SYS" ] || {
