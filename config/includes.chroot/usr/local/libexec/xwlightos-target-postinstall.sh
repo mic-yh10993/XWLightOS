@@ -191,6 +191,73 @@ if command -v systemctl >/dev/null 2>&1; then
     systemctl enable xwlightos-sudo-repair.service >/dev/null 2>&1 || true
 fi
 
+# Build 34（用户 2026-10-25 邮件：管家后端自启“又掉了”）：live 镜像
+# 只在 1660 构建钩子里启用厂商 unit（/etc/systemd/system/
+# multi-user.target.wants），那是纯 live 层：本脚本此前从未在装完
+# 系统里重启用过它们，安装路径上一旦丢了 wants 软链接，就会静默
+# 发出一个管家后端永不起的系统——而构建仍绿灯，因为校验只查了
+# 清单文件里有没有管家 unit，从没查装完系统这边。这里在目标里
+# 再启用一次，与上面 gdm/sudo-repair 的启用同款：这是第二层，
+# 不是替代 1660 钩子。
+# /etc/environment 在目标里也必须存在：厂商 unit 写的是
+# EnvironmentFile=/etc/environment（无 '-' 前缀），缺文件是硬失败
+# 不是跳过。live 镜像经 includes.chroot 自带该文件；若安装路径
+# 把它丢了，在此按同一格式重建（pam_env/systemd EnvironmentFile
+# 格式，不带 export），而不是直接发一个注定起不来的后端。
+if [ ! -f /etc/environment ]; then
+    cat > /etc/environment <<'ENVEOF'
+GTK_IM_MODULE=fcitx
+QT_IM_MODULE=fcitx
+XMODIFIERS=@im=fcitx
+QT_QPA_PLATFORMTHEME=gtk2
+ENVEOF
+    echo 'XWLightOS: /etc/environment missing in installed target, recreated (vendor manager unit hard-fails without it)'
+fi
+if command -v systemctl >/dev/null 2>&1; then
+    mkdir -p /etc/systemd/system/multi-user.target.wants
+    for _vbase in /usr/lib/systemd/system /lib/systemd/system; do
+        [ -d "$_vbase" ] || continue
+        for _vunit in "$_vbase"/*seewo* "$_vbase"/*cvte* "$_vbase"/*maxhub* "$_vbase"/*easi*; do
+            [ -f "$_vunit" ] || continue
+            _vname="$(basename "$_vunit")"
+            # 一个 unit 文件可同时命中多个 glob（如 cvte + maxhub），
+            # 去重后只启用一次，避免安装日志里出现重复的启用行。
+            case " ${_seen:-} " in
+                *" $_vname "*) continue ;;
+            esac
+            _seen="${_seen:-}$_vname "
+            case "$_vname" in
+                *.service) ;;
+                *) continue ;;
+            esac
+            case "$_vname" in
+                *update*|*upgrade*|*ota*) continue ;;
+            esac
+            # Udi 默认不启用（用户在设置里手动打开），与 1660 钩子
+            # 同款规则；不要把它和必须自启的管家后端混淆。
+            case "$_vname" in
+                *udi*|*Udi*) continue ;;
+            esac
+            # 没有 [Install] 节的 unit 会让 systemctl enable 失败；
+            # 此时回退到显式 wants 软链接，也就是 1660 钩子用的
+            # 同一种启用，绝不能静默丢掉这个服务。
+            systemctl enable "$_vname" >/dev/null 2>&1 || \
+                ln -sfn "$_vunit" "/etc/systemd/system/multi-user.target.wants/$_vname" || true
+            echo "XWLightOS: installed target: vendor service enabled: $_vname"
+        done
+    done
+    unset _vbase _vunit _vname _seen
+    if [ -f /usr/lib/systemd/system/com.seewo.terminalmanager.service ] || \
+       [ -f /lib/systemd/system/com.seewo.terminalmanager.service ]; then
+        [ -e /etc/systemd/system/multi-user.target.wants/com.seewo.terminalmanager.service ] || {
+            echo 'XWLightOS: terminalmanager unit present in target but not enabled; refusing to ship a backend that never starts' >&2
+            exit 1
+        }
+    else
+        echo 'XWLightOS: WARNING: terminalmanager unit absent in installed target (manager backend cannot start)' >&2
+    fi
+fi
+
 # Refresh device state and initramfs so firmware already present in the target
 # is discovered without requiring a second manual driver step.
 command -v udevadm >/dev/null 2>&1 && udevadm trigger --action=add || true
