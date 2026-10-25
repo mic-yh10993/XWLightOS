@@ -44,8 +44,13 @@ MANUAL=0
 if [ "${1:-}" = "--manual" ]; then MANUAL=1; fi
 
 FLAG_OFF="$HOME/.config/xwlightos/sidebar-off"
-if [ "$MANUAL" -eq 0 ]; then
-    [ -f "$FLAG_OFF" ] && exit 0
+if [ "$MANUAL" -eq 0 ] && [ -f "$FLAG_OFF" ]; then
+    # 旧写法静默退出：自启没起栏时日志里没有任何痕迹，“没起栏”
+    # 和“起栏即崩”无法区分。先记一笔再退出，下次用户报闪退时
+    # 凭这一行就能排除“其实是开关关着”这种假闪退。
+    mkdir -p "$HOME/.local/share/xwlightos" 2>/dev/null || true
+    echo "xwlightos-sidebar: off-flag present, not starting (Settings switch off)" >>"$HOME/.local/share/xwlightos/easisidebar.log" 2>&1 || true
+    exit 0
 fi
 
 LOG_DIR="$HOME/.local/share/xwlightos"
@@ -65,6 +70,14 @@ fi
 if command -v fc-match >/dev/null 2>&1; then
     echo "xwlightos-sidebar: fc-match Noto Sans CJK SC: $(fc-match 'Noto Sans CJK SC' 2>/dev/null || echo 'no match')" >>"$LOG" 2>&1 || true
 fi
+
+# Session diagnostics: the bar is X11-oriented; record which session
+# type it actually runs under so a Wayland/X11 mismatch is visible in
+# the log instead of guessed (the installed account is forced to X11
+# by postinstall, but only the log proves which session a given
+# machine really started). DBus is logged as set/unset only, never
+# its value.
+echo "xwlightos-sidebar: session: type=${XDG_SESSION_TYPE:-unset} display=${DISPLAY:-unset} wayland=${WAYLAND_DISPLAY:-unset} dbus=${DBUS_SESSION_BUS_ADDRESS:+set}" >>"$LOG" 2>&1 || true
 
 # Discover the vendor entry point: a dedicated binary if present,
 # otherwise the Exec line of the vendor .desktop. The vendor user
@@ -105,7 +118,31 @@ fi
 case "$CMD" in
     */xwlightos-sidebar-launcher|*/xwlightos-sidebar-launcher\ *) CMD="" ;;
 esac
+# Last-resort discovery: if the versioned binary moved (e.g. the
+# files/bin symlink is gone), the fixed candidate list and the
+# .desktop fallbacks both miss it and the launcher would silently
+# no-op. Scan the vendor tree for an executable of that name first.
+if [ -z "$CMD" ] && [ -d /opt/apps/com.seewo.easisidebar/files ]; then
+    CMD="$(find /opt/apps/com.seewo.easisidebar/files -maxdepth 3 ! -type d \( -name 'EasiSideBar*' -o -name 'EasiSidebar*' \) -executable 2>/dev/null | head -n 1 || true)"
+    [ -n "$CMD" ] && echo "xwlightos-sidebar: fallback discovery found: $CMD" >>"$LOG" 2>&1 || true
+fi
 [ -n "$CMD" ] || { echo "xwlightos-sidebar: vendor sidebar entry not found" >>"$LOG" 2>&1; exit 0; }
+
+# .NET/native diagnostics: the vendor bar's runtime form
+# (self-contained vs system dotnet) is not recorded anywhere in this
+# repo, so a missing native library or runtime would previously
+# surface only as a bare crash. Record them here; a 'not found' line
+# in this log is the difference between a diagnosable crash and
+# another guess.
+_bin0="${CMD%% *}"
+if command -v ldd >/dev/null 2>&1; then
+    _missing="$(ldd "$_bin0" 2>/dev/null | grep 'not found' || true)"
+    [ -n "$_missing" ] && echo "xwlightos-sidebar: ldd missing libs for $_bin0: $_missing" >>"$LOG" 2>&1 || true
+fi
+if command -v dotnet >/dev/null 2>&1; then
+    echo "xwlightos-sidebar: dotnet runtimes: $(dotnet --list-runtimes 2>/dev/null | tr '\n' ';' || echo unknown)" >>"$LOG" 2>&1 || true
+fi
+unset _bin0 _missing
 
 export GDK_BACKEND=x11
 export QT_QPA_PLATFORM=xcb
@@ -124,6 +161,12 @@ if command -v systemctl >/dev/null 2>&1; then
         _wait=$((_wait + 2))
     done
     echo "xwlightos-sidebar: backend states: terminalmanager=$(systemctl is-active com.seewo.terminalmanager.service 2>/dev/null || echo unknown)" >>"$LOG" 2>&1
+    # The bar's header comment also names the Udi hotspot service as a
+    # dependency, but the wait above only covers terminalmanager (Udi
+    # is default-off, so waiting for it would stall login). At least
+    # record the Udi unit files' states here so a missing Udi unit is
+    # visible in the same log instead of becoming a second guess.
+    echo "xwlightos-sidebar: udi units: $(systemctl list-unit-files 2>/dev/null | grep -i 'udi' | tr '\n' ';' || true)" >>"$LOG" 2>&1
 fi
 
 attempt=0
@@ -150,9 +193,13 @@ while [ "$attempt" -lt 3 ]; do
     # 提到侧边栏名字的无关进程（如测试外壳、编辑器）。判定时先等 1 秒，
     # 因为 daemon 进程启动（如解释器/ Electron 预热）可能比父进程退出慢，
     # 立刻查会漏判、误烧一次尝试。
+    # 尾部字符类还必须接受 '.'：.NET 形态的 daemon 进程命令行是
+    # `dotnet .../EasiSideBar.dll`，名字后面跟的是 '.' 而不是空格或
+    # 行尾；旧的 `( |$)` 类会漏判它，连烧 3 次尝试、最后记一笔假的
+    # “gave up”，而实际上栏已经在跑了。
     if [ "$rc" -eq 0 ] && [ "$_elapsed" -lt 3 ] && command -v pgrep >/dev/null 2>&1; then
         sleep 1
-        if pgrep -f '(^|/)(EasiSidebar|easisidebar|EasiSideBar)( |$)' >/dev/null 2>&1; then
+        if pgrep -f '(^|/)(EasiSidebar|easisidebar|EasiSideBar)(\.|[ /]|$)' >/dev/null 2>&1; then
             echo "xwlightos-sidebar: bar daemonized (still running after quick exit), treating as success" >>"$LOG" 2>&1
             exit 0
         fi

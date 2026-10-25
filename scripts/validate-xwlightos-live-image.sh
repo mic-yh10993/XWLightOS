@@ -500,6 +500,17 @@ TARGET_POSTINSTALL="$WORK/xwlightos-target-postinstall"
 cat_image_file 'usr/local/libexec/xwlightos-target-postinstall.sh' "$TARGET_POSTINSTALL"
 grep -q '/usr/local/libexec/xwlightos-installed-cleanup' "$TARGET_POSTINSTALL"
 grep -q 'systemctl enable xwlightos-installed-cleanup.service' "$TARGET_POSTINSTALL"
+# Build 34（用户 2026-10-25：管家后端自启“又掉了”）：1660 钩子的启用
+# 只是 live 层，postinstall 必须在装完系统里再启用一次，否则安装路径
+# 一丢 wants 软链接、构建仍绿灯。以下三处缺一不可：厂商重启用、
+# 管家 unit 本体、目标里 /etc/environment（厂商 unit 无 '-' 前缀的
+# EnvironmentFile，缺文件即硬失败）。
+grep -q 'installed target: vendor service enabled' "$TARGET_POSTINSTALL" || {
+    echo 'target postinstall does not re-enable vendor services in the installed target (live-only 1660 enable is a single layer)' >&2; exit 1; }
+grep -q 'com.seewo.terminalmanager.service' "$TARGET_POSTINSTALL" || {
+    echo 'target postinstall never mentions the terminalmanager unit (installed target has no second enable layer)' >&2; exit 1; }
+grep -q '/etc/environment' "$TARGET_POSTINSTALL" || {
+    echo 'target postinstall does not ensure /etc/environment in the installed target (vendor manager unit hard-fails without it)' >&2; exit 1; }
 INSTALLED_CLEANUP="$WORK/xwlightos-installed-cleanup"
 cat_image_file 'usr/local/libexec/xwlightos-installed-cleanup' "$INSTALLED_CLEANUP"
 ! grep -qE 'read[[:space:]]+-r[[:space:]]+-d' "$INSTALLED_CLEANUP"
@@ -993,6 +1004,20 @@ grep -qx 'com.seewo.terminalmanager.service' "$SEEWO_INV" || {
     echo 'seewo vendor unit inventory lacks com.seewo.terminalmanager.service (manager backend would not start)' >&2; exit 1; }
 grep -qi 'udi' "$SEEWO_INV" || {
     echo 'seewo vendor unit inventory lacks the Udi unit' >&2; exit 1; }
+# 清单只是清单：管家后端真正开机起得来，还要看 live 镜像里
+# multi-user.target.wants 下的启用软链接本身在不在、指没指到
+# 真实存在的 unit 文件。只查清单的旧口径会让“有清单、无启用”
+# 的镜像一路绿灯（Build 34 前的口径缺口）。
+TM_WANTS="$FULL_ROOT/etc/systemd/system/multi-user.target.wants/com.seewo.terminalmanager.service"
+[ -L "$TM_WANTS" ] || {
+    echo 'terminalmanager service is not enabled in the live image (inventory alone does not start it)' >&2; exit 1; }
+TM_TARGET="$(readlink "$TM_WANTS")"
+case "$TM_TARGET" in
+    /*) [ -e "$FULL_ROOT$TM_TARGET" ] || {
+        echo "terminalmanager wants symlink points at a missing unit: $TM_TARGET" >&2; exit 1; } ;;
+    *) [ -e "$(dirname "$TM_WANTS")/$TM_TARGET" ] || {
+        echo "terminalmanager wants symlink points at a missing unit: $TM_TARGET" >&2; exit 1; } ;;
+esac
 # 8 桌面/GRUB 壁纸必须是用户 2026-10-24 补发图（1672x941，PNG 落盘）。
 WALL_FILE="$WORK/xwlightos-wallpaper.png"
 cat_image_file 'usr/share/xwlightos/branding/xwlightos-aurora-wallpaper.png' "$WALL_FILE"
