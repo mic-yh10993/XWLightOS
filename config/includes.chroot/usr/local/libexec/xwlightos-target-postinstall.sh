@@ -79,28 +79,23 @@ cat > "/var/lib/AccountsService/users/$installed_account" <<ACCEOF
 XSession=gnome-xorg
 $ICON_LINE
 ACCEOF
-# 用户 2026-10-24 邮件《很大问题》第 8 项：侧边栏默认不开机启动。
-# 新装系统的用户家目录来自 /etc/skel（已含 sidebar-off 标志），但这里
-# 再给本次安装的账号显式写一份，防 skel 复制链路有任何一环漏掉：
-# 标志存在时启动器直接退出，设置里打开后才会在下次登录起栏。
-# 非致命步骤：写失败绝不能拖垮安装。
-mkdir -p "/home/$installed_account/.config/xwlightos" 2>/dev/null || true
-printf 'off\n' > "/home/$installed_account/.config/xwlightos/sidebar-off" 2>/dev/null || true
-chown -R "$installed_account:$installed_account" "/home/$installed_account/.config/xwlightos" 2>/dev/null || true
+# 用户 2026-10-25 09:01 指令：希沃侧边栏暂时删除，上面那段
+# sidebar-off 标志写入已随侧边栏删除一并去掉（不再给不存在的
+# 组件写关闭标志）。恢复侧边栏时 revert 删除提交即可。
 # 用户 2026-10-25 邮件《继续修复》第 6 项：Shift 切换仍失效。
 # 已核实 Build 33 代码侧链路本身是全的：skel 配置有双 Shift
 # AltTriggerKeys、profile 有中英双端点、/etc/environment 有三变量、
 # 自启动文件与面板扩展都在，live 用户经 1700 钩子 cp -a skel 必得该
 # 配置。但安装账号的家目录只经 Calamares 建用户一环继承 skel——
-# 1700 钩子的 cp -a 只管 live 用户，postinstall 此前也只给安装账号
-# 显式补过 sidebar-off，从未给 fcitx5 补过。只要 skel 继承链路有任何
-# 一环漏掉（与 4908b0a 的 live/安装不一致教训同类），安装后用户拿
-# 到的就是 fcitx5 默认配置：守护进程在跑、点图标能切换（图标走 D-Bus
-# 不走触发键），唯独 Shift 触发键不存在——与用户本次反馈的现象逐项
-# 吻合。因此这里与 sidebar-off 同款做法：只补缺口（cp -n，绝不覆盖
-# 已有配置）、失败只警告不拖垮安装，把“skel 一定继承”从假设变成
-# postinstall 保证。注意：本段修的是继承链路，不是触发键本身——
-# 触发键值（Shift_L/Shift_R）仍以 skel 文件为准，此处不改值。
+# 1700 钩子的 cp -a 只管 live 用户，postinstall 此前从未给安装账号
+# 补过 fcitx5 配置。只要 skel 继承链路有任何一环漏掉（与 4908b0a
+# 的 live/安装不一致教训同类），安装后用户拿到的就是 fcitx5 默认
+# 配置：守护进程在跑、点图标能切换（图标走 D-Bus 不走触发键），
+# 唯独 Shift 触发键不存在——与用户本次反馈的现象逐项吻合。
+# 因此这里只补缺口（cp -n，绝不覆盖已有配置）、失败只警告不拖垮
+# 安装，把“skel 一定继承”从假设变成 postinstall 保证。注意：
+# 本段修的是继承链路，不是触发键本身——触发键值（Shift_L/Shift_R）
+# 仍以 skel 文件为准，此处不改值。
 if [ -d /etc/skel/.config/fcitx5 ]; then
     mkdir -p "/home/$installed_account/.config/fcitx5" 2>/dev/null || true
     for _fcitx5_conf in config profile; do
@@ -233,11 +228,8 @@ if command -v systemctl >/dev/null 2>&1; then
             case "$_vname" in
                 *update*|*upgrade*|*ota*) continue ;;
             esac
-            # Udi 默认不启用（用户在设置里手动打开），与 1660 钩子
-            # 同款规则；不要把它和必须自启的管家后端混淆。
-            case "$_vname" in
-                *udi*|*Udi*) continue ;;
-            esac
+            # 用户 2026-10-25 09:01 指令：Udi 组件暂时删除，1550 钩子
+            # 已跳过其安装；这里不再为不存在的 Udi 留跳过规则。
             # 没有 [Install] 节的 unit 会让 systemctl enable 失败；
             # 此时回退到显式 wants 软链接，也就是 1660 钩子用的
             # 同一种启用，绝不能静默丢掉这个服务。

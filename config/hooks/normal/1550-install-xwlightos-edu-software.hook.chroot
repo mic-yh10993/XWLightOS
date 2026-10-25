@@ -42,6 +42,15 @@ fi
 fetch_ok=1
 grep -v '^#' "$EDU_DIR/DEB-INVENTORY.tsv" | while IFS="$(printf '\t')" read -r classification file package version arch size sha256; do
     [ -n "$file" ] || continue
+    # 用户 2026-10-25 09:01 指令：暂时删除希沃侧边栏与 Udi 组件
+    # （侧边栏打不开、真机上无日志）。这两个厂商包本次既不下载
+    # 也不安装；恢复时删掉下面这段跳过即可（git 历史里留着完整接线）。
+    # 管家后端不在此列：它与 udi 是两个不同组件，仍需正常安装自启。
+    case "$package" in
+        com.seewo.easisidebar|*easisidebar*|udi-hotspot-service)
+            echo "XWLightOS: skipping removed component $package (user 2026-10-25 instruction)" >&2
+            continue ;;
+    esac
     echo "XWLightOS: fetching $package $version"
     dest="$EDU_DIR/$(basename "$file")"
     vol=0
@@ -90,6 +99,12 @@ chmod +x /etc/dpkg/pre-inst.d/set-home
 for deb in "$EDU_DIR"/*.deb; do
     [ -f "$deb" ] || continue
     package_name="$(dpkg-deb -f "$deb" Package 2>/dev/null || echo "unknown")"
+    # 第二道防线：即使某版清单漏网，删除的组件也不得装进镜像。
+    case "$package_name" in
+        com.seewo.easisidebar|*easisidebar*|udi-hotspot-service)
+            echo "XWLightOS: skipping removed component $package_name (user 2026-10-25 instruction)" >&2
+            continue ;;
+    esac
 
     if [ "$package_name" = "com.seewo.terminalmanager" ]; then
         # 希沃管家 declares "Depends: libstdc++6 (>= 8.3), libstdc++6 (<< 9),

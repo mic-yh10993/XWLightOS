@@ -2,20 +2,18 @@
 # XWLightOS 设置 — small settings tool for the Seewo components.
 #
 # User instruction 2026-10-24: provide a settings program that can
-# toggle at boot:
-#   1. the Seewo manager (希沃管家) backend service
-#      (system service com.seewo.terminalmanager.service),
-#   2. the Udi component (system service, discovered by the *udi*
-#      unit glob, shipped as udi-hotspot-service),
-#   3. the Seewo sidebar (希沃侧边栏 com.seewo.easisidebar) autostart.
+# toggle at boot the Seewo manager (希沃管家) backend service
+# (system service com.seewo.terminalmanager.service).
 #
-# The first two are system services: state is read with
+# User instruction 2026-10-25 09:01: the Udi component and the Seewo
+# sidebar are TEMPORARILY REMOVED from the build, so their toggles
+# are gone from this tool too; restoring them is a revert of the
+# removal commits. The manager backend is a different component and
+# is NOT removed.
+#
+# The manager toggle is a system service: state is read with
 # `systemctl is-enabled` and changed with `pkexec systemctl
-# enable/disable --now`, so the toggles are real and persistent.
-# The sidebar is a per-user autostart: the toggle writes/removes the
-# off-flag honoured by /usr/local/bin/xwlightos-sidebar-launcher and
-# installs a per-user autostart override; turning it off also stops
-# the running bar.
+# enable/disable --now`, so the toggle is real and persistent.
 import glob
 import os
 import subprocess
@@ -25,13 +23,6 @@ import gi
 
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk  # noqa: E402
-
-FLAG_OFF = os.path.expanduser("~/.config/xwlightos/sidebar-off")
-USER_AUTOSTART = os.path.expanduser("~/.config/autostart")
-SIDEBAR_OVERRIDE = os.path.join(
-    USER_AUTOSTART, "com.seewo.easisidebar.desktop"
-)
-
 
 def find_unit(patterns, fallback):
     for pat in patterns:
@@ -45,8 +36,6 @@ def find_unit(patterns, fallback):
 
 TM_UNIT = find_unit(["com.seewo.terminalmanager.service"],
                     "com.seewo.terminalmanager.service")
-UDI_UNIT = find_unit(["*udi*.service", "*Udi*.service"],
-                     "udi-hotspot-service.service")
 
 
 def service_enabled(unit):
@@ -91,34 +80,6 @@ def set_service(unit, on, parent):
     return True
 
 
-def sidebar_enabled():
-    return not os.path.exists(FLAG_OFF)
-
-
-def set_sidebar(on):
-    os.makedirs(os.path.dirname(FLAG_OFF), exist_ok=True)
-    os.makedirs(USER_AUTOSTART, exist_ok=True)
-    if on:
-        try:
-            os.unlink(FLAG_OFF)
-        except OSError:
-            pass
-        try:
-            os.unlink(SIDEBAR_OVERRIDE)
-        except OSError:
-            pass
-    else:
-        with open(FLAG_OFF, "w", encoding="utf-8") as fh:
-            fh.write("off\n")
-        with open(SIDEBAR_OVERRIDE, "w", encoding="utf-8") as fh:
-            fh.write("[Desktop Entry]\nType=Application\n"
-                     "Name=EasiSidebar (disabled by XWLightOS Settings)\n"
-                     "Exec=/bin/true\nHidden=true\n"
-                     "X-GNOME-Autostart-enabled=false\n")
-        subprocess.run(["pkill", "-f", "easisidebar"],
-                       capture_output=True)
-
-
 class Row(Gtk.Box):
     def __init__(self, title, subtitle, initial, sensitive=True):
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL,
@@ -154,7 +115,7 @@ class Window(Gtk.Window):
         self.set_border_width(8)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         head = Gtk.Label(xalign=0)
-        head.set_markup("希沃组件开机启动设置（修改后重启生效，"
+        head.set_markup("希沃管家后端开机启动设置（修改后重启生效，"
                         "服务开关同时启停当前运行）")
         head.set_margin_start(14)
         box.pack_start(head, False, False, 6)
@@ -168,26 +129,8 @@ class Window(Gtk.Window):
             "notify::active", self.on_service, TM_UNIT, self.row_tm)
         box.pack_start(self.row_tm, False, False, 0)
 
-        udi_ok = service_present(UDI_UNIT)
-        self.row_udi = Row(
-            "Udi 组件", "systemd 服务：%s" % UDI_UNIT,
-            service_enabled(UDI_UNIT) if udi_ok else False,
-            sensitive=udi_ok)
-        self.row_udi.switch.connect(
-            "notify::active", self.on_service, UDI_UNIT, self.row_udi)
-        box.pack_start(self.row_udi, False, False, 0)
-
-        self.row_sidebar = Row(
-            "希沃侧边栏", "用户自启：com.seewo.easisidebar"
-            "（经稳定化启动器运行，日志在 ~/.local/share/xwlightos/）",
-            sidebar_enabled())
-        self.row_sidebar.switch.connect("notify::active",
-                                        self.on_sidebar)
-        box.pack_start(self.row_sidebar, False, False, 0)
-
         note = Gtk.Label(xalign=0)
-        note.set_markup("未安装的组件开关会变灰。侧边栏闪退时可先在这里"
-                        "关掉它，再看日志定位。")
+        note.set_markup("未安装的组件开关会变灰。")
         note.set_margin_start(14)
         box.pack_start(note, False, False, 8)
         self.add(box)
@@ -209,9 +152,6 @@ class Window(Gtk.Window):
                     switch.handler_unblock_by_func(self.on_service)
         finally:
             self._busy = False
-
-    def on_sidebar(self, switch, _param):
-        set_sidebar(switch.get_active())
 
 
 def main():

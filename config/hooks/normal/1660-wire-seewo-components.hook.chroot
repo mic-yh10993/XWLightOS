@@ -1,5 +1,5 @@
 #!/bin/sh
-# Seewo component wiring: vendor services inventory + sidebar autostart.
+# Seewo component wiring: vendor services inventory + manager enable.
 #
 # User reports 2026-10-24:
 #  * the Seewo manager (terminalmanager) backend service "seems not
@@ -10,9 +10,12 @@
 #    the inventory in /etc/xwlightos/seewo-vendor-units.txt and enable
 #    every non-updater unit from whichever path exists, warning loudly
 #    in the build log when the manager service is absent entirely.
-#  * the Seewo sidebar keeps crashing - vendor autostart entries for
-#    com.seewo.easisidebar are rewired to the stabilising launcher
-#    (X11 backends, logging, bounded restarts, off-flag support).
+#  * user instruction 2026-10-25 09:01: the Seewo sidebar and the Udi
+#    components are TEMPORARILY REMOVED from the build (sidebar never
+#    opens, no log on the real machine). The 1550 edu hook skips those
+#    vendor packages, so nothing sidebar/Udi is wired here any more;
+#    restoring them is a revert of the removal commits. The manager
+#    backend is a different component and is NOT removed.
 set -eu
 
 INV=/etc/xwlightos/seewo-vendor-units.txt
@@ -49,12 +52,6 @@ while IFS= read -r name; do
     case "$name" in
         *update*|*upgrade*|*ota*) echo "XWLightOS: not enabling updater unit $name"; continue ;;
     esac
-    # 用户 2026-10-24 邮件《很大问题》第 8 项：侧边栏连同 Udi 组件默认
-    # 不开机启动（用户在设置里手动打开才启用）。Udi 系 unit 在此跳过，
-    # 与管家后端（第 2 项要求修好自启）是两个不同组件，不要混淆。
-    case "$name" in
-        *udi*|*Udi*) echo "XWLightOS: not enabling Udi unit $name by default (user turns it on in Settings)"; continue ;;
-    esac
     src=""
     for base in /usr/lib/systemd/system /lib/systemd/system; do
         [ -f "$base/$name" ] && { src="$base/$name"; break; }
@@ -76,65 +73,11 @@ if grep -qx 'com.seewo.terminalmanager.service' "$INV"; then
 else
     echo "XWLightOS: WARNING: com.seewo.terminalmanager.service NOT found in image (manager backend cannot start)" >&2
 fi
-if grep -qi 'udi' "$INV"; then
-    echo "XWLightOS: Udi component unit present (not enabled by default; user turns it on in Settings)"
-else
-    echo "XWLightOS: WARNING: no Udi unit found in image" >&2
-fi
-
-# --- Sidebar autostart rewiring ---
-# 用户 2026-10-24 邮件《很大问题》第 8 项：侧边栏默认不开机启动。
-# 实现方式是启动器 + 默认关闭标志（/etc/skel/.config/xwlightos/sidebar-off，
-# 新用户继承；设置工具拨动开关即改这个标志），而不是删启动项：用户在
-# 设置里打开后，下次登录启动器仍能正常起栏；彻底删了启动项就没法再开了。
-# 应用网格里的侧边栏图标则指向启动器的 --manual 模式（见启动器注释），
-# 用户手动点图标时不受关闭标志拦截。
-chmod 755 /usr/local/bin/xwlightos-sidebar-launcher /usr/local/bin/xwlightos-settings \
+# 用户 2026-10-25 09:01 指令：希沃侧边栏与 Udi 组件暂时删除。
+# 1550 钩子已跳过这两个厂商包的安装；这里不再接线、也不再为
+# 不存在的侧边栏建自启入口。恢复时 revert 删除提交即可。
+chmod 755 /usr/local/bin/xwlightos-settings \
     /usr/local/bin/xwlightos-desktop-cleaner 2>/dev/null || true
-# 应用网格入口统一走稳定化启动器：厂商 .desktop 直接 Exec 厂商二进制，
-# 缺少启动器的工作目录/后端等待/日志，闪退时无从定位。
-for _appdt in /usr/share/applications/com.seewo.easisidebar.desktop; do
-    [ -f "$_appdt" ] || continue
-    if grep -q '^Exec=/usr/local/bin/xwlightos-sidebar-launcher --manual' "$_appdt"; then
-        echo "XWLightOS: sidebar app entry already rewired: $_appdt"
-    else
-        sed -i 's|^Exec=.*|Exec=/usr/local/bin/xwlightos-sidebar-launcher --manual|' "$_appdt"
-        grep -q '^Exec=/usr/local/bin/xwlightos-sidebar-launcher --manual' "$_appdt" || {
-            echo "XWLightOS: failed to rewire sidebar app entry $_appdt" >&2
-            exit 1
-        }
-        echo "XWLightOS: sidebar app entry rewired to stabilising launcher --manual: $_appdt"
-    fi
-done
-unset _appdt
-found=0
-for dt in /etc/xdg/autostart/*.desktop; do
-    [ -f "$dt" ] || continue
-    case "$(basename "$dt")" in
-        *[Ss]idebar*|*easisidebar*)
-            found=1
-            cp -f "$dt" "$dt.vendor-orig"
-            sed -i 's|^Exec=.*|Exec=/usr/local/bin/xwlightos-sidebar-launcher|' "$dt"
-            grep -q '^Exec=/usr/local/bin/xwlightos-sidebar-launcher' "$dt" || {
-                echo "XWLightOS: failed to rewire sidebar autostart $dt" >&2
-                exit 1
-            }
-            echo "XWLightOS: sidebar autostart rewired to stabilising launcher: $dt"
-            ;;
-    esac
-done
-if [ "$found" -eq 0 ]; then
-    cat > /etc/xdg/autostart/xwlightos-easisidebar.desktop <<'EOF'
-[Desktop Entry]
-Type=Application
-Name=EasiSidebar (XWLightOS stabilised)
-Exec=/usr/local/bin/xwlightos-sidebar-launcher
-Terminal=false
-NoDisplay=true
-X-GNOME-Autostart-enabled=true
-EOF
-    echo "XWLightOS: no vendor sidebar autostart found; installed launcher autostart (launcher no-ops if the sidebar is absent)"
-fi
 
 # Desktop cleaner user service: enable for every user session.
 if [ -d /etc/systemd/user ]; then

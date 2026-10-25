@@ -1091,13 +1091,10 @@ done
 # 4 扩展入口与扩展文件门禁（1650 钩子在构建期同口径断言，这里查成品）。
 require_path 'usr/share/applications/org.gnome.Extensions.desktop'
 require_path 'usr/bin/gnome-extensions'
-# 6 桌面清理服务与设置/启动器三件套必须进镜像。
+# 6 桌面清理服务与设置工具必须进镜像。
+# 用户 2026-10-25 09:01 指令：希沃侧边栏暂时删除，启动器已随
+# 侧边栏删除一并去掉；这里不再要求它存在，改为要求它不存在。
 require_path 'usr/local/bin/xwlightos-desktop-cleaner'
-require_path 'usr/local/bin/xwlightos-sidebar-launcher'
-# 用户 2026-10-24 22:40 字体假设：启动器必须把 CJK 字体诊断写进日志，
-# 下次闪退时凭日志判断字体是否在场，不再凭猜测。
-grep -q 'fc-list :lang=zh' "$FULL_ROOT/usr/local/bin/xwlightos-sidebar-launcher" || {
-    echo 'sidebar launcher lacks font diagnostic logging' >&2; exit 1; }
 require_path 'usr/local/bin/xwlightos-settings'
 require_path 'usr/share/applications/xwlightos-settings.desktop'
 CLEANER_WANTS="$FULL_ROOT/etc/systemd/user/default.target.wants/xwlightos-desktop-cleaner.service"
@@ -1108,8 +1105,15 @@ SEEWO_INV="$WORK/seewo-vendor-units.txt"
 cat_image_file 'etc/xwlightos/seewo-vendor-units.txt' "$SEEWO_INV"
 grep -qx 'com.seewo.terminalmanager.service' "$SEEWO_INV" || {
     echo 'seewo vendor unit inventory lacks com.seewo.terminalmanager.service (manager backend would not start)' >&2; exit 1; }
-grep -qi 'udi' "$SEEWO_INV" || {
-    echo 'seewo vendor unit inventory lacks the Udi unit' >&2; exit 1; }
+# 用户 2026-10-25 09:01 指令：希沃侧边栏与 Udi 组件暂时删除。
+# 成品里不得再出现它们，否则就是删除没落地——这里是反向门禁，
+# 防止某版厂商清单变动又把删除的组件悄悄带回来。
+[ ! -e "$FULL_ROOT/usr/local/bin/xwlightos-sidebar-launcher" ] || {
+    echo 'removed sidebar launcher is still present in the image' >&2; exit 1; }
+[ ! -e "$FULL_ROOT/usr/share/applications/com.seewo.easisidebar.desktop" ] || {
+    echo 'removed sidebar desktop entry is still present in the image' >&2; exit 1; }
+grep -qi 'easisidebar\|udi-hotspot' "$SEEWO_INV" && {
+    echo 'removed sidebar/Udi unit is still present in the vendor inventory' >&2; exit 1; } || true
 # 清单只是清单：管家后端真正开机起得来，还要看 live 镜像里
 # multi-user.target.wants 下的启用软链接本身在不在、指没指到
 # 真实存在的 unit 文件。只查清单的旧口径会让“有清单、无启用”
