@@ -737,6 +737,23 @@ FCITX_CFG="$WORK/fcitx5-config"
 cat_image_file 'etc/skel/.config/fcitx5/config' "$FCITX_CFG"
 grep -q '^0=Shift_L$' "$FCITX_CFG"
 grep -q '^1=Shift_R$' "$FCITX_CFG"
+# 小节级门禁：此前只在全文件 grep，Shift_L 出现在别处也能蒙混；
+# 触发键必须实打实落在 [Hotkey/AltTriggerKeys] 小节内才算数。
+FCITX_ALT_SECTION="$WORK/fcitx5-alttrigger"
+awk '/^\[Hotkey\/AltTriggerKeys\]/{in_section=1; next} /^\[/{in_section=0} in_section' "$FCITX_CFG" > "$FCITX_ALT_SECTION"
+grep -q '^0=Shift_L$' "$FCITX_ALT_SECTION" || {
+    echo 'fcitx5 Shift_L is not inside [Hotkey/AltTriggerKeys] (Shift trigger would not fire)' >&2; exit 1; }
+grep -q '^1=Shift_R$' "$FCITX_ALT_SECTION" || {
+    echo 'fcitx5 Shift_R is not inside [Hotkey/AltTriggerKeys] (Shift trigger would not fire)' >&2; exit 1; }
+# 用户 2026-10-25 邮件第 1 项：屏幕键盘默认开启（此前仓库从未写过
+# 该键，GNOME 默认 false），且 GTK 输入法模块经 xsettings 通道钉死
+# 为 fcitx（屏幕键盘落点的 GTK 文本框须经此通道才走 fcitx）。
+OSK_DCONF="$WORK/00-xwlightos-gnome-osk"
+cat_image_file 'etc/dconf/db/local.d/00-xwlightos-gnome' "$OSK_DCONF"
+grep -q '^screen-keyboard-enabled=true$' "$OSK_DCONF" || {
+    echo 'dconf does not enable the on-screen keyboard by default (user mail 2026-10-25 item 1)' >&2; exit 1; }
+grep -q "^overrides={'Gtk/IMModule':<'fcitx'>}$" "$OSK_DCONF" || {
+    echo 'dconf xsettings does not pin Gtk/IMModule to fcitx (GTK apps could bypass fcitx)' >&2; exit 1; }
 FCITX_PROFILE="$WORK/fcitx5-profile"
 cat_image_file 'etc/skel/.config/fcitx5/profile' "$FCITX_PROFILE"
 grep -q '^Name=keyboard-us$' "$FCITX_PROFILE"
@@ -971,6 +988,11 @@ grep -q 'XSession=gnome-xorg' "$TARGET_POSTINSTALL" || {
     echo 'target postinstall does not force X11 session for installed account' >&2; exit 1; }
 grep -q 'var/lib/AccountsService/users' "$TARGET_POSTINSTALL" || {
     echo 'target postinstall writes no AccountsService session file' >&2; exit 1; }
+# 用户 2026-10-25 邮件第 6 项：postinstall 必须把 skel 的 fcitx5 配置
+# （双 Shift 触发键）显式补给安装账号，只靠 Calamares 的 skel 继承
+# 一旦漏掉，安装后用户拿到的就是 fcitx5 默认配置、Shift 触发键缺失。
+grep -q 'skel/.config/fcitx5' "$TARGET_POSTINSTALL" || {
+    echo 'target postinstall does not seed fcitx5 config for installed account (Shift trigger relies on skel inheritance alone)' >&2; exit 1; }
 # 4 扩展入口与扩展文件门禁（1650 钩子在构建期同口径断言，这里查成品）。
 require_path 'usr/share/applications/org.gnome.Extensions.desktop'
 require_path 'usr/bin/gnome-extensions'

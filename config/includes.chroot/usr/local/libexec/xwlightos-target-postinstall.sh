@@ -73,6 +73,29 @@ ACCEOF
 mkdir -p "/home/$installed_account/.config/xwlightos" 2>/dev/null || true
 printf 'off\n' > "/home/$installed_account/.config/xwlightos/sidebar-off" 2>/dev/null || true
 chown -R "$installed_account:$installed_account" "/home/$installed_account/.config/xwlightos" 2>/dev/null || true
+# 用户 2026-10-25 邮件《继续修复》第 6 项：Shift 切换仍失效。
+# 已核实 Build 33 代码侧链路本身是全的：skel 配置有双 Shift
+# AltTriggerKeys、profile 有中英双端点、/etc/environment 有三变量、
+# 自启动文件与面板扩展都在，live 用户经 1700 钩子 cp -a skel 必得该
+# 配置。但安装账号的家目录只经 Calamares 建用户一环继承 skel——
+# 1700 钩子的 cp -a 只管 live 用户，postinstall 此前也只给安装账号
+# 显式补过 sidebar-off，从未给 fcitx5 补过。只要 skel 继承链路有任何
+# 一环漏掉（与 4908b0a 的 live/安装不一致教训同类），安装后用户拿
+# 到的就是 fcitx5 默认配置：守护进程在跑、点图标能切换（图标走 D-Bus
+# 不走触发键），唯独 Shift 触发键不存在——与用户本次反馈的现象逐项
+# 吻合。因此这里与 sidebar-off 同款做法：只补缺口（cp -n，绝不覆盖
+# 已有配置）、失败只警告不拖垮安装，把“skel 一定继承”从假设变成
+# postinstall 保证。注意：本段修的是继承链路，不是触发键本身——
+# 触发键值（Shift_L/Shift_R）仍以 skel 文件为准，此处不改值。
+if [ -d /etc/skel/.config/fcitx5 ]; then
+    mkdir -p "/home/$installed_account/.config/fcitx5" 2>/dev/null || true
+    for _fcitx5_conf in config profile; do
+        cp -n "/etc/skel/.config/fcitx5/$_fcitx5_conf" \
+            "/home/$installed_account/.config/fcitx5/$_fcitx5_conf" 2>/dev/null || \
+            echo "XWLightOS: could not seed fcitx5 $_fcitx5_conf for $installed_account (Shift trigger may be missing)" >&2
+    done
+    chown -R "$installed_account:$installed_account" "/home/$installed_account/.config/fcitx5" 2>/dev/null || true
+fi
 if command -v systemctl >/dev/null 2>&1; then
     systemctl enable xwlightos-installed-cleanup.service >/dev/null 2>&1 || true
     systemctl enable gdm.service >/dev/null 2>&1 || true
