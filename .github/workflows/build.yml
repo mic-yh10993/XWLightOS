@@ -328,6 +328,19 @@ jobs:
           EOF
           ls -lh "$ISO" XWLightOS-1.0-amd64-livecd.iso.sha256 XWLightOS-1.0-release-notes.md build.log
 
+      - name: Allow QEMU KVM acceleration for smoke boot
+        # 2026-10-25：runner 上 /dev/kvm 存在但 runner 用户无权限
+        # （QEMU 报 Permission denied 后回落 TCG，guest 在 TCG 下 600 秒
+        # 都渲染不出桌面）。本步放行设备权限（标准 CI 做法），使烟测能
+        # 用 KVM 近原生速度跑；若本机无 /dev/kvm 或放行失败则仅打印
+        # 提示、不阻塞构建，烟测仍按 kvm→tcg 回落逻辑跑。
+        run: |
+          if [ -e /dev/kvm ]; then
+            sudo chmod 666 /dev/kvm && echo 'KVM device accessible for smoke boot' || echo 'WARNING: could not chmod /dev/kvm, smoke may fall back to TCG'
+          else
+            echo 'no /dev/kvm on this runner, smoke falls back to TCG'
+          fi
+
       - name: Smoke boot XWLightOS 1.0 ISO in QEMU BIOS and UEFI
         run: |
           set -euxo pipefail
