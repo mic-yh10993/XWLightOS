@@ -53,7 +53,7 @@
 
 - Calamares 安装器（XWLightOS 品牌）
 - fwupd（固件更新）
-- openssh-server
+- openssh-server（包在、服务默认关闭：1710 构建钩子与 postinstall 双层禁用，开机与关机均不经过 sshd；需远程登录时由管理员显式启用）
 - Python 3 开发环境（python3-pip、venv、build-essential 等）
 
 ## 已移除（相对 DclawOS）
