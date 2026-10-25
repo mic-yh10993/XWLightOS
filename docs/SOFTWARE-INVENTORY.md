@@ -14,7 +14,7 @@
 | 软件 | 版本 | 来源 |
 |------|------|------|
 | ONLYOFFICE DesktopEditors | 9.4.0 | GitHub 官方 release（SHA256 锁定） |
-| PeaZip | 11.2.0 Qt6 | GitHub 官方 release（SHA256 锁定） |
+| GNOME File Roller | Debian bookworm | Debian 官方源（2026-10-25 起替代 PeaZip，PeaZip 语言设置里没中文） |
 
 ## 教育软件（来自 WinduxEdu，版本锁定）
 

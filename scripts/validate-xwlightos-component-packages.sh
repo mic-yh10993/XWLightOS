@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Validate XWLightOS binary packages before staging them into a Live ISO.
-# XWLightOS carries only pinned third-party binary packages (currently PeaZip).
+# XWLightOS carries only pinned third-party binary packages (currently
+# ONLYOFFICE DesktopEditors; PeaZip was removed 2026-10-25).
 # (AI stack removed for the education edition.)
 set -euo pipefail
 
@@ -13,8 +14,8 @@ compgen -G "$PKGS/*.deb" >/dev/null || { echo "no binary DEBs" >&2; exit 1; }
     cd "$PKGS"
     sha256sum -c SHA256SUMS
 )
-# The pinned PeaZip release DEB is the only third-party binary package.
-compgen -G "$PKGS/peazip_*.deb" >/dev/null || { echo "missing pinned PeaZip package" >&2; exit 1; }
+# The pinned ONLYOFFICE release DEB is the only third-party binary package.
+compgen -G "$PKGS/onlyoffice-desktopeditors_*.deb" >/dev/null || { echo "missing pinned ONLYOFFICE package" >&2; exit 1; }
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT

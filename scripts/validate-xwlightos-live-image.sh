@@ -806,6 +806,8 @@ if [ -s "$NON_GNOME_SESSIONS" ]; then
     exit 1
 fi
 # The removed self-developed components must not reappear either.
+# PeaZip joins them (user 2026-10-25: no Chinese UI, replaced by File
+# Roller): if any step reinstalls it, the final ISO must fail here.
 for path in \
     usr/local/libexec/xwlightos-component-launch \
     usr/bin/xwlightos-store \
@@ -813,20 +815,19 @@ for path in \
     usr/bin/winver \
     usr/bin/xwlightos-ipconfig \
     usr/local/bin/linux-regedit \
-    usr/local/bin/devmgr; do
+    usr/local/bin/devmgr \
+    usr/bin/peazip \
+    usr/share/applications/peazip.desktop; do
     if grep -q -E "(^|/)${path//./\\.}$" "$LIST"; then
         echo "final ISO still contains a removed component: /$path" >&2
         exit 1
     fi
 done
 
-# PeaZip is the only remaining binary package: the archive manager behind
-# the default application associations.
-require_path 'usr/bin/peazip'
-require_path 'usr/share/applications/peazip.desktop'
-# PeaZip's bundled libQt6Pas links libQt6PrintSupport.so.6; without it the
-# launcher dies silently (user 2026-10-18: "peazip打不开").
-require_path 'usr/lib/x86_64-linux-gnu/libQt6PrintSupport.so.6'
+# File Roller is the archive manager behind the default application
+# associations (user 2026-10-25: PeaZip removed, no Chinese UI).
+require_path 'usr/bin/file-roller'
+require_path 'usr/share/applications/org.gnome.FileRoller.desktop'
 # GNOME Text Editor is the default handler for plain text.
 require_path 'usr/bin/gnome-text-editor'
 require_path 'usr/share/applications/org.gnome.TextEditor.desktop'
@@ -836,7 +837,7 @@ cat_image_file 'etc/xdg/mimeapps.list' "$MIMEAPPS"
 grep -q '^text/plain=org.gnome.TextEditor.desktop$' "$MIMEAPPS"
 grep -q '^image/jpeg=org.gnome.eog.desktop$' "$MIMEAPPS"
 grep -q '^video/mp4=vlc.desktop$' "$MIMEAPPS"
-grep -q '^application/zip=peazip.desktop$' "$MIMEAPPS"
+grep -q '^application/zip=org.gnome.FileRoller.desktop$' "$MIMEAPPS"
 # ONLYOFFICE is the default handler for office documents and PDF.
 grep -q '^application/pdf=onlyoffice-desktopeditors.desktop$' "$MIMEAPPS"
 for oo_mime in \
@@ -974,12 +975,11 @@ require_path 'usr/share/icons/WhiteSur/index.theme'
 require_path 'usr/share/icons/WhiteSur-light'
 require_path 'usr/share/icons/WhiteSur-light/index.theme'
 
-# PeaZip ships its own upstream desktop entry; XWLightOS no longer rewrites
-# third-party entries through an adapter.
+# File Roller ships its own upstream desktop entry; validate it the same way.
 if command -v desktop-file-validate >/dev/null 2>&1; then
-    PEAZIP_DESKTOP="$WORK/peazip.desktop"
-    cat_image_file 'usr/share/applications/peazip.desktop' "$PEAZIP_DESKTOP"
-    desktop-file-validate "$PEAZIP_DESKTOP"
+    FILEROLLER_DESKTOP="$WORK/org.gnome.FileRoller.desktop"
+    cat_image_file 'usr/share/applications/org.gnome.FileRoller.desktop' "$FILEROLLER_DESKTOP"
+    desktop-file-validate "$FILEROLLER_DESKTOP"
 fi
 TERMINAL_ENTRY="$WORK/xterm.desktop"
 cat_image_file 'usr/local/share/applications/xterm.desktop' "$TERMINAL_ENTRY"
