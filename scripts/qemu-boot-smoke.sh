@@ -149,7 +149,7 @@ dump_guest_console() {
         return 0
     fi
     wc -c "$SERIAL_LOG"
-    grep -a -iE "gdm|autologin|accountsservice|pam|seat0|FAILED|failed|error" "$SERIAL_LOG" | tail -100 || true
+    grep -a -iE "gdm|autologin|accountsservice|pam|seat0|session|user@|FAILED|failed|error" "$SERIAL_LOG" | tail -100 || true
     echo "--- guest serial console tail (last 100 lines) ---"
     tail -100 "$SERIAL_LOG" || true
 }
