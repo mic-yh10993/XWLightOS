@@ -1112,10 +1112,27 @@ grep -q 'Window.GetX ()' "$PLY_SCRIPT" && {
     echo 'plymouth script still misuses Window.GetX as screen width' >&2; exit 1; } || true
 GRUBD_FILE="$WORK/00-xwlightos-grubd.cfg"
 cat_image_file 'etc/default/grub.d/00-xwlightos.cfg' "$GRUBD_FILE"
-grep -q '^GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"$' "$GRUBD_FILE" || {
-    echo 'grub.d lacks quiet splash (installed boot would scroll text, no splash)' >&2; exit 1; }
-grep -q 'GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"' "$TARGET_POSTINSTALL" || {
-    echo 'target postinstall grub.d lacks quiet splash' >&2; exit 1; }
+grep -q '^GRUB_CMDLINE_LINUX_DEFAULT="quiet splash plymouth.ignore-serial-consoles"$' "$GRUBD_FILE" || {
+    echo 'grub.d lacks quiet splash + plymouth.ignore-serial-consoles (installed boot would scroll text, no splash)' >&2; exit 1; }
+grep -q 'GRUB_CMDLINE_LINUX_DEFAULT="quiet splash plymouth.ignore-serial-consoles"' "$TARGET_POSTINSTALL" || {
+    echo 'target postinstall grub.d lacks quiet splash + plymouth.ignore-serial-consoles' >&2; exit 1; }
+# Build 37（开机动画安装后缺口）：postinstall 的 GRUB drop-in 不得再与主题
+# 耦合（主题缺失时删文件会连带丢掉 splash 标志），且 update-grub 不得再
+# `|| true` 吞掉失败（装完系统的 grub.cfg 是事后断言的唯一实证）。
+! grep -q 'rm -f /etc/default/grub.d/00-xwlightos.cfg' "$TARGET_POSTINSTALL" || {
+    echo 'target postinstall still deletes the grub drop-in when theme assets are missing (splash flags would be lost with it)' >&2; exit 1; }
+! grep -q 'update-grub || true' "$TARGET_POSTINSTALL" || {
+    echo 'target postinstall still swallows update-grub failure (broken installed grub.cfg would hide behind a green install)' >&2; exit 1; }
+grep -q 'target update-grub failed' "$TARGET_POSTINSTALL" || {
+    echo 'target postinstall does not fail loudly on update-grub failure' >&2; exit 1; }
+grep -q 'generated target grub.cfg lacks the splash kernel flags' "$TARGET_POSTINSTALL" || {
+    echo 'target postinstall does not verify the generated grub.cfg carries the splash flags' >&2; exit 1; }
+# Build 37（管家后端安装后缺口）：postinstall 的厂商重启用必须与 1660 live
+# 层同款直连 multi-user wants，不走服从 unit 自身 WantedBy 的 systemctl
+# enable（WantedBy 不是 multi-user 时终检会误判），也不依赖 chroot 内
+# systemctl 是否可用。
+grep -q 'ln -sfn "$_vunit" "/etc/systemd/system/multi-user.target.wants/$_vname"' "$TARGET_POSTINSTALL" || {
+    echo 'target postinstall vendor re-enable does not link directly into multi-user wants like the 1660 live layer' >&2; exit 1; }
 # Deep-chain fix (user mail 2026-10-24 22:40): the installed account
 # must be forced onto the X11 session like the live user, otherwise
 # every session-level fix validated on live X11 silently stops
