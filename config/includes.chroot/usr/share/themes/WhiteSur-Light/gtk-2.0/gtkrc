@@ -1,0 +1,48 @@
+# XWLightOS fallback GTK2 style for WhiteSur-Light.
+#
+# Why this file exists (user report 2026-10-25: all programs still show
+# black text on a black background):
+# Build 33 pointed every GTK2 consumer at WhiteSur-Light -- /etc/gtk-2.0/gtkrc
+# and /etc/skel/.gtkrc-2.0 both set gtk-theme-name="WhiteSur-Light", and Qt5
+# apps reach the same theme through QT_QPA_PLATFORMTHEME=gtk2 -- but nobody
+# ever verified that WhiteSur-Light actually ships a gtk-2.0 style. The
+# pre-built release tarballs used by the 1550 hook ship gtk-3.0, gtk-4.0,
+# gnome-shell, cinnamon, metacity, xfwm4 and plank, and no gtk-2.0 directory
+# (see the release archive layout: no gtk-2.0 entry). A GTK2 theme name with
+# no gtk-2.0/gtkrc leaves GTK2 apps and the Qt5 gtk2 platform theme on an
+# uncontrolled fallback palette instead of the intended light palette.
+#
+# This file is the guarantee, not the assumption: it is shipped in the image
+# tree, and the 1550 hook asserts after extraction that
+# /usr/share/themes/WhiteSur-Light/gtk-2.0/gtkrc exists. If a future upstream
+# release does ship its own gtk-2.0/gtkrc, tar extraction overwrites this
+# fallback with the upstream file and the assertion still passes.
+#
+# Colors only, default engine: no external GTK2 engine is required, so this
+# file can never fail on a missing engine library. Palette matches
+# WhiteSur-Light (light background, dark text, blue selection).
+style "xwlightos-default" {
+    font_name = "Noto Sans CJK SC 11"
+    bg[NORMAL] = "#f5f5f7"
+    bg[PRELIGHT] = "#ffffff"
+    bg[ACTIVE] = "#dcdce2"
+    bg[SELECTED] = "#0a84ff"
+    bg[INSENSITIVE] = "#ececee"
+    fg[NORMAL] = "#23232d"
+    fg[PRELIGHT] = "#23232d"
+    fg[ACTIVE] = "#ffffff"
+    fg[SELECTED] = "#ffffff"
+    fg[INSENSITIVE] = "#8a8a93"
+    base[NORMAL] = "#ffffff"
+    base[PRELIGHT] = "#ffffff"
+    base[ACTIVE] = "#dcdce2"
+    base[SELECTED] = "#0a84ff"
+    base[INSENSITIVE] = "#f5f5f7"
+    text[NORMAL] = "#23232d"
+    text[PRELIGHT] = "#23232d"
+    text[ACTIVE] = "#ffffff"
+    text[SELECTED] = "#ffffff"
+    text[INSENSITIVE] = "#8a8a93"
+}
+widget_class "*" style "xwlightos-default"
+class "*" style "xwlightos-default"

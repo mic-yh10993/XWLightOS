@@ -105,6 +105,36 @@ if [ -d /etc/skel/.config/fcitx5 ]; then
     done
     chown -R "$installed_account:$installed_account" "/home/$installed_account/.config/fcitx5" 2>/dev/null || true
 fi
+# 用户 2026-10-25 邮件第 1 项（所有程序还是黑色文字+背景）——主题文件的
+# 安装账号补种，与上面 fcitx5 同款教训、同款修法：
+# live 用户经 1700 钩子 cp -a skel 必得主题文件，但安装账号只靠
+# Calamares 建用户时的 skel 继承；postinstall 此前只给 fcitx5 补过缺口，
+# 从未给主题文件补过。一旦继承链路漏掉，安装后用户就没有
+# .config/gtk-3.0/settings.ini（prefer-dark=false）、.gtkrc-2.0、
+# .config/gtk-4.0/gtk.css（libadwaita 应用的 WhiteSur-Light 样式）——
+# GNOME 会话内的 dconf 虽仍给浅色，但不走 dconf 的应用（GTK2、Qt5
+# gtk2、直接读 settings.ini 的 GTK3/GTK4 应用）就失去浅色锚点。
+# 因此这里只补缺口（cp -n，绝不覆盖用户已有配置）、失败只警告不拖垮
+# 安装；值仍以 skel 为准，此处不改值。
+if [ -f /etc/skel/.config/gtk-3.0/settings.ini ]; then
+    mkdir -p "/home/$installed_account/.config/gtk-3.0" 2>/dev/null || true
+    cp -n /etc/skel/.config/gtk-3.0/settings.ini \
+        "/home/$installed_account/.config/gtk-3.0/settings.ini" 2>/dev/null || \
+        echo "XWLightOS: could not seed gtk-3.0 settings.ini for $installed_account" >&2
+    chown -R "$installed_account:$installed_account" "/home/$installed_account/.config/gtk-3.0" 2>/dev/null || true
+fi
+if [ -f /etc/skel/.gtkrc-2.0 ]; then
+    cp -n /etc/skel/.gtkrc-2.0 "/home/$installed_account/.gtkrc-2.0" 2>/dev/null || \
+        echo "XWLightOS: could not seed .gtkrc-2.0 for $installed_account" >&2
+    chown "$installed_account:$installed_account" "/home/$installed_account/.gtkrc-2.0" 2>/dev/null || true
+fi
+if [ -d /etc/skel/.config/gtk-4.0 ]; then
+    mkdir -p "/home/$installed_account/.config/gtk-4.0" 2>/dev/null || true
+    cp -an /etc/skel/.config/gtk-4.0/. \
+        "/home/$installed_account/.config/gtk-4.0/" 2>/dev/null || \
+        echo "XWLightOS: could not seed gtk-4.0 theme for $installed_account" >&2
+    chown -R "$installed_account:$installed_account" "/home/$installed_account/.config/gtk-4.0" 2>/dev/null || true
+fi
 if command -v systemctl >/dev/null 2>&1; then
     systemctl enable xwlightos-installed-cleanup.service >/dev/null 2>&1 || true
     systemctl enable gdm.service >/dev/null 2>&1 || true
