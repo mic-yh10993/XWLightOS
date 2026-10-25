@@ -70,7 +70,11 @@ rm -f "$FRAME"
 # virtio-vga is the supported automated graphics test adapter. Standard VGA
 # is retained as a documented compatibility follow-up rather than being used
 # to infer whether the GNOME desktop has visibly rendered.
-QEMU=(qemu-system-x86_64 -m 2048 -smp 2 -accel tcg -no-reboot -no-shutdown \
+# 2026-10-25：加速改 kvm:tcg。纯 TCG 在共享 runner 上五次连续失败
+# （guest 在 600 秒内都走不完系统服务，而 Build 39 在 195 秒渲染出
+# 桌面）；GitHub Linux runner 通常提供 /dev/kvm，用 KVM 时 guest
+# 接近原生速度。若 runner 无 KVM 则自动回落 TCG，行为与原来一致。
+QEMU=(qemu-system-x86_64 -m 2048 -smp 2 -accel kvm:tcg -no-reboot -no-shutdown \
       -vga virtio -display none -monitor "unix:${MONITOR},server=on,wait=off" -serial "file:${SERIAL_LOG}" \
       -cdrom "$ISO" -boot d)
 if [ "$MODE" = uefi ]; then
