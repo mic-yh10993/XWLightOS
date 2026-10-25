@@ -412,6 +412,14 @@ grep -q '^Theme=xwlightos$' "$PLYMOUTH_WORK/etc/plymouth/plymouthd.conf" \
     || { echo 'plymouth default theme is not xwlightos (1630 hook did not run or failed)' >&2; exit 1; }
 lsinitramfs "$INITRD" | grep -q 'usr/share/plymouth/themes/xwlightos/xwlightos.script' \
     || { echo 'plymouth xwlightos theme is not inside initrd (boot splash would not show)' >&2; exit 1; }
+# 2026-10-25 Plymouth 排查补强：只查主题脚本不够，渲染链（script 插件、
+# DRM/framebuffer 渲染器、i915 驱动）缺任一环都会导致 initrd 阶段无动画。
+# Debian plymouth hook 本应把这几项都打进 initrd，这里逐项断言，缺失即拦下。
+for plymouth_initrd_item in 'plymouth/script.so' 'plymouth/renderers/drm.so' \
+    'plymouth/renderers/frame-buffer.so' 'drm/i915/i915.ko'; do
+    lsinitramfs "$INITRD" | grep -q "$plymouth_initrd_item" \
+        || { echo "plymouth initrd lacks renderer/driver item: $plymouth_initrd_item" >&2; exit 1; }
+done
 # GDM 登录页光标主题（01-xwlightos-branding）：greeter 不读用户会话的 dconf，
 # 不显式设置就永远是 Adwaita 黑指针。
 grep -q "^cursor-theme='WhiteSur-cursors'$" "$GDM_BRAND_WORK/etc/dconf/db/gdm.d/01-xwlightos-branding" \

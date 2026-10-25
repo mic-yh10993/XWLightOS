@@ -15,8 +15,11 @@ SCALE = 2;
 CONTENT_W = 690;   # (337 + 8) * 2
 CONTENT_H = 183;
 
-Window.SetBackgroundTopColor (0x05, 0x07, 0x0f);
-Window.SetBackgroundBottomColor (0x0a, 0x12, 0x26);
+# 背景色按 Plymouth 脚本文档取值 0-1：原十六进制写法超出文档范围
+# （十六进制字面量在脚本词法里亦未证实），顶层解析失败会导致主题
+# 加载失败、回落 details 模式（滚屏）。改为等值十进制浮点。
+Window.SetBackgroundTopColor (0.02, 0.03, 0.06);
+Window.SetBackgroundBottomColor (0.04, 0.07, 0.15);
 
 screen_w = Window.GetWidth ();
 screen_h = Window.GetHeight ();
