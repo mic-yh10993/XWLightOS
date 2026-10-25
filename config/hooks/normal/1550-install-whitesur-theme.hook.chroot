@@ -144,12 +144,16 @@ for _variant in Light Dark; do
     if [ "$_variant" = "Light" ]; then
         cat >> "$_css" <<'EOF'
 
-/* XWLightOS-APPGRID-CONTRAST (user report 2026-10-24: app grid black-on-black) */
+/* XWLightOS-APPGRID-CONTRAST (user report 2026-10-24: app grid black-on-black;
+   extended 2026-10-25: Build 37 live photo still shows the MAIN grid dark-on-dark) */
 .app-folder-dialog { background-color: #f4f4f8; color: #23232d; }
-.app-folder-dialog .overview-icon StLabel,
+.app-folder-dialog .overview-icon StLabel { color: #23232d; text-shadow: none; }
+/* The main grid backdrop stays dark (dimmed wallpaper/theme overlay), so its
+   labels must be light — the old rule forced ALL grid labels dark, which is
+   only right inside the light folder dialog. .app-well-app scopes to the main
+   grid and cannot leak into folder dialogs (different ancestor). */
 .app-well-app .overview-icon StLabel,
-.icon-grid .overview-icon StLabel,
-.search-section-content .overview-icon StLabel { color: #23232d; text-shadow: none; }
+.search-section-content .overview-icon StLabel { color: #f2f2f7; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
 EOF
     else
         cat >> "$_css" <<'EOF'

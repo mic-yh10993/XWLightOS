@@ -155,6 +155,16 @@ if [ -d /etc/skel/.config/gtk-4.0 ]; then
         echo "XWLightOS: could not seed gtk-4.0 theme for $installed_account" >&2
     chown -R "$installed_account:$installed_account" "/home/$installed_account/.config/gtk-4.0" 2>/dev/null || true
 fi
+# 用户 2026-10-25 指令：VLC 输出用兼容性最好的 XVideo（以 Intel 核显为准）。
+# skel 里的 vlcrc 只管 live 用户，安装账号同款补种（cp -n，绝不覆盖
+# 已有配置），值仍以 skel 为准。
+if [ -f /etc/skel/.config/vlc/vlcrc ]; then
+    mkdir -p "/home/$installed_account/.config/vlc" 2>/dev/null || true
+    cp -n /etc/skel/.config/vlc/vlcrc \
+        "/home/$installed_account/.config/vlc/vlcrc" 2>/dev/null || \
+        echo "XWLightOS: could not seed vlc vlcrc for $installed_account" >&2
+    chown "$installed_account:$installed_account" "/home/$installed_account/.config/vlc/vlcrc" 2>/dev/null || true
+fi
 if command -v systemctl >/dev/null 2>&1; then
     systemctl enable xwlightos-installed-cleanup.service >/dev/null 2>&1 || true
     systemctl enable gdm.service >/dev/null 2>&1 || true
@@ -379,6 +389,14 @@ grep -q '^intellihide=false$' /usr/share/glib-2.0/schemas/90-xwlightos-dash-to-d
     echo 'XWLightOS: target dash-to-dock schema override does not force intellihide off' >&2
     exit 1
 }
+grep -q '^dock-fixed=true$' /usr/share/glib-2.0/schemas/90-xwlightos-dash-to-dock.gschema.override || {
+    echo 'XWLightOS: target dash-to-dock schema override does not force dock-fixed on' >&2
+    exit 1
+}
+grep -q '^enable-hot-corners=false$' /usr/share/glib-2.0/schemas/90-xwlightos-interface.gschema.override || {
+    echo 'XWLightOS: target interface schema override does not force hot corners off' >&2
+    exit 1
+}
 
 # Target-side brand-icon delivery for the Settings About panel (mirror
 # of the 1700 live hook, user 2026-10-25: About icon still shows the
@@ -390,7 +408,7 @@ grep -q '^intellihide=false$' /usr/share/glib-2.0/schemas/90-xwlightos-dash-to-d
 # only warns: the live image already carries the brand files, and a
 # missing cache tool in the target is not a reason to fail the install.
 for _theme in WhiteSur-light WhiteSur; do
-    _appdir="/usr/share/icons/$_theme/scalable/apps"
+    _appdir="/usr/share/icons/$_theme/apps/scalable"
     if [ -d "$_appdir" ]; then
         for _icon in xwlightos-logo distributor-logo; do
             if [ -s "/usr/share/icons/hicolor/scalable/apps/$_icon.svg" ]; then

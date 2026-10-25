@@ -37,9 +37,20 @@ kbd
 x11-xserver-utils
 x11-utils
 dbus-x11
+# 用户 2026-10-25 Build 37 真机反馈：wireplumber 死在连不上会话总线，
+# 根因是 systemd 用户实例里没有 DBUS_SESSION_BUS_ADDRESS 与 DISPLAY
+#（会话走 dbus-launch 的 /tmp 总线，从未导进用户实例）。dbus-user-session
+# 让 systemd 托管会话总线，pam_systemd 会把总线地址给整个会话（含用户
+# 实例），wireplumber 这类用户服务不用再靠导环境就能连上总线。
+dbus-user-session
 policykit-1
 sudo
 network-manager
+# 用户 2026-10-25 Build 37 真机反馈：WiFi 不可用，NM 日志原话是
+# wpa_supplicant 服务 D-Bus 激活失败（连 6 次后放弃），而镜像里根本没
+# 装 wpasupplicant（network-manager 只 Recommends 它，不 Depends）。
+# 没有它 NM 管不了任何 WiFi：扫描、连接、热点全卡在这。
+wpasupplicant
 dconf-cli
 gnome-session
 gnome-shell
@@ -50,6 +61,9 @@ nautilus
 gnome-keyring
 # Firefox ESR：原由 1520 AI 钩子顺带安装，XWLightOS 移除 AI 钩子后需显式声明。
 firefox-esr
+# 用户 2026-10-25 Build 37 真机反馈：Firefox 默认英文。根因是只装了
+# firefox-esr、没有任何 l10n 包，系统 locale 虽是 zh_CN 也没中文可用。
+firefox-esr-l10n-zh-cn
 gnome-calculator
 gnome-text-editor
 # 用户 2026-10-23 指令：性能监视工具换成 Debian 官方 gnome-system-monitor
@@ -138,14 +152,16 @@ shared-mime-info
 alsa-utils
 cheese
 
-# Qt6 runtime for bundled Qt components (PeaZip)
+# Qt6 runtime for bundled Qt components. Original reason was PeaZip
+# （其自带 libQt6Pas.so.6 直接链接系统 libQt6PrintSupport.so.6，
+# 无其它包会顺带装上它，缺了启动即死——用户 2026-10-18 真机反馈）；
+# PeaZip 已于 2026-10-25 移除，但这组库作为通用 Qt6 运行时保留，
+# 厂商组件若有未声明的 Qt6 链接仍靠它们，贸然删未经验证。
 libqt6widgets6
 libqt6gui6
 libqt6core6
 libqt6network6
 libqt6dbus6
-# PeaZip 的 libQt6Pas.so.6 直接链接 libQt6PrintSupport.so.6，
-# 无其它 Qt6 包会顺带装上它，缺了 PeaZip 启动即死（用户 2026-10-18 真机反馈）。
 libqt6printsupport6
 libgdk-pixbuf-2.0-0
 
@@ -162,8 +178,20 @@ fcitx5-chinese-addons
 fcitx5-pinyin
 
 # Requested everyday applications
-# PeaZip is installed from packages/binaries.lock.tsv (pinned official DEB).
+# 用户 2026-10-25 指令：PeaZip 语言设置里没中文，改用 GNOME 归档查看器。
+# PeaZip 已从 binaries.lock.tsv 移除；File Roller 须显式声明（本清单不用
+# gnome-core 整包，File Roller 不会随依赖自动进来）。
 vlc
+# 用户 2026-10-25 Build 37 真机反馈：VLC 默认英文。根因是 Debian 把 VLC
+# 翻译单独拆在 vlc-l10n 包里，vlc 本身不依赖它，镜像里一直没装。
+vlc-l10n
+file-roller
+# 用户 2026-10-25 指令：VLC 性能以希沃设备的 Intel 核显为准（不以
+# 5060/nouveau 机器为准）。VA-API 硬解驱动两代都装（iHD 管新核显、
+# i965 管老核显，互不冲突，libva 自动选），VLC 默认自动硬解在 Intel
+# 上才能真正找到驱动；找不到驱动时 VLC 自动回落软解。
+intel-media-va-driver
+i965-va-driver
 eog
 calamares
 calamares-settings-debian

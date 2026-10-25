@@ -104,6 +104,17 @@ grep -q '^intellihide=false$' /usr/share/glib-2.0/schemas/90-xwlightos-dash-to-d
     echo 'XWLightOS: dash-to-dock schema override does not force intellihide off' >&2
     exit 1
 }
+# 用户 2026-10-25 Build 37 真机反馈：三个开关全关仍隐藏，缺 dock-fixed。
+# 与 intellihide 同款构建期文本检查，缺了构建即红灯。
+grep -q '^dock-fixed=true$' /usr/share/glib-2.0/schemas/90-xwlightos-dash-to-dock.gschema.override || {
+    echo 'XWLightOS: dash-to-dock schema override does not force dock-fixed on' >&2
+    exit 1
+}
+# 用户 2026-10-25 13:53 新要求：默认关掉热区功能。同款构建期文本检查。
+grep -q '^enable-hot-corners=false$' /usr/share/glib-2.0/schemas/90-xwlightos-interface.gschema.override || {
+    echo 'XWLightOS: interface schema override does not force hot corners off' >&2
+    exit 1
+}
 # 输入源覆盖（用户 2026-10-25 11:41 反馈：移除多余的英语（美国）源）：
 # 与 dock 覆盖同款构建期文本检查，文件丢了或被改回 xkb us 时构建即红灯。
 grep -q '^sources=\[\]$' /usr/share/glib-2.0/schemas/90-xwlightos-input-sources.gschema.override || {
@@ -118,14 +129,18 @@ grep -q '^sources=\[\]$' /usr/share/glib-2.0/schemas/90-xwlightos-input-sources.
 # generic distributor-logo name), but two delivery links were never
 # closed, so that layer alone does not guarantee the panel finds it:
 #  (1) the session's active icon theme is WhiteSur-light, not hicolor.
-#      Nothing in the tree ever checked WhiteSur-light's Inherits chain,
-#      so relying on "hicolor is the fallback" is an assumption, not a
-#      verified link. Copy the brand SVG into the active themes'
-#      scalable/apps directory when that directory exists, so a lookup
-#      in the active theme itself succeeds without any fallback. The
-#      distributor-logo copy overwrites a theme placeholder on purpose:
-#      distributor-logo is meant to be the distro's own logo, and a
-#      theme placeholder found first would otherwise win over hicolor.
+#      WhiteSur-light's Inherits is hicolor,breeze (verified on the
+#      live machine 2026-10-25), so the hicolor fallback does work —
+#      but the copy below is still the intended direct delivery, and
+#      its path was wrong: WhiteSur's real layout is <theme>/apps/
+#      scalable, NOT <theme>/scalable/apps, so the [ -d ] guard silently
+#      skipped every copy (Build 37 真机：WhiteSur 层一个品牌图标都没有）。
+#      Copy the brand SVG into the active themes' apps/scalable
+#      directory when that directory exists, so a lookup in the active
+#      theme itself succeeds without any fallback. The distributor-logo
+#      copy overwrites a theme placeholder on purpose: distributor-logo
+#      is meant to be the distro's own logo, and a theme placeholder
+#      found first would otherwise win over hicolor.
 #  (2) icon-theme.cache: hicolor ships a cache file from its package,
 #      and the 1550 hook only ever refreshed WhiteSur's cache, never
 #      hicolor's. Icons added to hicolor via includes.chroot after the
@@ -137,7 +152,7 @@ grep -q '^sources=\[\]$' /usr/share/glib-2.0/schemas/90-xwlightos-input-sources.
 #      xwlightos-target-postinstall.sh, which re-runs the same refresh
 #      after Calamares unpackfs.
 for _theme in WhiteSur-light WhiteSur; do
-    _appdir="/usr/share/icons/$_theme/scalable/apps"
+    _appdir="/usr/share/icons/$_theme/apps/scalable"
     if [ -d "$_appdir" ]; then
         for _icon in xwlightos-logo distributor-logo; do
             if [ -s "/usr/share/icons/hicolor/scalable/apps/$_icon.svg" ]; then

@@ -15,6 +15,9 @@ cursor-theme='WhiteSur-cursors'
 font-name='Noto Sans CJK SC 11'
 document-font-name='Noto Sans CJK SC 11'
 monospace-font-name='Noto Sans Mono CJK SC 11'
+# 用户 2026-10-25 13:53 新要求：默认关掉热区功能（此前 schema 默认 true，
+# 即鼠标顶到左上角就进活动视图）。与 gschema 覆盖层同步写死。
+enable-hot-corners=false
 
 [org/gnome/desktop/wm/preferences]
 theme='WhiteSur-Light'
@@ -99,6 +102,9 @@ running-indicator-style='DOTS'
 autohide=false
 intellihide=false
 autohide-in-fullscreen=false
+# 用户 2026-10-25 Build 37 真机反馈：三个开关全关仍隐藏，缺的是 dock-fixed
+#（schema 默认 false，偏好开关连动它）。与 gschema 覆盖层同步写死。
+dock-fixed=true
 
 # XWLightOS 已移除 AI 组件：旧的 Super+Shift+A 唤起 AI 聊天快捷键同步移除
 #（其命令对应的二进制已不存在，留着是死快捷键）。
