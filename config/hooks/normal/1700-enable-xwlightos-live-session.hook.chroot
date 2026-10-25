@@ -104,6 +104,12 @@ grep -q '^intellihide=false$' /usr/share/glib-2.0/schemas/90-xwlightos-dash-to-d
     echo 'XWLightOS: dash-to-dock schema override does not force intellihide off' >&2
     exit 1
 }
+# 输入源覆盖（用户 2026-10-25 11:41 反馈：移除多余的英语（美国）源）：
+# 与 dock 覆盖同款构建期文本检查，文件丢了或被改回 xkb us 时构建即红灯。
+grep -q '^sources=\[\]$' /usr/share/glib-2.0/schemas/90-xwlightos-input-sources.gschema.override || {
+    echo 'XWLightOS: input-sources schema override does not clear the redundant English (US) source' >&2
+    exit 1
+}
 
 # live-build can install the generic live-config systemd backend independently
 # of the explicit package list. Its oneshot service runs Before=basic.target,
