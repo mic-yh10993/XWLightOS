@@ -41,11 +41,25 @@ fi
 # Tell GDM/AccountsService exactly which session to start for the autologin
 # (X11 is forced for VM/guest compatibility, matching custom.conf).
 install -d -m 0755 /var/lib/AccountsService/users
+# 账户图标（2026-10-25 08:29 用户反馈第 8 项）：此前 AccountsService 用户
+# 文件里根本没有 Icon 项，用户无头像时 GNOME/ GDM 只能显示通用头像或
+# 回落的系统标识。把品牌头像写进 AccountsService 的图标槽位，设置
+# “用户”页、登录页、系统菜单里的账户图标统一为 XWLightOS 品牌标识
+# （头像文件是仓库已有纯 Logo SVG 的渲染图，见
+# /usr/share/xwlightos/branding/xwlightos-avatar.png，不是新画的图）。
+install -d -m 0755 /var/lib/AccountsService/icons
+[ -s /usr/share/xwlightos/branding/xwlightos-avatar.png ] || {
+    echo 'XWLightOS: brand avatar PNG is missing (account icon would fall back)' >&2
+    exit 1
+}
+install -Dm644 /usr/share/xwlightos/branding/xwlightos-avatar.png \
+    /var/lib/AccountsService/icons/user
 cat > /var/lib/AccountsService/users/user <<'EOF'
 [User]
 Language=
 XSession=gnome-xorg
 SystemAccount=false
+Icon=/var/lib/AccountsService/icons/user
 EOF
 install -d -m 0755 /etc/xwlightos
 printf '%s\n' user > /etc/xwlightos/session-user
