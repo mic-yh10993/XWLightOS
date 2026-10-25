@@ -1,9 +1,9 @@
 #!/bin/sh
-# XWLightOS 自动登录诊断（诊断版专用，正式版确认根因后删除）。
-# 在 GDM 启动约 90 秒后，把自动登录的关键状态写到串口（/dev/ttyS0），
-# 供 QEMU 烟测在失败时定位：GDM 是否尝试自动登录、AccountsService 是否
-# 已看到 live 用户、用户会话是否存在。输出很小，不拖慢启动（区别于
-# 全量 journal 转发，后者可能改变启动时序、掩盖间歇性失败本身）。
+# XWLightOS 自动登录诊断（烟测门禁的会话证据来源，常驻保留）。
+# 在 GDM 启动约 240 秒后，把自动登录的关键状态写到串口（/dev/ttyS0），
+# 供 QEMU 烟测在像素未见壁纸时判定会话是否已注册：GDM 是否尝试自动登录、
+# AccountsService 是否已看到 live 用户、用户会话是否存在。输出很小，
+# 不拖慢启动（区别于全量 journal 转发，后者可能改变启动时序）。
 OUT=/dev/ttyS0
 [ -e "$OUT" ] || OUT=/dev/console
 {

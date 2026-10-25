@@ -1,6 +1,7 @@
-# XWLightOS 自动登录诊断服务（诊断版专用，正式版确认根因后删除）。
-# 在 GDM 启动后等 90 秒（自动登录早该完成），再把关键状态写到串口。
-# 不阻塞启动、不拖慢引导，只做一次性小输出。
+# XWLightOS 自动登录诊断服务（烟测门禁的会话证据来源，常驻保留）。
+# 在 GDM 启动后等 240 秒（自动登录早该完成、会话已稳定），再把关键状态
+# 写到串口。不阻塞启动、不拖慢引导，只做一次性小输出；写往串口设备，
+# 不上显示屏，对用户不可见。
 [Unit]
 Description=XWLightOS autologin diagnostic dump to serial
 After=gdm.service
@@ -8,7 +9,7 @@ Wants=gdm.service
 
 [Service]
 Type=oneshot
-ExecStartPre=/bin/sleep 90
+ExecStartPre=/bin/sleep 240
 ExecStart=/usr/local/sbin/xwlightos-autologin-diag.sh
 RemainAfterExit=yes
 
