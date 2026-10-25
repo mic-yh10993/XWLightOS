@@ -350,6 +350,47 @@ grep -q '^intellihide=false$' /usr/share/glib-2.0/schemas/90-xwlightos-dash-to-d
     exit 1
 }
 
+# Target-side brand-icon delivery for the Settings About panel (mirror
+# of the 1700 live hook, user 2026-10-25: About icon still shows the
+# vendor logo). unpackfs copies the live root, so the live hook's copies
+# and refreshed caches normally ride over intact; re-run both here so a
+# later target-side trigger that rebuilds an icon cache without the
+# brand files cannot silently revert the About panel to the vendor
+# logo. Branding must never break an installation, so every step here
+# only warns: the live image already carries the brand files, and a
+# missing cache tool in the target is not a reason to fail the install.
+for _theme in WhiteSur-light WhiteSur; do
+    _appdir="/usr/share/icons/$_theme/scalable/apps"
+    if [ -d "$_appdir" ]; then
+        for _icon in xwlightos-logo distributor-logo; do
+            if [ -s "/usr/share/icons/hicolor/scalable/apps/$_icon.svg" ]; then
+                cp -a "/usr/share/icons/hicolor/scalable/apps/$_icon.svg" "$_appdir/$_icon.svg" 2>/dev/null || {
+                    echo "XWLightOS: target brand icon copy failed for $_theme/$_icon (About panel may fall back to hicolor)" >&2
+                }
+            fi
+        done
+    fi
+done
+unset _theme _appdir _icon
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    for _dir in /usr/share/icons/hicolor /usr/share/icons/WhiteSur-light /usr/share/icons/WhiteSur; do
+        if [ -d "$_dir" ]; then
+            gtk-update-icon-cache -f "$_dir" >/dev/null 2>&1 || {
+                echo "XWLightOS: target gtk-update-icon-cache failed for $_dir (About brand icon may stay invisible to cache-driven lookup)" >&2
+            }
+        fi
+    done
+    unset _dir
+fi
+if command -v gtk4-update-icon-cache >/dev/null 2>&1; then
+    for _dir in /usr/share/icons/hicolor /usr/share/icons/WhiteSur-light /usr/share/icons/WhiteSur; do
+        if [ -d "$_dir" ]; then
+            gtk4-update-icon-cache -f "$_dir" >/dev/null 2>&1 || true
+        fi
+    done
+    unset _dir
+fi
+
 # Perform one more hardware/firmware probe at first boot, when the installed
 # kernel and target udev database are active. Optional firmware never blocks
 # graphical login.
