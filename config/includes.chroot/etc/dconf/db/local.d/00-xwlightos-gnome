@@ -116,3 +116,25 @@ automount-open=true
 show-home=false
 show-trash=false
 show-volumes=false
+
+# 用户 2026-10-25 邮件《继续修复》第 1 项：屏幕键盘默认开启。
+# 根因：此前仓库里没有任何一处写过这个键，GNOME 上游默认值就是
+# false（关闭），所以真机上屏幕键盘默认不出、用户须手动去设置里开。
+# 本节与 dock/主题同一机制：系统级 dconf 默认（1700 钩子 dconf update
+# 编译），全新安装的用户首次登录即生效；用户自己在设置里改过的值
+# 仍优先于系统默认（不会把用户手动关掉的键盘再强行打开）。
+# 注意：本节只管桌面会话，不动 gdm.d 登录页——登录页键盘不在本次要求内。
+[org/gnome/desktop/a11y/applications]
+screen-keyboard-enabled=true
+
+# 用户 2026-10-25 邮件第 1 项后半（屏幕键盘输不了中文）与第 6 项的
+# GTK 应用侧前提：GNOME 会话里 GTK 应用的输入法模块不只看环境变量，
+# gnome-settings-daemon 的 xsettings 插件还会向 GTK 发布 Gtk/IMModule。
+# 一旦该通道被别的框架值占住，GTK 应用（屏幕键盘最常落点的文本框
+# 绝大多数是 GTK 应用）就绕开 fcitx，表现为物理键盘能输中文、屏幕
+# 键盘/部分 GTK 应用不能。此处把该通道也钉死为 fcitx，与
+# /etc/environment 的三变量同一值、互为备份；不是本次两项的已证实
+# 唯一根因（图标切换能用说明多数应用已走 fcitx），而是补齐 GTK 一侧
+# 的送达链路，防该通道在个别机器上成为漏网项。
+[org/gnome/settings-daemon/plugins/xsettings]
+overrides={'Gtk/IMModule':<'fcitx'>}
