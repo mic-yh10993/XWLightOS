@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="light" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#5DE3FF"/>
+      <stop offset="55%" stop-color="#4895FF"/>
+      <stop offset="100%" stop-color="#766BFF"/>
+    </linearGradient>
+  </defs>
+  <!-- XWLightOS pure logo mark: geometry symbol only, no text.
+       Symbol coordinates are the original mark paths re-centred on a
+       square 120x120 canvas so icon slots scale it uniformly
+       (the 420x120 banner with text was being squeezed into the
+       Calamares sidebar icon slot - user report 2026-10-24). -->
+  <g transform="translate(-10.5,0)" fill="none" stroke="url(#light)"
+     stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 18 24 L 43 60 L 18 96"/>
+    <path d="M 43 60 L 63 30 L 83 90 L 103 30 L 123 60"/>
+  </g>
+</svg>

@@ -281,6 +281,7 @@ USER_WORK="$WORK/user-check"
 rm -rf "$USER_WORK"
 unsquashfs -f -d "$USER_WORK" "$FS" \
     etc/passwd etc/shadow etc/group var/lib/AccountsService/users/user \
+    var/lib/AccountsService/icons/user \
     usr/local/sbin/xwlightos-live-session-init \
     >/dev/null 2>&1
 grep -q '^user:x:[0-9][0-9]*:[0-9][0-9]*:.*:/home/user:/bin/bash$' "$USER_WORK/etc/passwd" \
@@ -291,6 +292,12 @@ grep -q '^user::' "$USER_WORK/etc/shadow" \
     || { echo 'live user "user" password is not empty in the image shadow (must be unlocked for GDM autologin)' >&2; exit 1; }
 grep -q '^XSession=gnome-xorg$' "$USER_WORK/var/lib/AccountsService/users/user" \
     || { echo 'AccountsService session seed for the live user is missing (autologin session would be ambiguous)' >&2; exit 1; }
+# 用户 2026-10-25 08:29 邮件第 8 项：live 用户的账户图标必须指向品牌头像，
+# 头像文件本身必须进镜像，否则设置“用户”页与登录页仍显示通用头像/回落标识。
+grep -q '^Icon=/var/lib/AccountsService/icons/user$' "$USER_WORK/var/lib/AccountsService/users/user" \
+    || { echo 'live user AccountsService file has no brand Icon entry (account icon would fall back)' >&2; exit 1; }
+[ -s "$USER_WORK/var/lib/AccountsService/icons/user" ] \
+    || { echo 'live user brand avatar icon file is missing from the image' >&2; exit 1; }
 # 开机兜底脚本绝不能再锁账户，否则会把 bake 好的空密码账户重新锁死。
 if grep -q 'passwd --lock' "$USER_WORK/usr/local/sbin/xwlightos-live-session-init"; then
     echo 'xwlightos-live-session-init still locks the live account (would break GDM autologin)' >&2
@@ -375,6 +382,31 @@ grep -qi 'debian' "$MOTD_WORK" \
     && { echo '/etc/motd still mentions Debian' >&2; exit 1; } || true
 grep -q 'XWLightOS' "$MOTD_WORK" \
     || { echo '/etc/motd is not XWLightOS-branded' >&2; exit 1; }
+# 用户 2026-10-25 08:29 邮件第 8 项：设置“关于”里的系统图标仍是 Debian。
+# 根因：GNOME 40 起“关于”面板用 /etc/os-release 查系统 Logo（freedesktop
+# os-release 规范的 LOGO 字段即图标主题名），而本仓库的 os-release 从来
+# 没有 LOGO 字段、图标主题里也没有品牌图标名可查，只能回落到 Debian。
+# 修法两件套缺一不可：os-release 写 LOGO=xwlightos-logo，且图标主题的
+# 通用回落层 hicolor 里必须真有同名图标；distributor-logo 通用名也放
+# 同一份品牌纯 Logo，覆盖按通用名回落的路径。/usr/lib/os-release 同步
+# 写同一份，避免直接读该路径的工具仍看到旧标识。
+# 注意：镜像里 /etc/os-release 可能是 base-files 留下的指向
+# /usr/lib/os-release 的符号链接，unsquashfs -cat 读链接不可靠；这里
+# 直接读已完整解包的 FULL_ROOT，由系统跟随链接解析，文件与链接两种
+# 形态都判得准。
+grep -q '^LOGO=xwlightos-logo$' "$FULL_ROOT/etc/os-release" \
+    || { echo '/etc/os-release has no LOGO=xwlightos-logo (About panel would fall back to Debian)' >&2; exit 1; }
+grep -q '^LOGO=xwlightos-logo$' "$FULL_ROOT/usr/lib/os-release" \
+    || { echo '/usr/lib/os-release has no LOGO=xwlightos-logo' >&2; exit 1; }
+require_path 'usr/share/icons/hicolor/scalable/apps/xwlightos-logo.svg'
+require_path 'usr/share/icons/hicolor/scalable/apps/distributor-logo.svg'
+require_path 'usr/share/xwlightos/branding/xwlightos-avatar.png'
+ABOUT_LOGO_WORK="$WORK/xwlightos-logo-icon.svg"
+cat_image_file 'usr/share/icons/hicolor/scalable/apps/xwlightos-logo.svg' "$ABOUT_LOGO_WORK"
+grep -q 'viewBox="0 0 120 120"' "$ABOUT_LOGO_WORK" || {
+    echo 'About-panel brand icon is not the square pure logo' >&2; exit 1; }
+grep -q '<text' "$ABOUT_LOGO_WORK" && {
+    echo 'About-panel brand icon still contains text elements' >&2; exit 1; } || true
 GNOME_DEFAULTS="$WORK/00-xwlightos-gnome"
 cat_image_file 'etc/dconf/db/local.d/00-xwlightos-gnome' "$GNOME_DEFAULTS"
 # 用户 2026-10-24 邮件第 9、11 项：过时应用也用 WhiteSur-Light，
@@ -843,6 +875,12 @@ assert pol["DisplayBookmarksToolbar"] == "always", "bookmarks toolbar is not alw
 ext = pol["ExtensionSettings"]["xwlightos-newtab@xwlightos.local"]
 assert ext["installation_mode"] == "force_installed", "new-tab extension is not force-installed"
 assert ext["install_url"] == "file:///usr/share/xwlightos/firefox-newtab.xpi", "new-tab extension URL is wrong"
+# Build 34 根因：Build 33 的 XPI 未签名且策略里没有签名首选项，Firefox ESR
+# 默认拒装未签名扩展、新标签页回落默认页。ESR 专用的签名首选项必须由
+# 策略锁定为 false，否则上面的 force_installed 在真机上仍是摆设。
+pref = pol["Preferences"]["xpinstall.signatures.required"]
+assert pref["Value"] is False, "xpinstall.signatures.required is not false (unsigned new-tab extension would be disabled)"
+assert pref["Status"] == "locked", "xpinstall.signatures.required is not locked"
 print("XWLightOS: Firefox search=Bing, homepage=user html as-is, toolbar bookmarks OK, first-run off, zh-CN, new-tab extension forced")
 PYEOF
 
@@ -858,6 +896,7 @@ z = zipfile.ZipFile(sys.argv[1])
 man = json.loads(z.read("manifest.json"))
 assert man["browser_specific_settings"]["gecko"]["id"] == "xwlightos-newtab@xwlightos.local", "new-tab extension id mismatch"
 assert man["chrome_url_overrides"]["newtab"] == "redirect.html", "new-tab override page missing"
+assert man["version"] == "1.1", "new-tab extension version is not 1.1 (Build 33's disabled 1.0 copy would not be force-reinstalled by policy)"
 assert "redirect.html" in z.namelist(), "redirect page missing from xpi"
 print("XWLightOS: new-tab xpi valid")
 PYEOF
@@ -971,6 +1010,12 @@ grep -q 'XSession=gnome-xorg' "$TARGET_POSTINSTALL" || {
     echo 'target postinstall does not force X11 session for installed account' >&2; exit 1; }
 grep -q 'var/lib/AccountsService/users' "$TARGET_POSTINSTALL" || {
     echo 'target postinstall writes no AccountsService session file' >&2; exit 1; }
+# 用户 2026-10-25 08:29 邮件第 8 项：安装账号也要写品牌头像，live 与装完系统
+# 的账户图标不能一处改、一处漏。
+grep -q 'var/lib/AccountsService/icons' "$TARGET_POSTINSTALL" || {
+    echo 'target postinstall writes no AccountsService icon for the installed account' >&2; exit 1; }
+grep -q 'usr/share/xwlightos/branding/xwlightos-avatar.png' "$TARGET_POSTINSTALL" || {
+    echo 'target postinstall does not copy the brand avatar for the installed account' >&2; exit 1; }
 # 4 扩展入口与扩展文件门禁（1650 钩子在构建期同口径断言，这里查成品）。
 require_path 'usr/share/applications/org.gnome.Extensions.desktop'
 require_path 'usr/bin/gnome-extensions'

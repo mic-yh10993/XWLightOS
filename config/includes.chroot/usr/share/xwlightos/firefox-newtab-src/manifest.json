@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "XWLightOS New Tab Homepage",
-  "version": "1.0",
+  "version": "1.1",
   "description": "Open the local XWLightOS homepage for every new tab.",
   "browser_specific_settings": {
     "gecko": {

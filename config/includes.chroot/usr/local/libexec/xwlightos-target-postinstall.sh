@@ -61,9 +61,23 @@ EOF
 # tested in. Force X11 for the installed account exactly like the
 # live user, so installed == live.
 install -d -m 0755 /var/lib/AccountsService/users
-cat > "/var/lib/AccountsService/users/$installed_account" <<'ACCEOF'
+# 账户图标与 live 用户同理（2026-10-25 08:29 用户反馈第 8 项）：安装账号
+# 同样没有 Icon 项时只会显示通用头像/回落标识。把同一张品牌头像写进
+# 安装账号的 AccountsService 图标槽位；头像文件随 unpackfs 进目标系统，
+# 缺失时只告警、不拖垮安装（镜像级校验已断言该文件存在）。
+if [ -s /usr/share/xwlightos/branding/xwlightos-avatar.png ]; then
+    install -d -m 0755 /var/lib/AccountsService/icons
+    install -Dm644 /usr/share/xwlightos/branding/xwlightos-avatar.png \
+        "/var/lib/AccountsService/icons/$installed_account"
+    ICON_LINE="Icon=/var/lib/AccountsService/icons/$installed_account"
+else
+    echo "XWLightOS: brand avatar PNG is missing, installed account keeps the default icon" >&2
+    ICON_LINE=""
+fi
+cat > "/var/lib/AccountsService/users/$installed_account" <<ACCEOF
 [User]
 XSession=gnome-xorg
+$ICON_LINE
 ACCEOF
 # 用户 2026-10-24 邮件《很大问题》第 8 项：侧边栏默认不开机启动。
 # 新装系统的用户家目录来自 /etc/skel（已含 sidebar-off 标志），但这里
