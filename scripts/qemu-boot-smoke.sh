@@ -149,9 +149,9 @@ dump_guest_console() {
         return 0
     fi
     wc -c "$SERIAL_LOG"
-    grep -a -iE "gdm|autologin|accountsservice|pam|seat0|FAILED|failed|error" "$SERIAL_LOG" | tail -60 || true
-    echo "--- guest serial console tail (last 30 lines) ---"
-    tail -30 "$SERIAL_LOG" || true
+    grep -a -iE "gdm|autologin|accountsservice|pam|seat0|FAILED|failed|error" "$SERIAL_LOG" | tail -100 || true
+    echo "--- guest serial console tail (last 100 lines) ---"
+    tail -100 "$SERIAL_LOG" || true
 }
 if [ "$FRAME_OK" -ne 1 ]; then
     echo "QEMU $MODE never rendered the Live graphical desktop within ${BUDGET}s budget" >&2
