@@ -121,10 +121,29 @@ require_path 'etc/gdm3/daemon.conf'
 require_path 'etc/dconf/db/local.d/00-xwlightos-gnome'
 require_path 'usr/share/themes/WhiteSur-Dark'
 require_path 'usr/share/themes/WhiteSur-Dark/gnome-shell'
-# dconf gtk-theme='WhiteSur-Dark' 供 GTK3 老应用：gtk-3.0 必须真实存在。
+# dconf gtk-theme='WhiteSur-Light' 供 GTK3 应用：gtk-3.0 必须真实存在。
 require_path 'usr/share/themes/WhiteSur-Dark/gtk-3.0'
 require_path 'usr/share/themes/WhiteSur-Light'
 require_path 'usr/share/themes/WhiteSur-Light/gnome-shell'
+# 用户 2026-10-25 邮件第 1 项（所有程序还是黑色文字+背景）：GTK2/Qt5 通道
+# 此前在镜像级从未被断言过——1550 钩子只断言 gtk-3.0/gtk-4.0/gnome-shell。
+# WhiteSur-Light/gtk-2.0/gtkrc 必须在镜像里（上游自带或仓库兜底文件），
+# 否则 /etc/gtk-2.0/gtkrc 与 Qt5 gtk2 平台主题指向一个没有 GTK2 样式的
+# 主题名，GTK2/Qt5 应用落在无控回落调色板上。
+require_path 'usr/share/themes/WhiteSur-Light/gtk-2.0/gtkrc'
+require_path 'etc/gtk-2.0/gtkrc'
+# 用户 2026-10-25 邮件第 1 项：系统级 GTK3/GTK4 settings.ini（/etc/xdg，
+# XDG_CONFIG_DIRS 默认位置）必须在镜像里，且深色必须显式关闭；此前
+# 系统级只有 skel 的 GTK3 一份，GTK4 系统级与不走 GNOME 会话的应用
+# 没有任何浅色默认值。
+require_path 'etc/xdg/gtk-3.0/settings.ini'
+require_path 'etc/xdg/gtk-4.0/settings.ini'
+# 用户 2026-10-25 邮件第 1 项：XDG 桌面门户必须在镜像里——Qt6 与
+# Electron/Chromium 类应用经门户 Settings 接口查询浅色/深色，包清单
+# 此前只有 xdg-utils，从未显式声明门户本体与 GTK 后端。D-Bus 服务文件
+# 是两包各自最稳定的存在性证据。
+require_path 'usr/share/dbus-1/services/org.freedesktop.portal.Desktop.service'
+require_path 'usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gtk.service'
 require_path 'usr/share/icons/WhiteSur'
 require_path 'usr/share/icons/WhiteSur-light'
 # WhiteSur GDM 登录主题（1560 钩子，等价于上游 tweaks.sh -g）：版本标记文件。
@@ -158,6 +177,28 @@ grep -q "^color-scheme='prefer-light'$" "$DCLOWOS_DCONF" || {
     echo 'dconf default color-scheme is not prefer-light (system default must be white)' >&2
     exit 1
 }
+# 用户 2026-10-25 邮件第 1 项：系统级与 skel 的 GTK 设置必须逐文件验值，
+# 不能只验文件存在——深色开关一旦漏写 false，GTK3/GTK4 应用就可能走深色。
+XDG_GTK3="$WORK/xdg-gtk3-settings.ini"
+cat_image_file 'etc/xdg/gtk-3.0/settings.ini' "$XDG_GTK3"
+grep -q '^gtk-theme-name=WhiteSur-Light$' "$XDG_GTK3" || {
+    echo 'system gtk-3.0 settings.ini theme is not WhiteSur-Light' >&2; exit 1; }
+grep -q '^gtk-application-prefer-dark-theme=false$' "$XDG_GTK3" || {
+    echo 'system gtk-3.0 settings.ini does not pin prefer-dark off' >&2; exit 1; }
+XDG_GTK4="$WORK/xdg-gtk4-settings.ini"
+cat_image_file 'etc/xdg/gtk-4.0/settings.ini' "$XDG_GTK4"
+grep -q '^gtk-theme-name=WhiteSur-Light$' "$XDG_GTK4" || {
+    echo 'system gtk-4.0 settings.ini theme is not WhiteSur-Light' >&2; exit 1; }
+grep -q '^gtk-application-prefer-dark-theme=false$' "$XDG_GTK4" || {
+    echo 'system gtk-4.0 settings.ini does not pin prefer-dark off' >&2; exit 1; }
+SYS_GTK2RC="$WORK/sys-gtk2rc"
+cat_image_file 'etc/gtk-2.0/gtkrc' "$SYS_GTK2RC"
+grep -q '^gtk-theme-name="WhiteSur-Light"$' "$SYS_GTK2RC" || {
+    echo 'system gtk-2.0 gtkrc theme is not WhiteSur-Light' >&2; exit 1; }
+SKEL_GTK3="$WORK/skel-gtk3-settings.ini"
+cat_image_file 'etc/skel/.config/gtk-3.0/settings.ini' "$SKEL_GTK3"
+grep -q '^gtk-application-prefer-dark-theme=false$' "$SKEL_GTK3" || {
+    echo 'skel gtk-3.0 settings.ini does not pin prefer-dark off' >&2; exit 1; }
 # 用户 2026-10-18 邮件：Windows 常用中文字体别名（微软雅黑等 → Noto CJK）。
 require_path 'etc/fonts/conf.d/70-xwlightos-windows-font-aliases.conf'
 # 用户 2026-10-18 邮件「字体问题」：构建期在线安装的微软英文核心字体
@@ -1060,6 +1101,15 @@ grep -q 'var/lib/AccountsService/users' "$TARGET_POSTINSTALL" || {
 # 一旦漏掉，安装后用户拿到的就是 fcitx5 默认配置、Shift 触发键缺失。
 grep -q 'skel/.config/fcitx5' "$TARGET_POSTINSTALL" || {
     echo 'target postinstall does not seed fcitx5 config for installed account (Shift trigger relies on skel inheritance alone)' >&2; exit 1; }
+# 用户 2026-10-25 邮件第 1 项：postinstall 必须把主题文件也补给安装账号，
+# 不能只补 fcitx5——此前三处主题文件全靠 Calamares 的 skel 继承，漏掉
+# 则安装后用户失去 gtk-3.0 深色关闭、.gtkrc-2.0 与 gtk-4.0 样式。
+grep -q 'skel/.config/gtk-3.0/settings.ini' "$TARGET_POSTINSTALL" || {
+    echo 'target postinstall does not seed gtk-3.0 settings.ini for installed account' >&2; exit 1; }
+grep -q 'skel/.gtkrc-2.0' "$TARGET_POSTINSTALL" || {
+    echo 'target postinstall does not seed .gtkrc-2.0 for installed account' >&2; exit 1; }
+grep -q 'skel/.config/gtk-4.0' "$TARGET_POSTINSTALL" || {
+    echo 'target postinstall does not seed gtk-4.0 theme for installed account' >&2; exit 1; }
 # 用户 2026-10-25 08:29 邮件第 8 项：安装账号也要写品牌头像，live 与装完系统
 # 的账户图标不能一处改、一处漏。
 grep -q 'var/lib/AccountsService/icons' "$TARGET_POSTINSTALL" || {

@@ -114,6 +114,24 @@ for gdm_src in calendar-today.svg calendar-today-light.svg \
     }
 done
 
+# 用户 2026-10-25 邮件第 1 项（所有程序还是黑色文字+背景）——程序栏
+# 对比度覆盖的回落路径补齐：1550 钩子只给 /usr/share/themes 下的
+# Light/Dark gnome-shell.css 追加了 XWLightOS-APPGRID-CONTRAST，但
+# GDM gresource 里编译进去的 gnome-shell-dark.css（即 gnome-shell.css
+# 的回落样式表）从未追加过。一旦 user-theme 扩展失效、会话回落到该
+# gresource，程序栏/文件夹弹窗就会回到深底深字。此处只改本次解包的
+# 临时副本（WORKDIR 内），不改上游 tag，追加后编译进 gresource，
+# 并在编译后用 gresource extract 验回标记。
+cat >> "$SRC/other/gdm/theme/gnome-shell-dark.css" <<'EOF'
+
+/* XWLightOS-APPGRID-CONTRAST (user report 2026-10-25: app grid black-on-black fallback path) */
+.app-folder-dialog { background-color: #17171f; color: #f2f2f7; }
+.app-folder-dialog .overview-icon StLabel,
+.app-well-app .overview-icon StLabel,
+.icon-grid .overview-icon StLabel,
+.search-section-content .overview-icon StLabel { color: #f2f2f7; text-shadow: none; }
+EOF
+
 glib-compile-resources \
     --sourcedir="$SRC/other/gdm/theme" \
     --target="$GDM_GR" \
@@ -128,6 +146,12 @@ printf '%s\n' "$GDM_RESOURCES" | grep -q '^/org/gnome/shell/theme/gdm\.css$' || 
 }
 printf '%s\n' "$GDM_RESOURCES" | grep -q '^/org/gnome/shell/theme/gnome-shell\.css$' || {
     echo "XWLightOS: default gnome-shell.css missing from $GDM_GR after compile (gnome-shell fallback would break)" >&2
+    exit 1
+}
+# 回落样式表里的程序栏对比度覆盖必须真实编进 gresource（只查资源列表
+# 会放过 CSS 内容缺失）：从编译产物里抽出 gnome-shell.css 验标记。
+gresource extract "$GDM_GR" /org/gnome/shell/theme/gnome-shell.css | grep -q 'XWLightOS-APPGRID-CONTRAST' || {
+    echo "XWLightOS: app-grid contrast override missing from compiled GDM gresource (fallback shell would render black-on-black app grid)" >&2
     exit 1
 }
 
