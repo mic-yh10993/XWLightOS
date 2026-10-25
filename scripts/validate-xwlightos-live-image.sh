@@ -1151,6 +1151,10 @@ grep -q 'usr/share/xwlightos/branding/xwlightos-avatar.png' "$TARGET_POSTINSTALL
 # 全程滚屏、无动画，而 CI 只看最终桌面帧、从不看 cmdline，必然漏网。
 # 两套菜单必须同时存在、同一 live 条目必须同时含 quiet splash 与
 # plymouth.ignore-serial-consoles，且不得含 journald 转发到控制台。
+# 注意 /boot/grub/grub.cfg 的来源：它不是 live-build 原生生成的（本构建
+# 模式下 live-build 不生成该文件，3000 二进制钩子会注明这一点），而是
+# repack 脚本把 UEFI 菜单文件写进 ISO 的结果；UEFI 启动经 BOOTX64.EFI
+# 内嵌的 stub 链到该文件，故此处取到的就是 UEFI 实际用的菜单，不是摆设。
 xorriso -osirrox on -indev "$ISO" \
     -extract /isolinux/live.cfg "$WORK/live.cfg" \
     -extract /boot/grub/grub.cfg "$WORK/grub.cfg" >/dev/null 2>&1 || true
