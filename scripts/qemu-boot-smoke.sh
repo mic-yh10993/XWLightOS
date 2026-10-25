@@ -55,7 +55,10 @@ FRAME="${XWLIGHTOS_QEMU_SMOKE_FRAME:-${ISO}.${MODE}.ppm}"
 LOG="$WORK/qemu.log"
 # Guest serial console capture: the kernel cmdline (see build.yml
 # --bootappend-live) maps /dev/console to ttyS0, so kernel messages land
-# in this file. journald no longer forwards the journal there (removed
+# in this file. The same cmdline carries
+# plymouth.ignore-serial-consoles, without which Plymouth would treat the
+# serial console as a display target and skip the graphical splash on the
+# real display (user 2026-10-25: splash never shows). journald no longer forwards the journal there (removed
 # 2026-10-24: forwarding re-enables boot-time console text that masks the
 # Plymouth splash on real hardware). 2026-10-17 教训：Build #52 的烟测用
 # -serial none，guest 端零日志，自动登录失败时完全无法区分"GDM 没尝试"还是
