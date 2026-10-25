@@ -41,6 +41,19 @@ done
     echo "XWLightOS: WhiteSur-Light gtk-3.0 theme missing after install" >&2
     exit 1
 }
+# 用户 2026-10-25 邮件第 1 项（所有程序还是黑色文字+背景）：Build 33 的
+# GTK2/Qt5 修法（/etc/gtk-2.0/gtkrc + skel .gtkrc-2.0 + QT_QPA_PLATFORMTHEME=gtk2）
+# 全都指向 WhiteSur-Light，但此前从未断言过 WhiteSur-Light 真有 gtk-2.0
+# 样式——预编译发布包只带 gtk-3.0/gtk-4.0/gnome-shell 等目录、没有 gtk-2.0，
+# 所以 GTK2 应用与 Qt5 gtk2 平台主题实际落在无控回落调色板上，而不是浅色。
+# 兜底文件随镜像树自带（includes.chroot/usr/share/themes/WhiteSur-Light/
+# gtk-2.0/gtkrc，纯颜色、无外部引擎依赖）：发布包若自带 gtk-2.0，解包会
+# 覆盖它；若没有，它就是 GTK2/Qt5 通道的浅色保证。此处断言解包后该文件
+# 必须存在，缺了就构建失败、不得静默发一个 GTK2 通道是断的镜像。
+[ -f /usr/share/themes/WhiteSur-Light/gtk-2.0/gtkrc ] || {
+    echo "XWLightOS: WhiteSur-Light gtk-2.0 gtkrc missing after install (GTK2 apps and Qt5 gtk2 platform theme would fall back to an uncontrolled palette)" >&2
+    exit 1
+}
 # Build 56 教训：用户会话的 Shell 主题是 WhiteSur-Light（user-theme），
 # 它的 gnome-shell.css 必须真实存在，否则会话回退到 gresource 默认样式表。
 [ -f /usr/share/themes/WhiteSur-Light/gnome-shell/gnome-shell.css ] || {
