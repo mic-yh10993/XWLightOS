@@ -267,6 +267,47 @@ command -v update-initramfs >/dev/null 2>&1 && update-initramfs -u -k all || tru
 # Regenerate GRUB only after the target theme and defaults are present.
 command -v update-grub >/dev/null 2>&1 && update-grub || true
 
+# Target-side compiled-artifact guarantee for the dock (user 2026-10-25:
+# dock still auto-hides after install). The live image already compiles
+# both layers at build time (1700 hook: dconf update + glib-compile-schemas),
+# but nothing ever verified the COMPILED artifacts on the installed system:
+# Calamares unpackfs copies the live root, and any later target-side package
+# trigger that rebuilds schemas without the override would silently revert
+# the dock to the Debian schema defaults (autohide/intellihide on). Re-run
+# both compiles here in the target and assert the compiled files exist, so
+# the installed system cannot ship with a stale or missing compilation.
+# This is a no-op when the live compilation already rode over intact.
+if command -v dconf >/dev/null 2>&1; then
+    dconf update || {
+        echo 'XWLightOS: target dconf update failed; dock/system defaults would not apply' >&2
+        exit 1
+    }
+else
+    echo 'XWLightOS: dconf missing in target; dock defaults cannot be compiled' >&2
+    exit 1
+fi
+if command -v glib-compile-schemas >/dev/null 2>&1; then
+    glib-compile-schemas /usr/share/glib-2.0/schemas || {
+        echo 'XWLightOS: target glib-compile-schemas failed; dash-to-dock schema override would not apply' >&2
+        exit 1
+    }
+else
+    echo 'XWLightOS: glib-compile-schemas missing in target; dash-to-dock schema override cannot be compiled' >&2
+    exit 1
+fi
+[ -f /etc/dconf/db/local ] || {
+    echo 'XWLightOS: target compiled dconf db missing after dconf update' >&2
+    exit 1
+}
+[ -f /usr/share/glib-2.0/schemas/gschemas.compiled ] || {
+    echo 'XWLightOS: target compiled GSettings schemas missing after glib-compile-schemas' >&2
+    exit 1
+}
+grep -q '^intellihide=false$' /usr/share/glib-2.0/schemas/90-xwlightos-dash-to-dock.gschema.override || {
+    echo 'XWLightOS: target dash-to-dock schema override does not force intellihide off' >&2
+    exit 1
+}
+
 # Perform one more hardware/firmware probe at first boot, when the installed
 # kernel and target udev database are active. Optional firmware never blocks
 # graphical login.

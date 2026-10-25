@@ -97,7 +97,7 @@ jobs:
           sudo timeout 12m apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=60 update
           sudo timeout 12m apt-get install -y --no-install-recommends \
             live-build debootstrap debian-archive-keyring squashfs-tools xorriso grub-pc-bin \
-            grub-efi-amd64-bin isolinux syslinux syslinux-common syslinux-utils mtools dosfstools gpg cpio jq initramfs-tools-core socat qemu-system-x86 ovmf desktop-file-utils
+            grub-efi-amd64-bin isolinux syslinux syslinux-common syslinux-utils mtools dosfstools gpg cpio jq initramfs-tools-core socat qemu-system-x86 ovmf desktop-file-utils libglib2.0-bin
           lb --version
           docker --version
 
@@ -142,8 +142,21 @@ jobs:
           # Serial console for the QEMU smoke test: console=tty0 keeps boot
           # messages on VGA; console=ttyS0 maps /dev/console to the serial
           # port so kernel messages still land in the smoke test capture
-          # over -serial file:. journald forwarding is deliberately NOT
-          # enabled here: systemd.journald.forward_to_console=1 re-enables
+          # over -serial file:. A serial console on the live cmdline is NOT
+          # harmless for Plymouth: with console=ttyS0 present and no
+          # override, Plymouth treats the serial console as a display
+          # target and does not show the graphical theme on the
+          # framebuffer -- that is the remaining live-boot splash gap
+          # (user 2026-10-25 report: splash never shows, only scrolling
+          # text), after quiet splash, the theme-in-initrd rebuild and
+          # the journald-forwarding removal were all already in place.
+          # plymouth.ignore-serial-consoles is the upstream knob for
+          # exactly this case: keep the serial log for CI diagnostics
+          # AND show the graphical splash on the real display. Do not
+          # drop this flag while console=ttyS0 stays on this line, and
+          # do not drop console=ttyS0 without updating the smoke script
+          # (it reads the serial log for the GDM autologin marker).
+          # journald forwarding is deliberately NOT enabled here: systemd.journald.forward_to_console=1 re-enables
           # boot-time console text that masks the Plymouth splash on real
           # hardware (user 2026-10-24 report: splash never shows, only
           # scrolling text), and the old "harmless on real hardware"
@@ -179,7 +192,7 @@ jobs:
             --keyring-packages "debian-archive-keyring" \
             --binary-images iso-hybrid \
             --compression gzip \
-            --bootappend-live "components quiet splash console=tty0 console=ttyS0,115200n8" \
+            --bootappend-live "components quiet splash console=tty0 console=ttyS0,115200n8 plymouth.ignore-serial-consoles" \
             --iso-application "XWLightOS Live" \
             --iso-publisher "SYSTEM-Intel-MIC" \
             --iso-volume "XWLightOS 1.0" \

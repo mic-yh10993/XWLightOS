@@ -435,6 +435,23 @@ grep -q "^autohide=false$" "$GSCHEMA_OVERRIDE" \
     || { echo 'dash-to-dock schema override does not force autohide off' >&2; exit 1; }
 grep -q "^autohide-in-fullscreen=false$" "$GSCHEMA_OVERRIDE" \
     || { echo 'dash-to-dock schema override does not force fullscreen hiding off (user requires dock never hidden)' >&2; exit 1; }
+# 用户 2026-10-25 邮件第 5 项：dock 仍自动隐藏。上面只查了键文件文本，
+# 从未查过编译产物——键文件存在但编译产物缺失/过期时，成品行为仍是
+# schema 默认（隐藏开），CI 却全绿。本次补查编译产物本身：两个编译
+# 文件必须进镜像；有 gsettings 时再读一次编译后的 schema 默认生效值，
+# 三个开关必须全是 false（只读 schema 默认，不碰用户库）。
+require_path 'usr/share/glib-2.0/schemas/gschemas.compiled'
+require_path 'etc/dconf/db/local'
+if command -v gsettings >/dev/null 2>&1; then
+    for _dock_key in autohide intellihide autohide-in-fullscreen; do
+        _dock_val="$(GSETTINGS_SCHEMA_DIR="$FULL_ROOT/usr/share/glib-2.0/schemas" GSETTINGS_BACKEND=memory gsettings get org.gnome.shell.extensions.dash-to-dock "$_dock_key" 2>/dev/null)" || {
+            echo "compiled dash-to-dock schema default for $_dock_key is unreadable (gschemas.compiled stale or broken)" >&2; exit 1; }
+        [ "$_dock_val" = 'false' ] || {
+            echo "compiled dash-to-dock schema default for $_dock_key is not false (got $_dock_val); dock would still auto-hide" >&2; exit 1; }
+    done
+else
+    echo 'note: gsettings unavailable, skipping compiled-schema effective-value check (compiled files already asserted above)' >&2
+fi
 # 用户 2026-10-24 邮件第 6 项：状态栏监控扩展必须启用。
 # （2026-10-23 曾移除顶栏 system-monitor 扩展的旧注释已作废：用户
 # 2026-10-24 明确要求恢复 Debian 官方打包的顶栏监控扩展。）
@@ -1049,6 +1066,28 @@ grep -q 'var/lib/AccountsService/icons' "$TARGET_POSTINSTALL" || {
     echo 'target postinstall writes no AccountsService icon for the installed account' >&2; exit 1; }
 grep -q 'usr/share/xwlightos/branding/xwlightos-avatar.png' "$TARGET_POSTINSTALL" || {
     echo 'target postinstall does not copy the brand avatar for the installed account' >&2; exit 1; }
+# 用户 2026-10-25 邮件第 4 项：开机动画仍无。此前校验只查了安装后 GRUB
+# 的 grub.d 与 initrd 里的主题，从未查过 live 启动菜单本身：BIOS
+#（isolinux）与 UEFI（grub）两套菜单都由同一条 --bootappend-live 生成，
+# 若其中混入串口控制台且缺 plymouth.ignore-serial-consoles，live 启动
+# 全程滚屏、无动画，而 CI 只看最终桌面帧、从不看 cmdline，必然漏网。
+# 两套菜单必须同时存在、同一 live 条目必须同时含 quiet splash 与
+# plymouth.ignore-serial-consoles，且不得含 journald 转发到控制台。
+xorriso -osirrox on -indev "$ISO" \
+    -extract /isolinux/live.cfg "$WORK/live.cfg" \
+    -extract /boot/grub/grub.cfg "$WORK/grub.cfg" >/dev/null 2>&1 || true
+for _menu in "$WORK/live.cfg" "$WORK/grub.cfg"; do
+    [ -s "$_menu" ] || {
+        echo "final ISO lacks a live boot menu: $_menu (BIOS/UEFI hybrid image must ship both)" >&2; exit 1; }
+    _boot_lines="$WORK/$(basename "$_menu").bootlines"
+    grep -E '^[[:space:]]*(linux|append)[[:space:]]' "$_menu" > "$_boot_lines" || {
+        echo "live boot menu has no kernel boot line: $_menu" >&2; exit 1; }
+    grep -q 'forward_to_console=1' "$_boot_lines" && {
+        echo "live boot menu re-enables journald forwarding to console, which masks the splash: $_menu" >&2; exit 1; } || true
+    _splash_line="$(grep 'quiet' "$_boot_lines" | grep 'splash' | grep 'plymouth.ignore-serial-consoles' | head -n 1 || true)"
+    [ -n "$_splash_line" ] || {
+        echo "no live boot line carries quiet splash + plymouth.ignore-serial-consoles: $_menu" >&2; exit 1; }
+done
 # 4 扩展入口与扩展文件门禁（1650 钩子在构建期同口径断言，这里查成品）。
 require_path 'usr/share/applications/org.gnome.Extensions.desktop'
 require_path 'usr/bin/gnome-extensions'
