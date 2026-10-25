@@ -314,6 +314,25 @@ while IFS= read -r link; do
 $link -> $target"
 done < <(find "$SVC_WORK/etc/systemd" -type l 2>/dev/null)
 [ -z "$DANGLING" ] || { echo "dangling symlinks in image systemd config:$DANGLING" >&2; exit 1; }
+# Openssh default-off (user 2026-10-25: openssh error at both boot and
+# shutdown). The 1710 build hook disables ssh/sshd service and socket, but
+# a hook that silently failed would still ship a boot-path sshd: assert
+# from the finished squashfs that no enable link for it survives, in either
+# list spelling (with or without a leading slash). The package unit file
+# itself under /usr/lib/systemd/system is allowed to stay; only the
+# /etc/systemd enable links put sshd on the boot/shutdown path.
+for _ssh_wants in \
+    etc/systemd/system/multi-user.target.wants/ssh.service \
+    etc/systemd/system/multi-user.target.wants/sshd.service \
+    etc/systemd/system/multi-user.target.wants/ssh.socket \
+    etc/systemd/system/multi-user.target.wants/sshd.socket \
+    etc/systemd/system/sshd.service \
+    etc/systemd/system/ssh.socket; do
+    if grep -qE "(^|/)${_ssh_wants//./\\.}$" "$LIST"; then
+        echo "openssh service still enabled in live image: /$_ssh_wants (1710 hook did not disable it)" >&2
+        exit 1
+    fi
+done
 # 自动登录的根因级断言（Build 50，Run 38905790559）：QEMU 截图证明 greeter
 # 停在"用户名"输入框——user 账户在 GDM 启动时根本不存在。静态配置全对也
 # 救不了运行时建不出用户。从 Build 51 起 user 在构建期就 bake 进镜像，
@@ -601,6 +620,15 @@ grep -q 'com.seewo.terminalmanager.service' "$TARGET_POSTINSTALL" || {
     echo 'target postinstall never mentions the terminalmanager unit (installed target has no second enable layer)' >&2; exit 1; }
 grep -q '/etc/environment' "$TARGET_POSTINSTALL" || {
     echo 'target postinstall does not ensure /etc/environment in the installed target (vendor manager unit hard-fails without it)' >&2; exit 1; }
+# Openssh default-off, installed layer (user 2026-10-25): the live-only
+# 1710 hook cannot prove anything about the installed system, because
+# Calamares unpackfs copies the live root including any enable symlink.
+# The postinstall must therefore disable sshd in the target itself, with
+# the same explicit wants-link removal as the live hook.
+grep -q 'systemctl disable ssh.service sshd.service' "$TARGET_POSTINSTALL" || {
+    echo 'target postinstall does not disable ssh/sshd in the installed target (openssh error would survive installation)' >&2; exit 1; }
+grep -q 'multi-user.target.wants/ssh.service' "$TARGET_POSTINSTALL" || {
+    echo 'target postinstall does not remove the ssh enable symlink in the installed target' >&2; exit 1; }
 INSTALLED_CLEANUP="$WORK/xwlightos-installed-cleanup"
 cat_image_file 'usr/local/libexec/xwlightos-installed-cleanup' "$INSTALLED_CLEANUP"
 ! grep -qE 'read[[:space:]]+-r[[:space:]]+-d' "$INSTALLED_CLEANUP"

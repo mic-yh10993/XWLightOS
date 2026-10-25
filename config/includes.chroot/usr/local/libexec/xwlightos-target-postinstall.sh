@@ -14,6 +14,26 @@ fi
 rm -f /etc/systemd/system/xwlightos-live-session-init.service \
       /etc/systemd/system/multi-user.target.wants/xwlightos-live-session-init.service \
       /usr/local/sbin/xwlightos-live-session-init
+# Installed layer of the openssh default-off fix (user 2026-10-25: openssh
+# error at both boot and shutdown; live layer is the 1710 build hook).
+# Calamares unpackfs copies the live root, so a live-only disable would
+# not by itself prove anything about the installed system: the package
+# enable symlink rides over with the copy. Disable here in the target too,
+# with the same explicit symlink removal as the live hook (systemctl in a
+# target chroot cannot be relied on alone). Deliberately disable, not mask,
+# and keep the package installed, so an administrator can still run
+# `systemctl enable --now ssh` later. Never fail the installation over this:
+# if a future image drops the package, there is simply nothing to disable.
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl disable ssh.service sshd.service ssh.socket sshd.socket \
+        >/dev/null 2>&1 || true
+fi
+rm -f /etc/systemd/system/multi-user.target.wants/ssh.service \
+      /etc/systemd/system/multi-user.target.wants/sshd.service \
+      /etc/systemd/system/multi-user.target.wants/ssh.socket \
+      /etc/systemd/system/multi-user.target.wants/sshd.socket \
+      /etc/systemd/system/sshd.service \
+      /etc/systemd/system/ssh.socket
 # The live session's passwordless sudo rule must never survive into the
 # installed system. The installed account gets sudo through sudo-group
 # membership instead (granted and verified below).

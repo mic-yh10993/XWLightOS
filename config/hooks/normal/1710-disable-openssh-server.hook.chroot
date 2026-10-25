@@ -1,0 +1,62 @@
+#!/bin/sh
+# XWLightOS: openssh-server ships in the image but must not start by default.
+#
+# User report 2026-10-25: an openssh error shows at both boot and shutdown.
+# No error text was supplied with that report, so this hook claims no single
+# failure point (missing host key, bad config, port conflict and a stop
+# timeout all look alike on the console). What the repository itself proves
+# is narrower, and it is enough to act on:
+#   * openssh-server is pulled in only by config/package-lists/standard.list.chroot,
+#     with no project decision anywhere about whether sshd should run;
+#   * no hook, unit or postinstall step ever enables, disables, configures
+#     or otherwise touches sshd, so its start/stop behaviour is left entirely
+#     to the package default -- and the Debian package enables ssh.service,
+#     which puts sshd on the boot path and on the shutdown stop path in both
+#     the live image and, via Calamares unpackfs, the installed system;
+#   * no part of XWLightOS uses remote login: there is no remote-management
+#     feature, no sshd_config and no host-key handling in this repository.
+# A listening sshd is therefore pure exposure on this machine class, not a
+# feature: the live session runs as an empty-password account with
+# passwordless sudo, and an installed account's password would be exposed
+# to the local network as soon as sshd answers.
+#
+# Fix, live layer (the installed layer is the matching block in
+# xwlightos-target-postinstall.sh, because unpackfs copies the live root and
+# a live-only fix would silently reappear after installation):
+# disable ssh/sshd service and socket, then delete the enable symlinks
+# explicitly. The explicit rm is the deterministic layer: systemctl in a
+# build chroot cannot be relied on to reach a bus, so a systemctl-only
+# disable could silently do nothing here. Deliberately disable, not mask:
+# an administrator who actually wants remote login can still run
+# `systemctl enable --now ssh` later; masking would turn that into a
+# confusing failure. The package itself stays installed, so that later
+# enable still works and no package dependency can break.
+set -eu
+
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl disable ssh.service sshd.service ssh.socket sshd.socket \
+        >/dev/null 2>&1 || true
+fi
+rm -f /etc/systemd/system/multi-user.target.wants/ssh.service \
+      /etc/systemd/system/multi-user.target.wants/sshd.service \
+      /etc/systemd/system/multi-user.target.wants/ssh.socket \
+      /etc/systemd/system/multi-user.target.wants/sshd.socket \
+      /etc/systemd/system/sshd.service \
+      /etc/systemd/system/ssh.socket
+
+# Build must fail loudly if any boot-path link for sshd survived: shipping
+# a "disabled" sshd that still starts at boot would repeat the original
+# report, and the ISO validator only checks the finished image.
+for _ssh_link in \
+    /etc/systemd/system/multi-user.target.wants/ssh.service \
+    /etc/systemd/system/multi-user.target.wants/sshd.service \
+    /etc/systemd/system/multi-user.target.wants/ssh.socket \
+    /etc/systemd/system/multi-user.target.wants/sshd.socket \
+    /etc/systemd/system/sshd.service \
+    /etc/systemd/system/ssh.socket; do
+    if [ -L "$_ssh_link" ] || [ -e "$_ssh_link" ]; then
+        echo "XWLightOS: sshd boot-path link still present after disable: $_ssh_link" >&2
+        exit 1
+    fi
+done
+echo 'XWLightOS: openssh-server installed but ssh/sshd service and socket disabled by default'
