@@ -1,0 +1,9 @@
+# XWLightOS: force GNOME interface defaults at the schema level.
+#
+# 用户 2026-10-25 13:53 新要求：默认关掉热区功能。Debian 的
+# org.gnome.desktop.interface schema 默认 enable-hot-corners=true，
+# 只写 dconf 默认不够硬（dock 一案已证明 dconf 层可被绕过），因此
+# 与 dock 覆盖同款机制：把 schema 默认本身改关，1700 钩子与
+# postinstall 的 glib-compile-schemas 会把本文件编进系统。
+[org.gnome.desktop.interface]
+enable-hot-corners=false

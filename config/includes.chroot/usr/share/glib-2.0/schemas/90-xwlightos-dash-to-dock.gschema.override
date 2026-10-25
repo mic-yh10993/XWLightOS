@@ -16,3 +16,10 @@
 intellihide=false
 autohide=false
 autohide-in-fullscreen=false
+# 用户 2026-10-25 Build 37 真机反馈：全新 live 会话里三个开关全关、dock
+# 还是会隐藏。根因是第四个键 dock-fixed（dock 是否固定常驻）从来没写过：
+# 内存后端实测其 schema 默认值就是 false（GSETTINGS_BACKEND=memory get），
+# 而 Dash to Dock 的偏好开关会连动它（智能隐藏关→dock-fixed=true，
+# 开→false），只写三个开关永远够不着它。三个开关全关 + dock-fixed=false
+# = dock 没固定，桌面上不显示。四个键必须一起写死，缺一不可。
+dock-fixed=true

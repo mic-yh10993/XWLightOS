@@ -1,5 +1,5 @@
 #!/bin/sh
-# Install the pinned binary packages (PeaZip, ONLYOFFICE DesktopEditors) and
+# Install the pinned binary packages (ONLYOFFICE DesktopEditors) and
 # write the XWLightOS desktop entries that live outside any Debian package: the
 # Terminal launcher and the AI-first desktop shortcuts.  XWLightOS no longer
 # ships its own desktop components and no longer masquerades as another
@@ -151,21 +151,11 @@ fi
 
 # Packages are installed; keeping their archives only increases the ISO.
 rm -rf "$PKG_DIR"
-# PeaZip must really launch: its bundled libQt6Pas links against
-# libQt6PrintSupport.so.6, which no Debian Qt6 meta-package pulls in by
-# default. Fail the build here instead of shipping a dead launcher.
-if command -v ldd >/dev/null 2>&1 && [ -x /usr/lib/peazip/peazip ]; then
-    if ldd /usr/lib/peazip/peazip 2>/dev/null | grep -q 'not found'; then
-        echo "XWLightOS: PeaZip has unresolved shared libraries:" >&2
-        ldd /usr/lib/peazip/peazip 2>/dev/null | grep 'not found' >&2 || true
-        exit 1
-    fi
-fi
 mkdir -p /usr/share/xwlightos
 cat > /usr/share/xwlightos/components.txt <<'EOF'
 XWLightOS 1.0 bundled extras
 - GNOME desktop with WhiteSur macOS-like theme
-- PeaZip 11.2.0 Qt6 official DEB (archive manager)
+- GNOME File Roller (archive manager; PeaZip removed 2026-10-25: no Chinese UI)
 - ONLYOFFICE DesktopEditors 9.4.0 official DEB (documents/spreadsheets/presentations/PDF default handler, multi-window mode)
 - XWLightOS education software: DingTalk, Seewo whiteboard, Seewo terminal manager (vendor .debs)
 EOF

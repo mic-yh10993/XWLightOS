@@ -1,0 +1,9 @@
+# XWLightOS VLC defaults (user 2026-10-25: VLC performance must target
+# Seewo Intel integrated graphics, NOT the 5060/nouveau machine).
+# vout=xv: XVideo is the most compatible accelerated output on X11 —
+# hardware scaling on Intel, no GL context needed, and it does not fall
+# into the llvmpipe software-GL trap that makes the default "automatic"
+# (gl) output unwatchably slow on machines without GPU acceleration.
+# Hardware decoding stays at VLC's default (automatic): VA-API on Intel
+# once the va drivers are installed, software fallback otherwise.
+vout=xv
