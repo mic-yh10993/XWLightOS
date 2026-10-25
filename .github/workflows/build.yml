@@ -332,13 +332,13 @@ jobs:
         run: |
           set -euxo pipefail
           chmod 755 scripts/qemu-boot-smoke.sh scripts/validate-xwlightos-live-image.sh
-          # 2026-10-25：预算 260 秒→360 秒。Build 39 两次都是在约 195 秒处
-          # 渲染出桌面（轮询截止 230 秒，余量仅约 35 秒）；诊断版两次失败
-          # 停在不同的启动进度点（一次已建会话、一次还在起服务），说明是
-          # TCG 共享 runner 的速度波动而非产品回归。只放宽等待时间，不改
-          # 门禁判据（仍要求彩色桌面帧），慢 runner 也能通过。
-          bash scripts/qemu-boot-smoke.sh "${{ steps.iso.outputs.iso_path }}" bios 360
-          bash scripts/qemu-boot-smoke.sh "${{ steps.iso.outputs.iso_path }}" uefi 360
+          # 2026-10-25：预算 360 秒→600 秒。360 秒版仍在 BIOS 烟测失败，
+          # 且 guest 在 360 秒时还在起系统服务（未到会话）；而四次失败的
+          # 串口终点各不相同（会话已建 / 起服务中），不是卡在某一个服务
+          # 点，是整机在 TCG 下整体变慢。只放宽等待时间，不改门禁判据
+          # （仍要求彩色桌面帧），慢 runner 也能通过。
+          bash scripts/qemu-boot-smoke.sh "${{ steps.iso.outputs.iso_path }}" bios 600
+          bash scripts/qemu-boot-smoke.sh "${{ steps.iso.outputs.iso_path }}" uefi 600
 
       # NOTE: release publishing goes straight to GitHub Releases; the old
       # actions/upload-artifact steps were removed (2026-10-12) after the
