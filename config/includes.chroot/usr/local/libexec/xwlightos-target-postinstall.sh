@@ -187,10 +187,10 @@ THEME_SRC=/usr/share/xwlightos/branding/theme.txt
 [ -f "$THEME_SRC" ] || THEME_SRC=/boot/grub/themes/xwlightos/theme.txt
 WALL_SRC=/usr/share/xwlightos/branding/xwlightos-aurora-wallpaper.png
 [ -f "$WALL_SRC" ] || WALL_SRC=/boot/grub/themes/xwlightos/xwlightos-aurora-wallpaper.png
+mkdir -p /etc/default/grub.d
 if [ -f "$THEME_SRC" ] && [ -f "$WALL_SRC" ]; then
     install -Dm644 "$THEME_SRC" /boot/grub/themes/xwlightos/theme.txt
     install -Dm644 "$WALL_SRC" /boot/grub/themes/xwlightos/xwlightos-aurora-wallpaper.png
-    mkdir -p /etc/default/grub.d
     cat > /etc/default/grub.d/00-xwlightos.cfg <<'EOF'
 GRUB_DISTRIBUTOR="XWLightOS"
 GRUB_THEME="/boot/grub/themes/xwlightos/theme.txt"
@@ -198,12 +198,25 @@ GRUB_TIMEOUT_STYLE=menu
 GRUB_TIMEOUT=6
 GRUB_DEFAULT=0
 GRUB_DISABLE_OS_PROBER=false
-GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash plymouth.ignore-serial-consoles"
 EOF
 else
-    # Never leave a dangling GRUB_THEME which produces a boot-time error.
-    rm -f /etc/default/grub.d/00-xwlightos.cfg
+    # Theme assets missing: never leave a dangling GRUB_THEME which produces
+    # a boot-time error -- but the kernel command line is NOT coupled to the
+    # theme. The old code deleted the whole drop-in here, so a degraded
+    # install lost quiet splash (and the splash animation) along with the
+    # theme. Write a theme-less drop-in that still carries the splash flags;
+    # the later update-grub + artifact check below prove it landed.
+    echo 'XWLightOS: GRUB theme assets missing in target, writing theme-less grub drop-in (splash flags still applied)' >&2
+    cat > /etc/default/grub.d/00-xwlightos.cfg <<'EOF'
+GRUB_DISTRIBUTOR="XWLightOS"
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash plymouth.ignore-serial-consoles"
+EOF
 fi
+grep -q 'GRUB_CMDLINE_LINUX_DEFAULT="quiet splash plymouth.ignore-serial-consoles"' /etc/default/grub.d/00-xwlightos.cfg || {
+    echo 'XWLightOS: target grub drop-in lacks the splash kernel flags; refusing to ship a text-scrolling boot' >&2
+    exit 1
+}
 
 # GNOME provides its own screen lock; no external locker is needed.
 
@@ -258,46 +271,45 @@ QT_QPA_PLATFORMTHEME=gtk2
 ENVEOF
     echo 'XWLightOS: /etc/environment missing in installed target, recreated (vendor manager unit hard-fails without it)'
 fi
-if command -v systemctl >/dev/null 2>&1; then
-    mkdir -p /etc/systemd/system/multi-user.target.wants
-    for _vbase in /usr/lib/systemd/system /lib/systemd/system; do
-        [ -d "$_vbase" ] || continue
-        for _vunit in "$_vbase"/*seewo* "$_vbase"/*cvte* "$_vbase"/*maxhub* "$_vbase"/*easi*; do
-            [ -f "$_vunit" ] || continue
-            _vname="$(basename "$_vunit")"
-            # 一个 unit 文件可同时命中多个 glob（如 cvte + maxhub），
-            # 去重后只启用一次，避免安装日志里出现重复的启用行。
-            case " ${_seen:-} " in
-                *" $_vname "*) continue ;;
-            esac
-            _seen="${_seen:-}$_vname "
-            case "$_vname" in
-                *.service) ;;
-                *) continue ;;
-            esac
-            case "$_vname" in
-                *update*|*upgrade*|*ota*) continue ;;
-            esac
-            # 用户 2026-10-25 09:01 指令：Udi 组件暂时删除，1550 钩子
-            # 已跳过其安装；这里不再为不存在的 Udi 留跳过规则。
-            # 没有 [Install] 节的 unit 会让 systemctl enable 失败；
-            # 此时回退到显式 wants 软链接，也就是 1660 钩子用的
-            # 同一种启用，绝不能静默丢掉这个服务。
-            systemctl enable "$_vname" >/dev/null 2>&1 || \
-                ln -sfn "$_vunit" "/etc/systemd/system/multi-user.target.wants/$_vname" || true
-            echo "XWLightOS: installed target: vendor service enabled: $_vname"
-        done
+mkdir -p /etc/systemd/system/multi-user.target.wants
+for _vbase in /usr/lib/systemd/system /lib/systemd/system; do
+    [ -d "$_vbase" ] || continue
+    for _vunit in "$_vbase"/*seewo* "$_vbase"/*cvte* "$_vbase"/*maxhub* "$_vbase"/*easi*; do
+        [ -f "$_vunit" ] || continue
+        _vname="$(basename "$_vunit")"
+        # 一个 unit 文件可同时命中多个 glob（如 cvte + maxhub），
+        # 去重后只启用一次，避免安装日志里出现重复的启用行。
+        case " ${_seen:-} " in
+            *" $_vname "*) continue ;;
+        esac
+        _seen="${_seen:-}$_vname "
+        case "$_vname" in
+            *.service) ;;
+            *) continue ;;
+        esac
+        case "$_vname" in
+            *update*|*upgrade*|*ota*) continue ;;
+        esac
+        # 与 1660 live 层同款直连启用：不走 systemctl enable。enable 服从
+        # unit 自身的 WantedBy，若厂商 unit 的 WantedBy 不是 multi-user，
+        # 启用成功却落不到 multi-user wants，终检会误判为未启用；直连
+        # multi-user wants 与 live 层语义一致，且不依赖目标 chroot 里
+        # systemctl 是否可用。非管家 unit 的链接失败只告警、不拖垮安装；
+        # 管家本体由下面的终检硬门禁兜底。
+        ln -sfn "$_vunit" "/etc/systemd/system/multi-user.target.wants/$_vname" || \
+            echo "XWLightOS: WARNING: could not link vendor service $_vname into multi-user wants" >&2
+        echo "XWLightOS: installed target: vendor service enabled: $_vname"
     done
-    unset _vbase _vunit _vname _seen
-    if [ -f /usr/lib/systemd/system/com.seewo.terminalmanager.service ] || \
-       [ -f /lib/systemd/system/com.seewo.terminalmanager.service ]; then
-        [ -e /etc/systemd/system/multi-user.target.wants/com.seewo.terminalmanager.service ] || {
-            echo 'XWLightOS: terminalmanager unit present in target but not enabled; refusing to ship a backend that never starts' >&2
-            exit 1
-        }
-    else
-        echo 'XWLightOS: WARNING: terminalmanager unit absent in installed target (manager backend cannot start)' >&2
-    fi
+done
+unset _vbase _vunit _vname _seen
+if [ -f /usr/lib/systemd/system/com.seewo.terminalmanager.service ] || \
+   [ -f /lib/systemd/system/com.seewo.terminalmanager.service ]; then
+    [ -e /etc/systemd/system/multi-user.target.wants/com.seewo.terminalmanager.service ] || {
+        echo 'XWLightOS: terminalmanager unit present in target but not enabled; refusing to ship a backend that never starts' >&2
+        exit 1
+    }
+else
+    echo 'XWLightOS: WARNING: terminalmanager unit absent in installed target (manager backend cannot start)' >&2
 fi
 
 # Refresh device state and initramfs so firmware already present in the target
@@ -307,7 +319,25 @@ command -v depmod >/dev/null 2>&1 && depmod -a || true
 command -v update-initramfs >/dev/null 2>&1 && update-initramfs -u -k all || true
 
 # Regenerate GRUB only after the target theme and defaults are present.
-command -v update-grub >/dev/null 2>&1 && update-grub || true
+# This must fail loudly, not `|| true`: the old swallow hid a broken
+# installed grub.cfg behind a green install, and the later Calamares
+# bootloader steps regenerate from the same grub.d drop-in, so a failure
+# here would fail there too -- only later and with a worse message.
+# Verify the artifact, not just the command: the generated grub.cfg must
+# actually carry the splash flags, otherwise the installed boot scrolls.
+if command -v update-grub >/dev/null 2>&1; then
+    update-grub || {
+        echo 'XWLightOS: target update-grub failed; installed boot config would be stale' >&2
+        exit 1
+    }
+else
+    echo 'XWLightOS: update-grub missing in installed target; cannot regenerate boot config' >&2
+    exit 1
+fi
+grep -q 'quiet splash plymouth.ignore-serial-consoles' /boot/grub/grub.cfg || {
+    echo 'XWLightOS: generated target grub.cfg lacks the splash kernel flags' >&2
+    exit 1
+}
 
 # Target-side compiled-artifact guarantee for the dock (user 2026-10-25:
 # dock still auto-hides after install). The live image already compiles
