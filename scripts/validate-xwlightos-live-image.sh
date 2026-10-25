@@ -460,6 +460,11 @@ grep -q '^LOGO=xwlightos-logo$' "$FULL_ROOT/usr/lib/os-release" \
     || { echo '/usr/lib/os-release has no LOGO=xwlightos-logo' >&2; exit 1; }
 require_path 'usr/share/icons/hicolor/scalable/apps/xwlightos-logo.svg'
 require_path 'usr/share/icons/hicolor/scalable/apps/distributor-logo.svg'
+# 用户 2026-10-25 11:41 关于图标：光有图标文件不够——hicolor 包自带
+# 的 icon-theme.cache 若不随品牌图标一起刷新，缓存驱动的查找就看
+# 不见新图标。1700 钩子现已在 squashfs 生成前强制刷新，成品里该
+# 缓存文件必须存在，否则关于页仍可能回落到厂商图标。
+require_path 'usr/share/icons/hicolor/icon-theme.cache'
 require_path 'usr/share/xwlightos/branding/xwlightos-avatar.png'
 ABOUT_LOGO_WORK="$WORK/xwlightos-logo-icon.svg"
 cat_image_file 'usr/share/icons/hicolor/scalable/apps/xwlightos-logo.svg' "$ABOUT_LOGO_WORK"
@@ -1144,6 +1149,25 @@ grep -q 'var/lib/AccountsService/icons' "$TARGET_POSTINSTALL" || {
     echo 'target postinstall writes no AccountsService icon for the installed account' >&2; exit 1; }
 grep -q 'usr/share/xwlightos/branding/xwlightos-avatar.png' "$TARGET_POSTINSTALL" || {
     echo 'target postinstall does not copy the brand avatar for the installed account' >&2; exit 1; }
+# 用户 2026-10-25 11:41 邮件第 2 项（关于图标）与第 3 项（dock 回归）的
+# 目标端补齐：此前校验只查了 live 镜像的键文件与编译产物，从未查过
+# postinstall 里有没有目标端重编——删掉目标端重编、CI 仍全绿，装完
+# 系统就回到厂商默认。以下两组缺一不可：
+#  (a) dock：postinstall 必须重跑 dconf update 与 glib-compile-schemas
+#      并断言两编译产物，否则装完系统仍读厂商 schema 默认（隐藏开）。
+#  (b) 关于图标：postinstall 必须把品牌图标拷进当前主题
+#      WhiteSur-light 并刷新 hicolor 图标缓存，否则目标端缓存一重建，
+#      关于页就回到厂商图标。
+grep -q 'dconf update' "$TARGET_POSTINSTALL" || {
+    echo 'target postinstall does not re-run dconf update (installed dock/system defaults would rely on live compilation alone)' >&2; exit 1; }
+grep -q 'glib-compile-schemas' "$TARGET_POSTINSTALL" || {
+    echo 'target postinstall does not re-run glib-compile-schemas (installed dash-to-dock schema override would rely on live compilation alone)' >&2; exit 1; }
+grep -q 'gtk-update-icon-cache' "$TARGET_POSTINSTALL" || {
+    echo 'target postinstall does not refresh icon caches (installed About brand icon would rely on live cache alone)' >&2; exit 1; }
+grep -q 'usr/share/icons/hicolor' "$TARGET_POSTINSTALL" || {
+    echo 'target postinstall does not refresh the hicolor icon cache (About brand icon lookup would miss cache-added brand files)' >&2; exit 1; }
+grep -q 'WhiteSur-light' "$TARGET_POSTINSTALL" || {
+    echo 'target postinstall does not seed the brand icon into the active WhiteSur-light theme (About lookup would rely on hicolor fallback alone)' >&2; exit 1; }
 # 用户 2026-10-25 邮件第 4 项：开机动画仍无。此前校验只查了安装后 GRUB
 # 的 grub.d 与 initrd 里的主题，从未查过 live 启动菜单本身：BIOS
 #（isolinux）与 UEFI（grub）两套菜单都由同一条 --bootappend-live 生成，

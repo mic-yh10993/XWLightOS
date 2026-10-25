@@ -105,6 +105,66 @@ grep -q '^intellihide=false$' /usr/share/glib-2.0/schemas/90-xwlightos-dash-to-d
     exit 1
 }
 
+# Brand-icon delivery for the Settings About panel (user 2026-10-25:
+# About icon still shows the vendor logo). Build 36 already carries the
+# main layer (LOGO=xwlightos-logo in both os-release files, plus the
+# brand SVG in hicolor/scalable/apps under both the LOGO name and the
+# generic distributor-logo name), but two delivery links were never
+# closed, so that layer alone does not guarantee the panel finds it:
+#  (1) the session's active icon theme is WhiteSur-light, not hicolor.
+#      Nothing in the tree ever checked WhiteSur-light's Inherits chain,
+#      so relying on "hicolor is the fallback" is an assumption, not a
+#      verified link. Copy the brand SVG into the active themes'
+#      scalable/apps directory when that directory exists, so a lookup
+#      in the active theme itself succeeds without any fallback. The
+#      distributor-logo copy overwrites a theme placeholder on purpose:
+#      distributor-logo is meant to be the distro's own logo, and a
+#      theme placeholder found first would otherwise win over hicolor.
+#  (2) icon-theme.cache: hicolor ships a cache file from its package,
+#      and the 1550 hook only ever refreshed WhiteSur's cache, never
+#      hicolor's. Icons added to hicolor via includes.chroot after the
+#      package's cache was built are invisible to a cache-driven lookup
+#      until the cache is regenerated, so refresh hicolor (and the
+#      active themes) here, after every icon file is in place. This
+#      hook runs before the squashfs is built, so the refreshed cache
+#      is what ships in the live image; the target-side mirror lives in
+#      xwlightos-target-postinstall.sh, which re-runs the same refresh
+#      after Calamares unpackfs.
+for _theme in WhiteSur-light WhiteSur; do
+    _appdir="/usr/share/icons/$_theme/scalable/apps"
+    if [ -d "$_appdir" ]; then
+        for _icon in xwlightos-logo distributor-logo; do
+            if [ -s "/usr/share/icons/hicolor/scalable/apps/$_icon.svg" ]; then
+                cp -a "/usr/share/icons/hicolor/scalable/apps/$_icon.svg" "$_appdir/$_icon.svg"
+            fi
+        done
+    fi
+done
+unset _theme _appdir _icon
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    for _dir in /usr/share/icons/hicolor /usr/share/icons/WhiteSur-light /usr/share/icons/WhiteSur; do
+        if [ -d "$_dir" ]; then
+            gtk-update-icon-cache -f "$_dir" >/dev/null 2>&1 || {
+                echo "XWLightOS: gtk-update-icon-cache failed for $_dir (About brand icon would be invisible to cache-driven lookup)" >&2
+                exit 1
+            }
+        fi
+    done
+    unset _dir
+    [ -f /usr/share/icons/hicolor/icon-theme.cache ] || {
+        echo 'XWLightOS: hicolor icon-theme.cache missing after refresh' >&2
+        exit 1
+    }
+fi
+if command -v gtk4-update-icon-cache >/dev/null 2>&1; then
+    for _dir in /usr/share/icons/hicolor /usr/share/icons/WhiteSur-light /usr/share/icons/WhiteSur; do
+        if [ -d "$_dir" ]; then
+            gtk4-update-icon-cache -f "$_dir" >/dev/null 2>&1 || true
+        fi
+    done
+    unset _dir
+fi
+
 # live-build can install the generic live-config systemd backend independently
 # of the explicit package list. Its oneshot service runs Before=basic.target,
 # yet XWLightOS initializes its Live user and graphical session through the
