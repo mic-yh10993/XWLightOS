@@ -120,6 +120,17 @@ libsecret-1-0
 libatspi2.0-0
 libayatana-appindicator3-1
 xdg-utils
+# 用户 2026-10-25 邮件第 1 项（所有程序还是黑色文字+背景）：Qt6 与
+# Electron/Chromium 类应用不读 dconf 的 gtk-theme，它们经 XDG 桌面门户
+# （org.freedesktop.portal.Settings）查询浅色/深色。包清单此前只有
+# xdg-utils，从未显式声明门户本体与 GTK 后端；live-build 以
+# --no-install-recommends 构建，Recommends 链不能算数，gnome-session
+# 是否顺带拉来后端也不能当作保证——门户缺失时，Qt6 的回落主题与
+# Electron/Chromium 的颜色查询都没有可回答 prefer-light 的后端。
+# 显式声明两者：xdg-desktop-portal（本体）+ xdg-desktop-portal-gtk
+# （GTK 后端，读 GSettings 的 color-scheme 回答查询）。
+xdg-desktop-portal
+xdg-desktop-portal-gtk
 librsvg2-common
 adwaita-icon-theme
 hicolor-icon-theme
