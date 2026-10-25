@@ -1,0 +1,39 @@
+#!/bin/sh
+# 诊断版专用（Build 40 触屏诊断，T86EA 触屏在 Build 39 上仍完全用不了，
+# 且现场无鼠标键盘、无法跑终端命令）。
+#
+# 本钩子只做构建期门禁，文件本体在 includes.chroot 里版本管理：
+# - /usr/local/sbin/xwlightos-touch-diag.sh：检测脚本，开机后在桌面
+#   终端里显示结果，用户拍照即可，无需任何输入。
+# - /usr/local/sbin/xwlightos-touch-diag-launch.sh：终端启动器。
+# - /etc/xdg/autostart/xwlightos-touch-diag.desktop：桌面自启动入口。
+# 正式版确认根因后删除本钩子与上述三个文件。
+set -eu
+
+[ -x /usr/local/sbin/xwlightos-touch-diag.sh ] || {
+    echo 'XWLightOS: xwlightos-touch-diag.sh missing or not executable' >&2
+    exit 1
+}
+bash -n /usr/local/sbin/xwlightos-touch-diag.sh || {
+    echo 'XWLightOS: xwlightos-touch-diag.sh syntax check failed' >&2
+    exit 1
+}
+[ -x /usr/local/sbin/xwlightos-touch-diag-launch.sh ] || {
+    echo 'XWLightOS: xwlightos-touch-diag-launch.sh missing or not executable' >&2
+    exit 1
+}
+bash -n /usr/local/sbin/xwlightos-touch-diag-launch.sh || {
+    echo 'XWLightOS: xwlightos-touch-diag-launch.sh syntax check failed' >&2
+    exit 1
+}
+[ -f /etc/xdg/autostart/xwlightos-touch-diag.desktop ] || {
+    echo 'XWLightOS: xwlightos-touch-diag.desktop missing' >&2
+    exit 1
+}
+grep -q '^Exec=/usr/local/sbin/xwlightos-touch-diag-launch.sh$' \
+    /etc/xdg/autostart/xwlightos-touch-diag.desktop || {
+    echo 'XWLightOS: xwlightos-touch-diag.desktop lost its ExecStart' >&2
+    exit 1
+}
+
+echo 'XWLightOS: touchscreen diagnosis (1621) staged'
