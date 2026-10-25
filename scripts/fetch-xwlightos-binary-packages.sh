@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Fetch pinned third-party binary packages for XWLightOS 1.0 (PeaZip and
-# ONLYOFFICE DesktopEditors).
+# Fetch pinned third-party binary packages for XWLightOS 1.0 (ONLYOFFICE
+# DesktopEditors; PeaZip was removed 2026-10-25, see binaries.lock.tsv).
 # XWLightOS no longer builds its own desktop components: the desktop is stock
 # GNOME and the only binary-package inputs are the pinned release DEBs below.
 # This script deliberately does not compile anything and never touches the
@@ -29,7 +29,6 @@ rm -rf "$PKGS"
 mkdir -p "$PKGS"
 
 log "downloading fixed release DEBs described by the binary lock"
-fetch_binary_locked peazip
 fetch_binary_locked onlyoffice
 
 (
