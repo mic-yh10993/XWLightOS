@@ -1,0 +1,13 @@
+# XWLightOS: GNOME 输入源 schema 默认清掉多余的英语（美国）xkb 源。
+#
+# 用户 2026-10-25 11:41 反馈：输入法 Shift 不能切换，是多了个英语（美国）
+# 输入法抢了 fcitx5 的位置，切换成 fcitx5 就可用，要求移除多余的输入法。
+# 构建里从未写过 org.gnome.desktop.input-sources，于是首次登录的输入源
+# 就是 GNOME 上游 schema 默认的 xkb us。dconf 系统默认（local.d/
+# 00-xwlightos-gnome）是第一层；本文件是第二层：即使 dconf 库被绕过，
+# schema 默认本身也不再是 xkb us。GNOME 输入源类型只支持 xkb/ibus，
+# fcitx5 走 IM 模块通道，不依赖这个列表；列表为空时 GNOME 不碰 XKB、
+# 不启用 IBus。1700 钩子编译本文件（glib-compile-schemas），编译失败
+# 构建即红灯；校验脚本另查编译后的 schema 默认生效值。
+[org.gnome.desktop.input-sources]
+sources=[]

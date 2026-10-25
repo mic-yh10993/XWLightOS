@@ -520,6 +520,40 @@ grep -q 'system-monitor@paradoxxx.zero.gmail.com' "$GNOME_DEFAULTS" \
 # 用户 2026-10-24 23:31 邮件：输入法面板扩展也要（重新加回启用）。
 grep -q 'kimpanel@kde.org' "$GNOME_DEFAULTS" \
     || { echo 'enabled-extensions missing kimpanel input method panel extension' >&2; exit 1; }
+# 用户 2026-10-25 11:41 反馈：输入法 Shift 不能切换，是多了个英语（美国）
+# 输入源抢了 fcitx5 的位置（构建里从未写过 input-sources，首次登录即
+# GNOME schema 默认的 xkb us；与此前 skel 漏 fcitx5 配置的触发键缺失
+# 不是同一层）。修法：GNOME 输入源列表清掉——dconf 键文件（带类型注解
+# 的空数组，schema-less 解析必需）与 gschema 覆盖（第二层）两处；fcitx5
+# 内部的 keyboard-us 是 Shift 切换的英文一侧，必须保留，不得误伤。
+grep -q '^\[org/gnome/desktop/input-sources\]$' "$GNOME_DEFAULTS" \
+    || { echo 'dconf defaults lack input-sources section (redundant English (US) source would return)' >&2; exit 1; }
+grep -q '^sources=@a(ss) \[\]$' "$GNOME_DEFAULTS" \
+    || { echo 'dconf input-sources is not cleared (redundant English (US) source would return)' >&2; exit 1; }
+INPUT_OVERRIDE="$WORK/90-xwlightos-input-sources.gschema.override"
+cat_image_file 'usr/share/glib-2.0/schemas/90-xwlightos-input-sources.gschema.override' "$INPUT_OVERRIDE"
+grep -q '^\[org.gnome.desktop.input-sources\]$' "$INPUT_OVERRIDE" \
+    || { echo 'input-sources schema override section missing' >&2; exit 1; }
+grep -q '^sources=\[\]$' "$INPUT_OVERRIDE" \
+    || { echo 'input-sources schema override does not clear sources' >&2; exit 1; }
+FCITX5_PROFILE="$WORK/fcitx5-profile"
+cat_image_file 'etc/skel/.config/fcitx5/profile' "$FCITX5_PROFILE"
+grep -q '^Name=keyboard-us$' "$FCITX5_PROFILE" \
+    || { echo 'fcitx5 keyboard-us missing from skel profile (Shift would have no English side)' >&2; exit 1; }
+grep -q '^Name=pinyin$' "$FCITX5_PROFILE" \
+    || { echo 'fcitx5 pinyin missing from skel profile' >&2; exit 1; }
+grep -q '^DefaultIM=pinyin$' "$FCITX5_PROFILE" \
+    || { echo 'fcitx5 DefaultIM is not pinyin' >&2; exit 1; }
+# 编译后的 schema 默认生效值（与 dock 三开关同款查法）：gschemas.compiled
+# 已在前面断言存在；有 gsettings 时再读一次，空列表读出来是 @a(ss) []。
+if command -v gsettings >/dev/null 2>&1; then
+    _input_src="$(GSETTINGS_SCHEMA_DIR="$FULL_ROOT/usr/share/glib-2.0/schemas" GSETTINGS_BACKEND=memory gsettings get org.gnome.desktop.input-sources sources 2>/dev/null)" || {
+        echo 'compiled input-sources schema default is unreadable (gschemas.compiled stale or broken)' >&2; exit 1; }
+    [ "$_input_src" = '@a(ss) []' ] || {
+        echo "compiled input-sources schema default is not empty (got $_input_src); redundant English (US) source would return" >&2; exit 1; }
+else
+    echo 'note: gsettings unavailable, skipping compiled input-sources effective-value check' >&2
+fi
 # 用户 2026-10-24 邮件第 6、10 项：状态栏监控与输入法面板扩展必须启用。
 # （2026-10-23 曾移除顶栏 system-monitor 扩展的旧注释已作废：用户
 # 2026-10-24 明确要求恢复 Debian 官方打包的顶栏监控扩展。）
@@ -985,7 +1019,7 @@ assert pol["DisplayBookmarksToolbar"] == "always", "bookmarks toolbar is not alw
 # 用户 2026-10-24 邮件《很大问题》第 5 项：新标签页也要打开用户主页。
 # Mozilla 官方文档明言 Homepage 策略不改变新标签页（新标签页设置只有
 # “Firefox 主页”和“空白页”两档），因此必须用扩展实现：策略强制安装
-# 本地新标签页扩展（重定向到 file:///usr/share/xwlightos/homepage.html）。
+# 本地新标签页扩展（新标签页直接显示内嵌的主页副本，见下文 Build 37 根因）。
 ext = pol["ExtensionSettings"]["xwlightos-newtab@xwlightos.local"]
 assert ext["installation_mode"] == "force_installed", "new-tab extension is not force-installed"
 assert ext["install_url"] == "file:///usr/share/xwlightos/firefox-newtab.xpi", "new-tab extension URL is wrong"
@@ -999,19 +1033,30 @@ print("XWLightOS: Firefox search=Bing, homepage=user html as-is, toolbar bookmar
 PYEOF
 
 # 新标签页扩展本体必须落盘且 manifest 可解析（否则策略指向空文件）。
+# Build 37 机制变更：扩展页上下文到 file:// 的导航被 Firefox 安全策略拦截
+# （moz-extension 页 load/link file: 报错、tabs API 报 Illegal URL），旧
+# redirect.html 跳转从原理上不可能生效；新标签页的覆盖页直接就是内嵌的
+# 主页副本，XPI 里只应有 manifest.json 与 homepage.html 两项，且内嵌副本
+# 必须与落盘的 file:// 主页逐字节一致，否则新标签页与启动主页/收藏栏主页
+# 看到的不是同一份主页。
 require_path 'usr/share/xwlightos/firefox-newtab.xpi'
 FF_XPI="$WORK/firefox-newtab.xpi"
 cat_image_file 'usr/share/xwlightos/firefox-newtab.xpi' "$FF_XPI"
-python3 - "$FF_XPI" <<'PYEOF'
+FF_HOMEPAGE="$WORK/firefox-homepage.html"
+cat_image_file 'usr/share/xwlightos/homepage.html' "$FF_HOMEPAGE"
+python3 - "$FF_XPI" "$FF_HOMEPAGE" <<'PYEOF'
 import json
 import sys
 import zipfile
 z = zipfile.ZipFile(sys.argv[1])
 man = json.loads(z.read("manifest.json"))
 assert man["browser_specific_settings"]["gecko"]["id"] == "xwlightos-newtab@xwlightos.local", "new-tab extension id mismatch"
-assert man["chrome_url_overrides"]["newtab"] == "redirect.html", "new-tab override page missing"
-assert man["version"] == "1.1", "new-tab extension version is not 1.1 (Build 33's disabled 1.0 copy would not be force-reinstalled by policy)"
-assert "redirect.html" in z.namelist(), "redirect page missing from xpi"
+assert man["chrome_url_overrides"]["newtab"] == "homepage.html", "new-tab override page is not the bundled homepage copy"
+assert man["version"] == "1.2", "new-tab extension version is not 1.2 (Build 36's redirect-based 1.1 copy would not be force-reinstalled by policy)"
+assert set(z.namelist()) == {"manifest.json", "homepage.html"}, "new-tab xpi must contain exactly manifest + bundled homepage (stale redirect page would break the mechanism)"
+with open(sys.argv[2], "rb") as f:
+    live_homepage = f.read()
+assert z.read("homepage.html") == live_homepage, "bundled new-tab homepage copy differs from installed homepage.html (new tab would show a stale homepage)"
 print("XWLightOS: new-tab xpi valid")
 PYEOF
 
