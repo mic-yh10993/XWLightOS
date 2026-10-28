@@ -2,12 +2,13 @@
 Description=XWLightOS desktop cleanliness guard (remove app-added launchers)
 After=graphical-session.target
 PartOf=graphical-session.target
+# 用户 2026-10-28 邮件第 4 项：本服务由 path 单元事件触发，单次运行即退出，
+# 不再是 2 秒轮询的常驻守护。不要把它直接启用进 default.target.wants——
+# 启用的是 xwlightos-desktop-cleaner.path，服务只由 path 触发。
 
 [Service]
-Type=simple
-ExecStart=/usr/local/bin/xwlightos-desktop-cleaner
-Restart=on-failure
-RestartSec=3
+Type=oneshot
+ExecStart=/usr/local/bin/xwlightos-desktop-cleaner --once
 
 [Install]
 WantedBy=default.target

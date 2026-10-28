@@ -63,6 +63,19 @@ favorite-apps=['org.gnome.Nautilus.desktop', 'firefox-esr.desktop', 'com.seewo.e
 # 用户 2026-10-17 邮件指令：Shell 主题用 WhiteSur-Light。
 name='WhiteSur-Light'
 
+# 用户 2026-10-28 邮件第 5 项：顶栏系统监视器扩展默认显示数字，不要图形。
+# 上游 schema（org.gnome.shell.extensions.system-monitor）的 *-style 三档：
+# digit（数字）/ graph（图形）/ both（两者），上游默认全是 graph。
+# 此处把默认显示的 CPU/内存/网络连同 swap/磁盘一并钉为 digit；
+# 只改全新登录/未改过该项的用户默认值，用户自己在扩展设置里改过的
+# 值仍优先于系统默认（不会把用户手动选回的图形再强行改掉）。
+[org/gnome/shell/extensions/system-monitor]
+cpu-style='digit'
+memory-style='digit'
+swap-style='digit'
+net-style='digit'
+disk-style='digit'
+
 [org/gnome/desktop/background]
 picture-uri='file:///usr/share/backgrounds/xwlightos-aurora-wallpaper.png'
 picture-uri-dark='file:///usr/share/backgrounds/xwlightos-aurora-wallpaper.png'

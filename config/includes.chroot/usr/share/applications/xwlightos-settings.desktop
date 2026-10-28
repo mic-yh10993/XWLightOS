@@ -2,8 +2,8 @@
 Type=Application
 Name=XWLightOS Settings
 Name[zh_CN]=XWLightOS 设置
-Comment=Toggle Seewo manager service autostart
-Comment[zh_CN]=设置希沃管家后端服务是否开机启动
+Comment=Toggle Seewo manager service and desktop vendor-icon cleanup
+Comment[zh_CN]=设置希沃管家后端服务与桌面厂商图标清理是否开启
 Exec=/usr/local/bin/xwlightos-settings
 Icon=preferences-system
 Terminal=false

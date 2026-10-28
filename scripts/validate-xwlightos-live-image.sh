@@ -473,6 +473,13 @@ grep -q '^LOGO=xwlightos-logo$' "$FULL_ROOT/usr/lib/os-release" \
     || { echo '/usr/lib/os-release has no LOGO=xwlightos-logo' >&2; exit 1; }
 require_path 'usr/share/icons/hicolor/scalable/apps/xwlightos-logo.svg'
 require_path 'usr/share/icons/hicolor/scalable/apps/distributor-logo.svg'
+# 门禁补强（用户 2026-10-28 邮件第 3 项）：1700 钩子向 WhiteSur-light 的
+# 拷贝是 [ -d ] 守卫的，静默跳过时旧门禁查不出来——主题目录若在成品里
+# 存在，品牌图标就必须实打实在里面，而不是只信钩子脚本写过拷贝。
+if [ -d "$FULL_ROOT/usr/share/icons/WhiteSur-light/apps/scalable" ]; then
+    require_path 'usr/share/icons/WhiteSur-light/apps/scalable/distributor-logo.svg'
+    require_path 'usr/share/icons/WhiteSur-light/apps/scalable/xwlightos-logo.svg'
+fi
 # 用户 2026-10-25 11:41 关于图标：光有图标文件不够——hicolor 包自带
 # 的 icon-theme.cache 若不随品牌图标一起刷新，缓存驱动的查找就看
 # 不见新图标。1700 钩子现已在 squashfs 生成前强制刷新，成品里该
@@ -535,6 +542,16 @@ fi
 # 2026-10-24 明确要求恢复 Debian 官方打包的顶栏监控扩展。）
 grep -q 'system-monitor@paradoxxx.zero.gmail.com' "$GNOME_DEFAULTS" \
     || { echo 'enabled-extensions missing top-bar system-monitor' >&2; exit 1; }
+# 用户 2026-10-28 邮件第 5 项：顶栏系统监视器扩展默认显示数字，不要图形。
+# 上游 *-style 三档 digit/graph/both，默认全是 graph；此处五项一并钉 digit。
+grep -q '^\[org/gnome/shell/extensions/system-monitor\]$' "$GNOME_DEFAULTS" \
+    || { echo 'dconf defaults lack system-monitor section (top-bar monitor would default to graphs)' >&2; exit 1; }
+for _mon_key in cpu-style memory-style swap-style net-style disk-style; do
+    grep -q "^$_mon_key='digit'$" "$GNOME_DEFAULTS" || {
+        echo "dconf system-monitor $_mon_key is not digit (top-bar monitor would show graphs)" >&2
+        exit 1
+    }
+done
 # 用户 2026-10-24 23:31 邮件：输入法面板扩展也要（重新加回启用）。
 grep -q 'kimpanel@kde.org' "$GNOME_DEFAULTS" \
     || { echo 'enabled-extensions missing kimpanel input method panel extension' >&2; exit 1; }
@@ -1275,12 +1292,36 @@ require_path 'usr/bin/gnome-extensions'
 # 6 桌面清理服务与设置工具必须进镜像。
 # 用户 2026-10-25 09:01 指令：希沃侧边栏暂时删除，启动器已随
 # 侧边栏删除一并去掉；这里不再要求它存在，改为要求它不存在。
+# 用户 2026-10-28 邮件第 4 项：2 秒轮询改事件驱动——启用的是 path
+# 单元，服务改为 path 触发的单次运行；设置工具里必须有清理开关。
 require_path 'usr/local/bin/xwlightos-desktop-cleaner'
+require_path 'etc/systemd/user/xwlightos-desktop-cleaner.path'
+require_path 'etc/systemd/user/xwlightos-desktop-cleaner.service'
 require_path 'usr/local/bin/xwlightos-settings'
 require_path 'usr/share/applications/xwlightos-settings.desktop'
-CLEANER_WANTS="$FULL_ROOT/etc/systemd/user/default.target.wants/xwlightos-desktop-cleaner.service"
+CLEANER_WANTS="$FULL_ROOT/etc/systemd/user/default.target.wants/xwlightos-desktop-cleaner.path"
 [ -e "$CLEANER_WANTS" ] || {
-    echo 'desktop cleaner user service is not enabled (dangling/missing wants symlink)' >&2; exit 1; }
+    echo 'desktop cleaner path unit is not enabled (dangling/missing wants symlink)' >&2; exit 1; }
+CLEANER_PATH="$WORK/xwlightos-desktop-cleaner.path"
+cat_image_file 'etc/systemd/user/xwlightos-desktop-cleaner.path' "$CLEANER_PATH"
+grep -q '^PathModified=%h/Desktop$' "$CLEANER_PATH" || {
+    echo 'desktop cleaner path unit does not watch ~/Desktop' >&2; exit 1; }
+grep -q '^Unit=xwlightos-desktop-cleaner.service$' "$CLEANER_PATH" || {
+    echo 'desktop cleaner path unit does not trigger the cleaner service' >&2; exit 1; }
+CLEANER_SERVICE="$WORK/xwlightos-desktop-cleaner.service"
+cat_image_file 'etc/systemd/user/xwlightos-desktop-cleaner.service' "$CLEANER_SERVICE"
+grep -q '^Type=oneshot$' "$CLEANER_SERVICE" || {
+    echo 'desktop cleaner service is not oneshot (path trigger would start a polling daemon)' >&2; exit 1; }
+grep -q -- '--once' "$CLEANER_SERVICE" || {
+    echo 'desktop cleaner service does not run a single sweep (--once)' >&2; exit 1; }
+CLEANER_SCRIPT="$WORK/xwlightos-desktop-cleaner"
+cat_image_file 'usr/local/bin/xwlightos-desktop-cleaner' "$CLEANER_SCRIPT"
+grep -q -- '--once' "$CLEANER_SCRIPT" || {
+    echo 'desktop cleaner script has no --once mode' >&2; exit 1; }
+SETTINGS_TOOL="$WORK/xwlightos-settings"
+cat_image_file 'usr/local/bin/xwlightos-settings' "$SETTINGS_TOOL"
+grep -q 'xwlightos-desktop-cleaner.path' "$SETTINGS_TOOL" || {
+    echo 'settings tool has no desktop cleaner toggle' >&2; exit 1; }
 # 7 希沃厂商 unit 清单（1660 钩子生成）必须进镜像且含管家后端。
 SEEWO_INV="$WORK/seewo-vendor-units.txt"
 cat_image_file 'etc/xwlightos/seewo-vendor-units.txt' "$SEEWO_INV"

@@ -37,6 +37,52 @@ def find_unit(patterns, fallback):
 TM_UNIT = find_unit(["com.seewo.terminalmanager.service"],
                     "com.seewo.terminalmanager.service")
 
+# 用户 2026-10-28 邮件第 4 项：桌面清理开关拨的是用户级 path 单元
+#（xwlightos-desktop-cleaner.path），不是系统服务。用户级单元不需要
+# pkexec：开关 = mask/unmask + enable/disable（--user），mask 能盖住
+# /etc/systemd/user 下的系统级启用链接，关掉即真正停掉监视。
+CLEANER_PATH_UNIT = "xwlightos-desktop-cleaner.path"
+
+
+def user_unit_present(unit):
+    for base in ("/etc/systemd/user", "/usr/lib/systemd/user",
+                 "/lib/systemd/user"):
+        if os.path.exists(os.path.join(base, unit)):
+            return True
+    return False
+
+
+def user_service_enabled(unit):
+    try:
+        out = subprocess.run(
+            ["systemctl", "--user", "is-enabled", unit],
+            capture_output=True, text=True, timeout=10)
+        return out.stdout.strip() == "enabled"
+    except Exception:
+        return False
+
+
+def set_user_service(unit, on, parent):
+    if on:
+        cmds = [["systemctl", "--user", "unmask", unit],
+                ["systemctl", "--user", "enable", "--now", unit]]
+    else:
+        # mask --now 一步完成停监视 + 盖住系统级启用链接。
+        cmds = [["systemctl", "--user", "mask", "--now", unit]]
+    for cmd in cmds:
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode != 0:
+            msg = "设置失败：%s" % (res.stderr.strip() or unit)
+            dlg = Gtk.MessageDialog(
+                transient_for=parent, modal=True,
+                message_type=Gtk.MessageType.ERROR,
+                buttons=Gtk.ButtonsType.OK,
+                text=msg)
+            dlg.run()
+            dlg.destroy()
+            return False
+    return True
+
 
 def service_enabled(unit):
     try:
@@ -111,12 +157,12 @@ class Window(Gtk.Window):
         # 2026-10-24 第 3 项明确要求失败不自动重试，因此回弹必须被
         # 这道标志挡住，不能只依赖 handler_block_by_func。
         self._busy = False
-        self.set_default_size(520, 320)
+        self.set_default_size(520, 380)
         self.set_border_width(8)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         head = Gtk.Label(xalign=0)
-        head.set_markup("希沃管家后端开机启动设置（修改后重启生效，"
-                        "服务开关同时启停当前运行）")
+        head.set_markup("希沃管家后端与桌面清理设置（开关同时启停当前运行，"
+                        "重启后保持）")
         head.set_margin_start(14)
         box.pack_start(head, False, False, 6)
 
@@ -128,6 +174,21 @@ class Window(Gtk.Window):
         self.row_tm.switch.connect(
             "notify::active", self.on_service, TM_UNIT, self.row_tm)
         box.pack_start(self.row_tm, False, False, 0)
+
+        # 用户 2026-10-28 邮件第 4 项：自动清理希沃厂商桌面图标的开关。
+        # 打开时桌面目录一变化就清理厂商写进来的 .desktop 启动器
+        #（事件驱动，平时不轮询）；关掉后厂商图标会留在桌面，
+        #需手动删除；你的文件和文件夹不受影响。
+        cleaner_ok = user_unit_present(CLEANER_PATH_UNIT)
+        self.row_cleaner = Row(
+            "自动清理希沃厂商桌面图标",
+            "用户级单元：%s（关掉后厂商图标不再自动清理）" % CLEANER_PATH_UNIT,
+            user_service_enabled(CLEANER_PATH_UNIT) if cleaner_ok else False,
+            sensitive=cleaner_ok)
+        self.row_cleaner.switch.connect(
+            "notify::active", self.on_user_service,
+            CLEANER_PATH_UNIT, self.row_cleaner)
+        box.pack_start(self.row_cleaner, False, False, 0)
 
         note = Gtk.Label(xalign=0)
         note.set_markup("未安装的组件开关会变灰。")
@@ -150,6 +211,23 @@ class Window(Gtk.Window):
                     switch.set_active(not want)
                 finally:
                     switch.handler_unblock_by_func(self.on_service)
+        finally:
+            self._busy = False
+
+    def on_user_service(self, switch, _param, unit, row):
+        # 与 on_service 同款回弹/重入守卫，走用户级单元流程（无 pkexec）。
+        if self._busy:
+            return
+        want = switch.get_active()
+        self._busy = True
+        try:
+            ok = set_user_service(unit, want, self)
+            if not ok:
+                switch.handler_block_by_func(self.on_user_service)
+                try:
+                    switch.set_active(not want)
+                finally:
+                    switch.handler_unblock_by_func(self.on_user_service)
         finally:
             self._busy = False
 

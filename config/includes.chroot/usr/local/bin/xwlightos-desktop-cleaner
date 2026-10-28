@@ -9,6 +9,12 @@
 # *.desktop files within seconds. Regular files and folders the user
 # puts there are never touched.
 #
+# User mail 2026-10-28 item 4: the 2-second polling loop is replaced
+# by event-driven triggering (xwlightos-desktop-cleaner.path watches
+# the Desktop directories and starts this script with --once on every
+# change, so there is no wakeup and no resident process between
+# events). The loop is kept only for manual runs without --once.
+#
 # Exception: the live-only "Install XWLightOS" launcher (it is the
 # install entry point on the LiveCD; the installed-system cleanup
 # removes it there, and this daemon only runs in live/installed user
@@ -65,6 +71,9 @@ def sweep():
 
 
 def main():
+    if "--once" in sys.argv[1:]:
+        sweep()
+        return 0
     while True:
         sweep()
         time.sleep(POLL_SECONDS)

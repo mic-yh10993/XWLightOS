@@ -1,0 +1,16 @@
+[Unit]
+Description=XWLightOS desktop cleanliness guard trigger (watch Desktop dirs)
+# 用户 2026-10-28 邮件第 4 项：取代旧 2 秒轮询的事件驱动触发器。
+# 只监视目录、不轮询：桌面目录一有变化才启动单次清理服务，
+# 平时无唤醒、无常驻进程。清理删掉启动器会再改一次目录，
+# 于是再触发一次空扫（无可删）后收敛，不会循环。
+# XWLightOS 设置里的开关拨的就是这个 path 单元（systemctl --user
+# mask/unmask）；关掉它即停止全部清理，不动 service 文件本身。
+
+[Path]
+PathModified=%h/Desktop
+PathModified=%h/桌面
+Unit=xwlightos-desktop-cleaner.service
+
+[Install]
+WantedBy=default.target

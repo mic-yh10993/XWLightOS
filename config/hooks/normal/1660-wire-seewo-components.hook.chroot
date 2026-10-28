@@ -79,12 +79,20 @@ fi
 chmod 755 /usr/local/bin/xwlightos-settings \
     /usr/local/bin/xwlightos-desktop-cleaner 2>/dev/null || true
 
-# Desktop cleaner user service: enable for every user session.
+# Desktop cleaner: event-driven since user mail 2026-10-28 item 4.
+# The path unit watches the Desktop directories and triggers the
+# oneshot cleaner service on change; the old 2-second polling daemon
+# is retired, so enable the PATH unit, not the service, for every
+# user session. The XWLightOS Settings toggle switches this path unit.
+[ -f /etc/systemd/user/xwlightos-desktop-cleaner.path ] || {
+    echo "XWLightOS: desktop cleaner path unit missing (event-driven cleaning would never trigger)" >&2
+    exit 1
+}
 if [ -d /etc/systemd/user ]; then
     mkdir -p /etc/systemd/user/default.target.wants
-    ln -sfn ../xwlightos-desktop-cleaner.service \
-        /etc/systemd/user/default.target.wants/xwlightos-desktop-cleaner.service
-    echo "XWLightOS: desktop cleaner user service enabled"
+    ln -sfn ../xwlightos-desktop-cleaner.path \
+        /etc/systemd/user/default.target.wants/xwlightos-desktop-cleaner.path
+    echo "XWLightOS: desktop cleaner path unit enabled"
 fi
 
 # Settings tool entry must be executable/valid.
