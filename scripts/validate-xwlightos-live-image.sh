@@ -476,9 +476,23 @@ require_path 'usr/share/icons/hicolor/scalable/apps/distributor-logo.svg'
 # 门禁补强（用户 2026-10-28 邮件第 3 项）：1700 钩子向 WhiteSur-light 的
 # 拷贝是 [ -d ] 守卫的，静默跳过时旧门禁查不出来——主题目录若在成品里
 # 存在，品牌图标就必须实打实在里面，而不是只信钩子脚本写过拷贝。
+# 注意机制（b1736dd 构建失败教训）：require_path 查的是 unsquashfs -l
+# 的扁平清单，看不穿 WhiteSur-light 的 apps 软链接——清单里文件只出现
+# 在真实路径 WhiteSur/apps/scalable 下，light 路径永远查不到，用它断言
+# light 路径是必败的假阳性。所以这里统一用已完整解包的 FULL_ROOT 查
+# （[ -d ]/[ -e ] 都跟随链接，与图标主题的查找方式一致）；WhiteSur 真实
+# 路径同样用 FULL_ROOT 查，不混用清单机制。
 if [ -d "$FULL_ROOT/usr/share/icons/WhiteSur-light/apps/scalable" ]; then
-    require_path 'usr/share/icons/WhiteSur-light/apps/scalable/distributor-logo.svg'
-    require_path 'usr/share/icons/WhiteSur-light/apps/scalable/xwlightos-logo.svg'
+    [ -e "$FULL_ROOT/usr/share/icons/WhiteSur-light/apps/scalable/distributor-logo.svg" ] || {
+        echo 'brand distributor-logo is not reachable via WhiteSur-light (About panel would miss it)' >&2; exit 1; }
+    [ -e "$FULL_ROOT/usr/share/icons/WhiteSur-light/apps/scalable/xwlightos-logo.svg" ] || {
+        echo 'brand xwlightos-logo is not reachable via WhiteSur-light (About panel would miss it)' >&2; exit 1; }
+fi
+if [ -d "$FULL_ROOT/usr/share/icons/WhiteSur/apps/scalable" ]; then
+    [ -e "$FULL_ROOT/usr/share/icons/WhiteSur/apps/scalable/distributor-logo.svg" ] || {
+        echo 'brand distributor-logo is not in WhiteSur/apps/scalable (1700 copy did not land)' >&2; exit 1; }
+    [ -e "$FULL_ROOT/usr/share/icons/WhiteSur/apps/scalable/xwlightos-logo.svg" ] || {
+        echo 'brand xwlightos-logo is not in WhiteSur/apps/scalable (1700 copy did not land)' >&2; exit 1; }
 fi
 # 用户 2026-10-25 11:41 关于图标：光有图标文件不够——hicolor 包自带
 # 的 icon-theme.cache 若不随品牌图标一起刷新，缓存驱动的查找就看
