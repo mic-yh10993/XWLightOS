@@ -1332,6 +1332,11 @@ CLEANER_SCRIPT="$WORK/xwlightos-desktop-cleaner"
 cat_image_file 'usr/local/bin/xwlightos-desktop-cleaner' "$CLEANER_SCRIPT"
 grep -q -- '--once' "$CLEANER_SCRIPT" || {
     echo 'desktop cleaner script has no --once mode' >&2; exit 1; }
+# 用户 2026-10-28 第二封邮件：清理只影响希沃。厂商文件统一用
+# com.seewo. 前缀（白板/管家/视频展台/班级优化大师实包核验），
+# 脚本必须含该前缀匹配，缺了就是“删一切 .desktop”的旧行为回潮。
+grep -q 'com.seewo\.' "$CLEANER_SCRIPT" || {
+    echo 'desktop cleaner script is not scoped to Seewo vendor files (com.seewo. prefix)' >&2; exit 1; }
 SETTINGS_TOOL="$WORK/xwlightos-settings"
 cat_image_file 'usr/local/bin/xwlightos-settings' "$SETTINGS_TOOL"
 grep -q 'xwlightos-desktop-cleaner.path' "$SETTINGS_TOOL" || {

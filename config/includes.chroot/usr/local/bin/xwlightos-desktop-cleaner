@@ -6,7 +6,7 @@
 # whiteboard's .sh copies a .desktop onto ~/Desktop on every launch,
 # installers seed skeleton shortcuts, ...) must not leave launchers
 # behind. This daemon watches the Desktop directories and removes
-# *.desktop files within seconds. Regular files and folders the user
+# vendor launchers within seconds. Regular files and folders the user
 # puts there are never touched.
 #
 # User mail 2026-10-28 item 4: the 2-second polling loop is replaced
@@ -14,6 +14,17 @@
 # the Desktop directories and starts this script with --once on every
 # change, so there is no wakeup and no resident process between
 # events). The loop is kept only for manual runs without --once.
+#
+# User mail 2026-10-28 (second reply): cleanup must ONLY affect Seewo.
+# Precise match, verified from the vendor debs themselves (1555 hook
+# audit, 2026-10-20): every Seewo desktop file uses the com.seewo.
+# reverse-DNS prefix -- whiteboard com.seewo.easinote5, manager
+# com.seewo.terminalmanager, video booth com.seewo.easicamera, class
+# master com.seewo.easicare. So a file is a vendor file only if its
+# name starts with com.seewo. (case-insensitive) and ends with
+# .desktop. A plain "seewo" substring would also match a launcher the
+# user made themselves, so it is deliberately NOT used: fail closed,
+# never delete a file that is not provably vendor-dropped.
 #
 # Exception: the live-only "Install XWLightOS" launcher (it is the
 # install entry point on the LiveCD; the installed-system cleanup
@@ -25,6 +36,12 @@ import time
 
 KEEP = {"Install XWLightOS.desktop"}
 POLL_SECONDS = 2
+
+
+def is_vendor_desktop(name):
+    # Seewo vendor files only: com.seewo.<app>.desktop (see header).
+    lower = name.lower()
+    return lower.startswith("com.seewo.") and lower.endswith(".desktop")
 
 
 def desktop_dirs():
@@ -60,7 +77,7 @@ def sweep():
         except OSError:
             continue
         for name in names:
-            if not name.endswith(".desktop") or name in KEEP:
+            if not is_vendor_desktop(name) or name in KEEP:
                 continue
             path = os.path.join(d, name)
             try:
