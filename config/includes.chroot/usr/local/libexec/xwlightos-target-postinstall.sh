@@ -439,6 +439,47 @@ if command -v gtk4-update-icon-cache >/dev/null 2>&1; then
     unset _dir
 fi
 
+# About-panel vendor logo, target side (user mail 2026-10-28 item 3, root
+# cause nailed 2026-10-29): the icon-theme copies above are NOT what the
+# Settings About panel reads. Debian's gnome-control-center is built with
+# DISTRIBUTOR_LOGO hard coded to
+# /usr/share/icons/vendor/scalable/emblems/emblem-vendor.svg, a
+# desktop-base vendor-logos alternative slave defaulting to
+# emblem-debian.svg. Register our own vendor-logos alternative at
+# priority 60 (above desktop-base's 50) with the scalable slave pointing
+# at the brand file, mirroring the 1700-series live hook. Only the
+# scalable slave is registered: the panel reads exactly this path, and
+# the PNG/symbolic/white Debian emblem links dropping while ours is
+# selected is acceptable (nothing in this GNOME-only image reads them).
+# Branding must never break an installation, so this section only warns:
+# a failed registration leaves the Debian logo but must not fail the
+# install. update-alternatives requires the master path and the slave
+# link's parent directory to exist, so create them first. Re-running
+# --install is idempotent, so this is safe to run more than once.
+if [ -s /usr/share/xwlightos/branding/xwlightos-logo.svg ] && command -v update-alternatives >/dev/null 2>&1; then
+    mkdir -p /usr/share/xwlightos/vendor-logos /usr/share/icons/vendor/scalable/emblems
+    update-alternatives --install \
+        /usr/share/images/vendor-logos \
+        vendor-logos \
+        /usr/share/xwlightos/vendor-logos 60 \
+        --slave /usr/share/icons/vendor/scalable/emblems/emblem-vendor.svg \
+        emblem-vendor-scalable \
+        /usr/share/xwlightos/branding/xwlightos-logo.svg >/dev/null 2>&1 || {
+        echo 'XWLightOS: target vendor-logos alternative registration failed (About panel may keep showing the Debian logo)' >&2
+    }
+    _alt_target=''
+    _vendor_link="$(readlink /usr/share/icons/vendor/scalable/emblems/emblem-vendor.svg 2>/dev/null || true)"
+    case "$_vendor_link" in
+        /*) _alt_target="$(readlink "$_vendor_link" 2>/dev/null || true)" ;;
+    esac
+    if [ "$_alt_target" != /usr/share/xwlightos/branding/xwlightos-logo.svg ]; then
+        echo "XWLightOS: target vendor emblem resolves to '$_alt_target', not the brand file (About panel may keep showing the Debian logo)" >&2
+    fi
+    unset _alt_target _vendor_link
+else
+    echo 'XWLightOS: target vendor-logos alternative skipped (brand file or update-alternatives missing)' >&2
+fi
+
 # Perform one more hardware/firmware probe at first boot, when the installed
 # kernel and target udev database are active. Optional firmware never blocks
 # graphical login.

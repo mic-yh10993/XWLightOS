@@ -1,0 +1,61 @@
+#!/bin/sh
+set -eu
+
+# XWLightOS About-panel vendor logo (user mail 2026-10-28 item 3, root cause
+# nailed 2026-10-29 from the Debian source package): Debian Bookworm's
+# gnome-control-center 43.6-2~deb12u1 is built with DISTRIBUTOR_LOGO hard
+# coded to /usr/share/icons/vendor/scalable/emblems/emblem-vendor.svg, so
+# the Settings About panel loads that absolute path directly and never
+# consults os-release LOGO or the icon theme. Copying brand icons into
+# WhiteSur/hicolor and refreshing icon caches (1700 hook, postinstall)
+# therefore cannot fix the About panel: the panel reads this alternative,
+# not the theme. That path is desktop-base's vendor-logos alternative
+# slave, defaulting to emblem-debian.svg; desktop-base's own README says
+# the alternative exists for derivatives to replace with their own logos.
+#
+# Fix (Debian-blessed path, no gnome-control-center rebuild): register a
+# vendor-logos alternative at priority 60, above desktop-base's 50, whose
+# scalable slave points at our brand file. Auto mode then selects ours,
+# and a later desktop-base upgrade re-registering at 50 cannot flip it
+# back (verified locally with update-alternatives --altdir/--admindir:
+# 50 -> Debian, 60 -> ours, re-register 50 -> still ours, re-run 60 ->
+# idempotent). update-alternatives requires both the master path and the
+# slave link's parent directory to exist, so create them first.
+#
+# Deliberate scope: only the scalable slave is registered, because the
+# About panel reads exactly this one path. The PNG/symbolic/white slave
+# links that Debian's alternative provides are removed while ours is
+# selected; nothing in this GNOME-only image reads them (the panel is
+# the only consumer of the vendor emblem), and a derivative showing no
+# Debian emblem is preferable to showing Debian's. Do NOT "fix" this by
+# overwriting emblem-vendor.svg directly: the next desktop-base
+# alternative refresh would silently restore Debian's file.
+BRAND_FILE='/usr/share/xwlightos/branding/xwlightos-logo.svg'
+if [ ! -s "$BRAND_FILE" ]; then
+    echo 'XWLightOS: brand file missing, cannot register vendor-logos alternative' >&2
+    exit 1
+fi
+if ! command -v update-alternatives >/dev/null 2>&1; then
+    echo 'XWLightOS: update-alternatives missing, cannot register vendor-logos alternative' >&2
+    exit 1
+fi
+mkdir -p /usr/share/xwlightos/vendor-logos /usr/share/icons/vendor/scalable/emblems
+update-alternatives --install \
+    /usr/share/images/vendor-logos \
+    vendor-logos \
+    /usr/share/xwlightos/vendor-logos 60 \
+    --slave /usr/share/icons/vendor/scalable/emblems/emblem-vendor.svg \
+    emblem-vendor-scalable \
+    "$BRAND_FILE"
+# Self-check: the About panel path must resolve to our brand file, never
+# to Debian's emblem. Fail the build loudly here rather than shipping
+# another image that silently shows the Debian logo.
+VENDOR_LINK="$(readlink /usr/share/icons/vendor/scalable/emblems/emblem-vendor.svg)"
+case "$VENDOR_LINK" in
+    /*) ALT_TARGET="$(readlink "$VENDOR_LINK" 2>/dev/null || true)" ;;
+    *) ALT_TARGET='' ;;
+esac
+if [ "$ALT_TARGET" != "$BRAND_FILE" ]; then
+    echo "XWLightOS: vendor emblem still resolves to '$ALT_TARGET', not the brand file" >&2
+    exit 1
+fi

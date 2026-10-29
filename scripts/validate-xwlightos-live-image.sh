@@ -151,6 +151,40 @@ require_path 'usr/share/dbus-1/services/org.freedesktop.portal.Desktop.service'
 require_path 'usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gtk.service'
 require_path 'usr/share/icons/WhiteSur'
 require_path 'usr/share/icons/WhiteSur-light'
+# User mail 2026-10-28 item 3, root cause nailed 2026-10-29 from the Debian
+# source package: Debian's gnome-control-center is built with
+# DISTRIBUTOR_LOGO hard coded to the desktop-base vendor-logos
+# alternative slave, so the Settings About panel never consults os-release
+# LOGO or the icon theme. The 1705 live hook registers our own
+# vendor-logos alternative at priority 60; the About panel path must
+# therefore resolve through /etc/alternatives to our brand file, never to
+# Debian's emblem. Resolve the chain inside the unpacked root: the links
+# are absolute image paths, so readlink -f on the host would escape the
+# tree and must not be used.
+require_path 'usr/share/icons/vendor/scalable/emblems/emblem-vendor.svg'
+require_path 'etc/alternatives/emblem-vendor-scalable'
+require_path 'usr/share/xwlightos/branding/xwlightos-logo.svg'
+_resolve_in_root() {
+    local _p="$1" _t _hops=0
+    while [ -L "$FULL_ROOT$_p" ] && [ "$_hops" -lt 5 ]; do
+        _t="$(readlink "$FULL_ROOT$_p")"
+        case "$_t" in
+            /*) _p="$_t" ;;
+            *) _p="$(dirname "$_p")/$_t" ;;
+        esac
+        _hops=$((_hops + 1))
+    done
+    echo "$_p"
+}
+VENDOR_RESOLVED="$(_resolve_in_root /usr/share/icons/vendor/scalable/emblems/emblem-vendor.svg)"
+if [ "$VENDOR_RESOLVED" != /usr/share/xwlightos/branding/xwlightos-logo.svg ]; then
+    echo "vendor emblem resolves to '$VENDOR_RESOLVED', not the XWLightOS brand file (About panel would show the Debian logo)" >&2
+    exit 1
+fi
+test -f "$FULL_ROOT$VENDOR_RESOLVED" || {
+    echo 'vendor emblem target brand file is missing from the final image' >&2
+    exit 1
+}
 # WhiteSur GDM 登录主题（1560 钩子，等价于上游 tweaks.sh -g）：版本标记文件。
 require_path 'etc/xwlightos/whitesur-gdm-theme'
 # 用户 2026-10-23 邮件：安装必须全程离线。bootloader-config 补丁（1565 钩子）
