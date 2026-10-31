@@ -127,12 +127,35 @@ grep -qx "application/pdf=${OO_ENTRY}" /etc/xdg/mimeapps.list || {
 # it (Qt INI format).
 OO_SKEL_CONF=/etc/skel/.config/onlyoffice/DesktopEditors.conf
 install -d "$(dirname "$OO_SKEL_CONF")"
+# 用户 2026-10-31 两项预置（均已对 9.4.0 官方包本体核实）：
+# (1) 默认作者/用户名 XWLightOS：应用外壳 index.html 的设置页 JS
+#     实证——用户名字段先读 localStorage（首启为空），为空即向
+#     原生侧 settings:get "username" 取值，原生侧的持久层就是
+#     本文件（QSettings 用户域）；保存时同道回写。故在 skel 的
+#     本文件里预置 username，首启即为默认作者（文档属性、修订
+#     署名都取它）；用户日后在设置里改名只改自己的副本，本种子
+#     不锁定。键名 username 与二进制内设置键簇（username/locale/
+#     uiscaling 相邻）互证。
+# (2) useai = false：外壳设置页的 AI 开关（同页 JS 的 useai 字段，
+#     applies 时带 restart 标志），关掉外壳层 AI 助手入口；
+#     编辑器内的 AI 插件另由系统级 pluginsDisabled 关闭（见
+#     /etc/xdg/onlyoffice/DesktopEditors.conf，includes.chroot 直带）。
 cat > "$OO_SKEL_CONF" <<'EOF'
 [General]
 editorWindowMode = true
+username = XWLightOS
+useai = false
 EOF
 grep -q -E '^editorWindowMode *= *true$' "$OO_SKEL_CONF" || {
     echo "ONLYOFFICE multi-window mode was not seeded" >&2
+    exit 1
+}
+grep -q -E '^username *= *XWLightOS$' "$OO_SKEL_CONF" || {
+    echo "ONLYOFFICE default user name (author) was not seeded" >&2
+    exit 1
+}
+grep -q -E '^useai *= *false$' "$OO_SKEL_CONF" || {
+    echo "ONLYOFFICE shell AI switch was not seeded off" >&2
     exit 1
 }
 # 用户 2026-10-24 指令：ONLYOFFICE 不再往桌面放快捷方式（见上）。

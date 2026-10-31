@@ -1075,6 +1075,37 @@ grep -q -E '^editorWindowMode *= *true$' "$OO_CONF" || {
     echo 'ONLYOFFICE multi-window mode is not seeded in final ISO' >&2
     exit 1
 }
+# 用户 2026-10-31：默认作者署名预置 XWLightOS + 外壳 AI 关。
+# 依据：官方包 index.html 设置页 JS（名字为空时向原生侧
+# settings:get "username"，持久层即此 conf）与二进制设置键簇。
+grep -q -E '^username *= *XWLightOS$' "$OO_CONF" || {
+    echo 'ONLYOFFICE default user name (author) XWLightOS is not seeded in final ISO' >&2
+    exit 1
+}
+grep -q -E '^useai *= *false$' "$OO_CONF" || {
+    echo 'ONLYOFFICE shell AI switch (useai) is not seeded off in final ISO' >&2
+    exit 1
+}
+# 插件总开关（用户 2026-10-31 指令：自带插件与 AI 走官方配置
+# 禁用、不删文件）：系统级 QSettings 文件
+# /etc/xdg/onlyoffice/DesktopEditors.conf 里的 pluginsDisabled
+# ——上游 desktop-apps 源码 cascapplicationmanagerwrapper.cpp
+# 以 SystemScope 读此键、缺省 true 赋给 plugins_support，故
+# false 即关闭整个插件支持（13 个自带插件含 AI/AI agent 全不
+# 加载）。断言文件在镜像里且值正确；运行时效果（插件页签与
+# AI 功能区消失）属设备验证层。
+require_path 'etc/xdg/onlyoffice/DesktopEditors.conf'
+OO_SYS_CONF="$WORK/oo-system-DesktopEditors.conf"
+cat_image_file 'etc/xdg/onlyoffice/DesktopEditors.conf' "$OO_SYS_CONF"
+grep -q -E '^pluginsDisabled *= *false$' "$OO_SYS_CONF" || {
+    echo 'ONLYOFFICE system pluginsDisabled=false is not in final ISO (bundled plugins/AI would stay enabled)' >&2
+    exit 1
+}
+# 安装账号的 conf 补种机制（镜像内 postinstall 本人里查）。
+OO_POSTINSTALL="$WORK/postinstall-oo-check"
+cat_image_file 'usr/local/libexec/xwlightos-target-postinstall.sh' "$OO_POSTINSTALL"
+grep -q 'could not seed ONLYOFFICE DesktopEditors.conf' "$OO_POSTINSTALL" || {
+    echo 'in-image postinstall does not seed ONLYOFFICE DesktopEditors.conf for the installed account' >&2; exit 1; }
 # Hardware compatibility layer and dev toolchain must be present.
 require_path 'usr/sbin/cupsd'
 require_path 'usr/bin/gcc'
@@ -1326,33 +1357,41 @@ print("XWLightOS: new-tab xpi valid")
 PYEOF
 
 # 用户 2026-10-24 邮件《很大问题》第 7 项：右键新建文本/PPT/DOC。
-# Nautilus 的“新建文档”菜单只列出 ~/Templates（中文环境为 ~/模板）
-# 里的模板文件，两边都放，缺一不可；PPT/DOCX 必须是结构有效的
-# OOXML 空文件，不能放损坏文件。
-# 用户 2026-10-24 22:53 邮件：不只 txt/pptx/docx，xls 之类的常见类型
-# 都要加——补齐 xlsx/xls/ods、doc/odt、ppt/odp，同样逐个校验
-# （OOXML/ODF 走 zip 完整性 + XML 解析，旧二进制格式验 OLE 魔数）。
+# Nautilus 的“新建文档”菜单只列出 user-dirs 的 TEMPLATES 目录
+# （本系统钉死为 ~/模板，见下方查找链门禁）里的模板文件；英文
+# Templates 目录同步放同一套作兜底，两边都放，缺一不可；PPT/DOCX
+# 必须是结构有效的 OOXML 空文件，不能放损坏文件。
+# 用户 2026-10-31 细化（Build 58 实测后）：模板集换代——删
+# ods/odt/odp（负断言钉死），加 zip/7z 空归档（必须是结构有效的
+# 空归档，Nautilus 原样拷贝模板生成新文件、要能被 file-roller
+# 打开）；Office 模板内嵌作者 XWLightOS（OOXML 查
+# docProps/core.xml 的 dc:creator，旧 OLE 查 SummaryInformation
+# 的 PID 4 作者）——txt 与归档没有作者字段，不在此列、不伪造。
 require_path 'etc/skel/Templates/新建文本文件.txt'
 require_path 'etc/skel/Templates/新建演示文稿.pptx'
 require_path 'etc/skel/Templates/新建文档.docx'
 require_path 'etc/skel/Templates/新建工作表.xlsx'
 require_path 'etc/skel/Templates/新建工作表.xls'
-require_path 'etc/skel/Templates/新建工作表.ods'
 require_path 'etc/skel/Templates/新建文档.doc'
-require_path 'etc/skel/Templates/新建文本文档.odt'
 require_path 'etc/skel/Templates/新建演示文稿.ppt'
-require_path 'etc/skel/Templates/新建演示文稿.odp'
+require_path 'etc/skel/Templates/新建压缩包.zip'
+require_path 'etc/skel/Templates/新建压缩包.7z'
 require_path 'etc/skel/模板/新建文本文件.txt'
 require_path 'etc/skel/模板/新建演示文稿.pptx'
 require_path 'etc/skel/模板/新建文档.docx'
 require_path 'etc/skel/模板/新建工作表.xlsx'
 require_path 'etc/skel/模板/新建工作表.xls'
-require_path 'etc/skel/模板/新建工作表.ods'
 require_path 'etc/skel/模板/新建文档.doc'
-require_path 'etc/skel/模板/新建文本文档.odt'
 require_path 'etc/skel/模板/新建演示文稿.ppt'
-require_path 'etc/skel/模板/新建演示文稿.odp'
-for _tpl in 'etc/skel/Templates/新建演示文稿.pptx' 'etc/skel/Templates/新建文档.docx' 'etc/skel/Templates/新建工作表.xlsx' 'etc/skel/Templates/新建工作表.ods' 'etc/skel/Templates/新建文本文档.odt' 'etc/skel/Templates/新建演示文稿.odp'; do
+require_path 'etc/skel/模板/新建压缩包.zip'
+require_path 'etc/skel/模板/新建压缩包.7z'
+# 2026-10-31 删除的 ODF 三件不得回潮。
+for _gone in 'etc/skel/Templates/新建工作表.ods' 'etc/skel/Templates/新建文本文档.odt' 'etc/skel/Templates/新建演示文稿.odp' 'etc/skel/模板/新建工作表.ods' 'etc/skel/模板/新建文本文档.odt' 'etc/skel/模板/新建演示文稿.odp'; do
+    if grep -qx "$_gone" "$LIST"; then
+        echo "removed ODF template is back in the image: $_gone" >&2; exit 1
+    fi
+done
+for _tpl in 'etc/skel/Templates/新建演示文稿.pptx' 'etc/skel/Templates/新建文档.docx' 'etc/skel/Templates/新建工作表.xlsx'; do
     _tmp="$WORK/$(basename "$_tpl")"
     cat_image_file "$_tpl" "$_tmp"
     python3 - "$_tmp" <<'PYEOF'
@@ -1367,6 +1406,20 @@ for name in z.namelist():
 print("XWLightOS: template valid:", sys.argv[1])
 PYEOF
 done
+# OOXML 作者：两目录六个文件逐个解包查 dc:creator。
+for _tpl in 'etc/skel/Templates/新建演示文稿.pptx' 'etc/skel/Templates/新建文档.docx' 'etc/skel/Templates/新建工作表.xlsx' 'etc/skel/模板/新建演示文稿.pptx' 'etc/skel/模板/新建文档.docx' 'etc/skel/模板/新建工作表.xlsx'; do
+    _tmp="$WORK/$(basename "$_tpl")"
+    cat_image_file "$_tpl" "$_tmp"
+    python3 - "$_tmp" <<'PYEOF'
+import sys
+import zipfile
+z = zipfile.ZipFile(sys.argv[1])
+core = z.read("docProps/core.xml").decode("utf-8")
+assert "<dc:creator>XWLightOS</dc:creator>" in core, \
+    "OOXML template docProps/core.xml lacks dc:creator XWLightOS"
+print("XWLightOS: template OOXML author ok:", sys.argv[1])
+PYEOF
+done
 for _tpl in 'etc/skel/Templates/新建工作表.xls' 'etc/skel/Templates/新建文档.doc' 'etc/skel/Templates/新建演示文稿.ppt'; do
     _tmp="$WORK/$(basename "$_tpl")"
     cat_image_file "$_tpl" "$_tmp"
@@ -1378,6 +1431,125 @@ assert magic == bytes.fromhex("D0CF11E0A1B11AE1"), "template OLE magic wrong"
 print("XWLightOS: template OLE valid:", sys.argv[1])
 PYEOF
 done
+# OLE 作者：纯 Python CFB 读取器（CI 无 olefile）解析
+# \x05SummaryInformation 属性集，断言 PID 4 作者 == XWLightOS。
+# 已对旧模板做过先验：旧文件无作者属性、本检查按预期失败。
+for _tpl in 'etc/skel/Templates/新建文档.doc' 'etc/skel/Templates/新建工作表.xls' 'etc/skel/Templates/新建演示文稿.ppt' 'etc/skel/模板/新建文档.doc' 'etc/skel/模板/新建工作表.xls' 'etc/skel/模板/新建演示文稿.ppt'; do
+    _tmp="$WORK/$(basename "$_tpl")"
+    cat_image_file "$_tpl" "$_tmp"
+    python3 - "$_tmp" <<'PYEOF'
+import struct
+import sys
+
+
+def read_stream(path, want):
+    d = open(path, "rb").read()
+    assert d[:8] == bytes.fromhex("D0CF11E0A1B11AE1"), "not a CFB file"
+    ssz = 1 << struct.unpack_from("<H", d, 30)[0]
+    msz = 1 << struct.unpack_from("<H", d, 32)[0]
+    nfat = struct.unpack_from("<I", d, 44)[0]
+    assert nfat <= 109, "file needs extra DIFAT sectors; checker too small"
+    dir0 = struct.unpack_from("<I", d, 48)[0]
+    cutoff = struct.unpack_from("<I", d, 56)[0]
+    mf0, nmf = struct.unpack_from("<II", d, 60)
+    difat = list(struct.unpack_from("<109I", d, 76))
+
+    def sec(sid):
+        return d[512 + sid * ssz: 512 + (sid + 1) * ssz]
+
+    fat = []
+    for s in difat[:nfat]:
+        fat += struct.unpack("<%dI" % (ssz // 4), sec(s))
+
+    def chain(start, table):
+        out, s, seen = [], start, set()
+        while s not in (0xFFFFFFFE, 0xFFFFFFFF) and s not in seen:
+            seen.add(s)
+            out.append(s)
+            s = table[s]
+        return out
+
+    dirdata = b"".join(sec(s) for s in chain(dir0, fat))
+    entries = []
+    for i in range(len(dirdata) // 128):
+        e = dirdata[i * 128:(i + 1) * 128]
+        nl = struct.unpack_from("<H", e, 64)[0]
+        name = e[:max(0, nl - 2)].decode("utf-16-le") if nl >= 2 else ""
+        entries.append((name, e[66],
+                        struct.unpack_from("<I", e, 116)[0],
+                        struct.unpack_from("<Q", e, 120)[0]))
+    root = entries[0]
+    minifat = []
+    if nmf:
+        mfdata = b"".join(sec(s) for s in chain(mf0, fat))
+        minifat = list(struct.unpack("<%dI" % (len(mfdata) // 4), mfdata))
+    ministream = b"".join(sec(s) for s in chain(root[2], fat))[:root[3]]
+    for nm, t, start, size in entries:
+        if nm == want and t == 2:
+            if size < cutoff:
+                raw = b"".join(ministream[s * msz:(s + 1) * msz]
+                               for s in chain(start, minifat))
+            else:
+                raw = b"".join(sec(s) for s in chain(start, fat))
+            return raw[:size]
+    return None
+
+
+data = read_stream(sys.argv[1], "\x05SummaryInformation")
+assert data is not None, "no SummaryInformation stream"
+off = struct.unpack_from("<I", data, 44)[0]
+_, n = struct.unpack_from("<II", data, off)
+author = None
+for i in range(n):
+    pid, poff = struct.unpack_from("<II", data, off + 8 + i * 8)
+    if pid == 4:
+        vt = struct.unpack_from("<I", data, off + poff)[0]
+        if vt == 30:
+            cnt = struct.unpack_from("<I", data, off + poff + 4)[0]
+            author = data[off + poff + 8:off + poff + 8 + cnt] \
+                .rstrip(b"\x00").decode("utf-8", "replace")
+        elif vt == 31:
+            cnt = struct.unpack_from("<I", data, off + poff + 4)[0]
+            author = data[off + poff + 8:off + poff + 8 + 2 * cnt] \
+                .decode("utf-16-le").rstrip("\x00")
+assert author == "XWLightOS", \
+    "OLE author is %r, expected 'XWLightOS'" % (author,)
+print("XWLightOS: template OLE author ok:", sys.argv[1])
+PYEOF
+done
+# zip 模板：必须是结构有效的空归档。
+for _tpl in 'etc/skel/Templates/新建压缩包.zip' 'etc/skel/模板/新建压缩包.zip'; do
+    _tmp="$WORK/$(basename "$_tpl")"
+    cat_image_file "$_tpl" "$_tmp"
+    python3 - "$_tmp" <<'PYEOF'
+import sys
+import zipfile
+z = zipfile.ZipFile(sys.argv[1])
+assert z.testzip() is None and z.namelist() == [], \
+    "zip template must be a valid EMPTY archive"
+print("XWLightOS: template zip empty-archive ok:", sys.argv[1])
+PYEOF
+done
+# 7z 模板：32 字节纯头空归档（签名/版本/双 CRC 全校验；
+# 本机已用真 7z 验证同构文件可列可测、0 文件）。
+for _tpl in 'etc/skel/Templates/新建压缩包.7z' 'etc/skel/模板/新建压缩包.7z'; do
+    _tmp="$WORK/$(basename "$_tpl")"
+    cat_image_file "$_tpl" "$_tmp"
+    python3 - "$_tmp" <<'PYEOF'
+import struct
+import sys
+import zlib
+d = open(sys.argv[1], "rb").read()
+assert len(d) == 32, "empty 7z template must be the 32-byte header-only archive"
+assert d[:6] == bytes.fromhex("377ABCAF271C") and d[6:8] == b"\x00\x04", \
+    "7z signature/version wrong"
+assert zlib.crc32(d[12:32]) & 0xFFFFFFFF == struct.unpack_from("<I", d, 8)[0], \
+    "7z StartHeaderCRC wrong"
+off, size, crc = struct.unpack_from("<QQI", d, 12)
+assert off == 0 and size == 0 and crc == 0, "7z template is not an empty archive"
+print("XWLightOS: template 7z empty-archive ok:", sys.argv[1])
+PYEOF
+done
 # 右键“新建”查找链门禁（2026-10-31 用户 Build 58 实测补）：上面
 # 只断言了 skel 里有模板，但 Build 58 里模板齐备、且经 1700 钩子
 # 送达 live 家目录（镜像清单可查），右键菜单却没有“新建”——断点
@@ -1385,17 +1557,25 @@ done
 # user-special-dir 找模板目录，落点由 ~/.config/user-dirs.dirs
 # 决定，而 Build 58 全系统没有这份文件（生成它的 xdg-user-dirs
 # 从未进包清单）。本轮把链路三段全部钉进门禁：
-# (1) 出厂查找表在 skel 里、且把 TEMPLATES 与 DESKTOP 钉在与
-#     种子一致的英文目录名上（本地化指向空目录同样算断链）；
+# (0) xdg-user-dirs 包本体在镜像里（用户实测 B58 无 xdg-user-dir
+#     命令；无此包则登录时没人维护 user-dirs.dirs、缺失目录
+#     也没人补建）——路径以 bookworm 的 0.18-1 deb 清单为准；
+# (1) 出厂查找表在 skel 里、且把 TEMPLATES 钉到装满模板的中文
+#     目录 模板、DESKTOP 钉在产品桌面链锚定的英文 Desktop 上
+#     （用户探针实锤：无此表时 GLib 对特殊目录返回 None，菜单
+#     整体消失；指向空目录同样算断链）；
 # (2) live 家目录里查找表与模板真实送达（1700 整份拷贝的结果，
 #     不再只查 skel 仓库）；
 # (3) 安装侧 postinstall 带 user-dirs.dirs 与模板的 cp -n 补种
 #     段（机制断言：查镜像内 postinstall 本人，不查仓库副本）。
+require_path 'usr/bin/xdg-user-dir'
+require_path 'usr/bin/xdg-user-dirs-update'
+require_path 'etc/xdg/autostart/xdg-user-dirs.desktop'
 require_path 'etc/skel/.config/user-dirs.dirs'
 USER_DIRS_PIN="$WORK/user-dirs-dirs-pin"
 cat_image_file 'etc/skel/.config/user-dirs.dirs' "$USER_DIRS_PIN"
-grep -q '^XDG_TEMPLATES_DIR="\$HOME/Templates"$' "$USER_DIRS_PIN" || {
-    echo 'skel user-dirs.dirs does not pin XDG_TEMPLATES_DIR to $HOME/Templates (New Document lookup would float)' >&2; exit 1; }
+grep -q '^XDG_TEMPLATES_DIR="\$HOME/模板"$' "$USER_DIRS_PIN" || {
+    echo 'skel user-dirs.dirs does not pin XDG_TEMPLATES_DIR to $HOME/模板 (New Document lookup would float)' >&2; exit 1; }
 grep -q '^XDG_DESKTOP_DIR="\$HOME/Desktop"$' "$USER_DIRS_PIN" || {
     echo 'skel user-dirs.dirs does not pin XDG_DESKTOP_DIR to $HOME/Desktop (desktop icons lookup would float)' >&2; exit 1; }
 require_path 'home/user/.config/user-dirs.dirs'

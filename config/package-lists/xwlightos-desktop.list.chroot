@@ -205,16 +205,17 @@ gir1.2-atspi-2.0
 gir1.2-ayatanaappindicator3-0.1
 onboard-data
 
-# 用户目录查找链（2026-10-31 用户 Build 58 实测：右键没有“新建”）。
-# 模板文件本身齐备（/etc/skel 双目录各 10 个、1700 钩子整份 skel
-# 拷进 live 家目录，B57 镜像清单实证送达），但全系统没有任何一份
-# ~/.config/user-dirs.dirs：写它的 xdg-user-dirs-update（属
-# xdg-user-dirs 包）从不在包清单里，Nautilus 与桌面 DING 扩展读
-# 模板目录都经 GLib 的 user-special-dir 查找，没有这份文件时查找
-# 落点不受控。装上本包提供登录时维护该文件的机制；目录名由
-# /etc/skel/.config/user-dirs.dirs 出厂钉死为与种子一致的英文名
-# （避免 zh_CN 本地化把桌面/模板指到空的新目录），两者配合才
-# 是确定性的查找链。
+# 用户目录查找链（2026-10-31 用户 Build 58 实测+探针实锤：右键
+# 没有“新建”）。模板文件本身齐备（/etc/skel 双目录各 10 个、
+# 1700 钩子整份 skel 拷进 live 家目录，B57 镜像清单实证送达），
+# 但镜像缺 xdg-user-dirs 包：~/.config/user-dirs.dirs 永不生成，
+# 用户在 live 会话实测 GLib 的 g_get_user_special_dir(TEMPLATES)
+# 直接返回 None——Nautilus 与桌面 DING 都因此不显示“新建文档”
+# （其他特殊目录同病）。装上本包提供登录时维护查找表、补建
+# 缺失目录的机制；查找表本体由 /etc/skel/.config/user-dirs.dirs
+# 出厂钉死（TEMPLATES 指到装满模板的中文目录“模板”，其余按
+# zh_CN 标准名，桌面保留产品链锚定的英文 Desktop），两者配合
+# 才是确定性的查找链。
 xdg-user-dirs
 
 # Chinese locale and Fcitx5 input method
