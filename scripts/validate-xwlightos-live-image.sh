@@ -1186,8 +1186,10 @@ grep -q '^ActiveByDefault=True$' "$FCITX_BEHAVIOR_SECTION" || {
 # 且 [desktop/ibus/general] 小节内 preload-engines 与
 # engines-order 都是 libpinyin（小节级）；
 # ⑤ 无障碍总线 at-spi2-core 送达保留（GNOME 桌面标准件，与
-# Onboard 已解绑；上轮为 Onboard 补的两个 typelib 与 onboard-data
-# 已随包清单移除，不再断言）。
+# Onboard 已解绑）。onboard-data 已随 Onboard 移除；两个 typelib
+# （gir1.2-atspi-2.0、gir1.2-ayatanaappindicator3-0.1）按用户
+# 2026-10-31 18:50 的范围裁决保留在镜像中，本节不再为其设置
+# 断言（其去留不由 Onboard 的门禁裁决）。
 # fcitx5 环境三变量仍为 fcitx 的断言在前文 IM 环境一节（双栈防
 # 污染关口），此处不重复。运行时组字行为构建证不了，属设备
 # 验证项，不得以本节全绿冒充“屏幕键盘已修好”。

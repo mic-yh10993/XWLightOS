@@ -213,15 +213,15 @@ ibus-libpinyin
 # usr/libexec/at-spi-bus-launcher，归属已对 bookworm 的 deb 核实）
 # 是 GNOME 桌面无障碍栈的标准成员，缺失时任何 AT-SPI 消费者都
 # 会连不上总线直接失败（2026-10-31 已实证过一次进程 abort）。
-# 上轮随 Onboard 补进来的另三件经包元数据复核都是 onboard
-# 1.4.1-5+b7 的 Recommends（其 Depends 里没有，本镜像
-# --no-install-recommends 不会带入）：gir1.2-atspi-2.0 与
-# gir1.2-ayatanaappindicator3-0.1 是它 auto-show/状态图标用的
-# typelib，onboard-data 是它的词模型；且无其它在装包依赖它们
-# （gnome-shell-extension-appindicator 46-1 的 Depends 只有
-# gnome-shell 与 gsettings 后端），故随 Onboard 一并移除，
-# at-spi2-core 独立保留。
+# 移除范围按用户 2026-10-31 18:50 裁决，只限 Onboard 专属件：
+# 随 Onboard 一并移除的只有 onboard-data（它的词模型，同为其
+# Recommends、无其它在装包依赖它）。上轮为 Onboard 的 auto-show
+# 与状态图标补进来的两个 typelib——gir1.2-atspi-2.0 与
+# gir1.2-ayatanaappindicator3-0.1——按同一裁决保留在本清单里：
+# 它们是通用的 GNOME 桌面 typelib，不随 Onboard 退场。
 at-spi2-core
+gir1.2-atspi-2.0
+gir1.2-ayatanaappindicator3-0.1
 
 # 用户目录查找链（2026-10-31 用户 Build 58 实测+探针实锤：右键
 # 没有“新建”）。模板文件本身齐备（/etc/skel 双目录各 10 个、
