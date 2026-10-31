@@ -12,3 +12,12 @@ ModifierOnlyKeyTimeout=250
 # 单击左/右 Shift 切换中英文
 0=Shift_L
 1=Shift_R
+
+[Behavior]
+# 登录后默认激活输入法（拼音）。这是 fcitx5 官方的 Behavior 选项：
+# 缺省 False 时 fcitx5 启动后处于未激活状态（fcitx5-remote 输出状态 1、
+# 当前输入法 keyboard-us），必须先手动激活一次，Shift 中英文切换才
+# 开始工作——用户 2026-10-31 在 Build 57 虚拟机实测的症状与 fcitx5
+# 文档对该选项的说明逐字吻合（profile 里的 DefaultIM=pinyin 只决定
+# “激活后用哪个输入法”，不决定“启动时是否激活”，两者是不同的层）。
+ActiveByDefault=True
