@@ -115,10 +115,16 @@ grep -q '^enable-hot-corners=false$' /usr/share/glib-2.0/schemas/90-xwlightos-in
     echo 'XWLightOS: interface schema override does not force hot corners off' >&2
     exit 1
 }
-# 输入源覆盖（用户 2026-10-25 11:41 反馈：移除多余的英语（美国）源）：
-# 与 dock 覆盖同款构建期文本检查，文件丢了或被改回 xkb us 时构建即红灯。
-grep -q '^sources=\[\]$' /usr/share/glib-2.0/schemas/90-xwlightos-input-sources.gschema.override || {
-    echo 'XWLightOS: input-sources schema override does not clear the redundant English (US) source' >&2
+# 输入源覆盖（2026-10-25 原为清空多余的英语（美国）源；2026-10-31 第三轮
+# 引进 IBus 双栈后改为播种对）：与 dock 覆盖同款构建期文本检查，override
+# 必须是 [('xkb','cn'), ('ibus','libpinyin')] 且 current=0，与 dconf 默认、
+# 校验脚本同值；文件丢了或漂回空表/xkb us 时构建即红灯。
+grep -q "^sources=\[('xkb', 'cn'), ('ibus', 'libpinyin')\]$" /usr/share/glib-2.0/schemas/90-xwlightos-input-sources.gschema.override || {
+    echo 'XWLightOS: input-sources schema override is not the seeded pair (xkb cn + ibus libpinyin)' >&2
+    exit 1
+}
+grep -q '^current=0$' /usr/share/glib-2.0/schemas/90-xwlightos-input-sources.gschema.override || {
+    echo 'XWLightOS: input-sources schema override does not pin current to 0' >&2
     exit 1
 }
 
