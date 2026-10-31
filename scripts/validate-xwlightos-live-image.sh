@@ -703,22 +703,33 @@ done
 # 用户 2026-10-24 23:31 邮件：输入法面板扩展也要（重新加回启用）。
 grep -q 'kimpanel@kde.org' "$GNOME_DEFAULTS" \
     || { echo 'enabled-extensions missing kimpanel input method panel extension' >&2; exit 1; }
-# 用户 2026-10-25 11:41 反馈：输入法 Shift 不能切换，是多了个英语（美国）
-# 输入源抢了 fcitx5 的位置（构建里从未写过 input-sources，首次登录即
-# GNOME schema 默认的 xkb us；与此前 skel 漏 fcitx5 配置的触发键缺失
-# 不是同一层）。修法：GNOME 输入源列表清掉——dconf 键文件（带类型注解
-# 的空数组，schema-less 解析必需）与 gschema 覆盖（第二层）两处；fcitx5
-# 内部的 keyboard-us 是 Shift 切换的英文一侧，必须保留，不得误伤。
+# 输入源播种门禁（2026-10-31 第三轮改版，此前断言的“清表”已反转）。
+# 历史：2026-10-25 用户反馈英语（美国）xkb us 源抢 fcitx5 的位置
+# （构建里从未写过 input-sources，首次登录即 GNOME schema 默认的
+# xkb us；与 skel 漏 fcitx5 触发键不是同一层），当时修法是把列表
+# 清空（dconf 键文件 + gschema 覆盖两层，断言为空）。本轮 IBus
+# 双栈要求 ('ibus','libpinyin') 登记在列表里、供屏幕键盘切拼音，
+# 故两层一并改为精确断言播种值 [('xkb','cn'), ('ibus','libpinyin')]
+# 且 current=0（登录当前源仍是 xkb 一侧，实体键盘继续归 fcitx5
+# 的 IM 模块通道）；当年要清的 xkb us 若回潮，精确等值断言同样
+# 会红。fcitx5 内部的 keyboard-us 是 Shift 切换的英文一侧，必须
+# 保留、不得误伤（下方 skel profile 断言不动）。
 grep -q '^\[org/gnome/desktop/input-sources\]$' "$GNOME_DEFAULTS" \
-    || { echo 'dconf defaults lack input-sources section (redundant English (US) source would return)' >&2; exit 1; }
-grep -q '^sources=@a(ss) \[\]$' "$GNOME_DEFAULTS" \
-    || { echo 'dconf input-sources is not cleared (redundant English (US) source would return)' >&2; exit 1; }
+    || { echo 'dconf defaults lack input-sources section (seeded input sources missing)' >&2; exit 1; }
+grep -q "^sources=\[('xkb', 'cn'), ('ibus', 'libpinyin')\]$" "$GNOME_DEFAULTS" \
+    || { echo "dconf input-sources is not the seeded pair [('xkb','cn'), ('ibus','libpinyin')] (the on-screen keyboard would have no pinyin source to switch to)" >&2; exit 1; }
+INPUT_SOURCES_SECTION="$WORK/gnome-input-sources-section"
+awk '/^\[org\/gnome\/desktop\/input-sources\]/{in_section=1; next} /^\[/{in_section=0} in_section' "$GNOME_DEFAULTS" > "$INPUT_SOURCES_SECTION"
+grep -q '^current=0$' "$INPUT_SOURCES_SECTION" \
+    || { echo 'dconf input-sources current is not 0 (login would not start on the xkb side)' >&2; exit 1; }
 INPUT_OVERRIDE="$WORK/90-xwlightos-input-sources.gschema.override"
 cat_image_file 'usr/share/glib-2.0/schemas/90-xwlightos-input-sources.gschema.override' "$INPUT_OVERRIDE"
 grep -q '^\[org.gnome.desktop.input-sources\]$' "$INPUT_OVERRIDE" \
     || { echo 'input-sources schema override section missing' >&2; exit 1; }
-grep -q '^sources=\[\]$' "$INPUT_OVERRIDE" \
-    || { echo 'input-sources schema override does not clear sources' >&2; exit 1; }
+grep -q "^sources=\[('xkb', 'cn'), ('ibus', 'libpinyin')\]$" "$INPUT_OVERRIDE" \
+    || { echo 'input-sources schema override does not seed the pair' >&2; exit 1; }
+grep -q '^current=0$' "$INPUT_OVERRIDE" \
+    || { echo 'input-sources schema override current is not 0' >&2; exit 1; }
 FCITX5_PROFILE="$WORK/fcitx5-profile"
 cat_image_file 'etc/skel/.config/fcitx5/profile' "$FCITX5_PROFILE"
 grep -q '^Name=keyboard-us$' "$FCITX5_PROFILE" \
@@ -728,12 +739,14 @@ grep -q '^Name=pinyin$' "$FCITX5_PROFILE" \
 grep -q '^DefaultIM=pinyin$' "$FCITX5_PROFILE" \
     || { echo 'fcitx5 DefaultIM is not pinyin' >&2; exit 1; }
 # 编译后的 schema 默认生效值（与 dock 三开关同款查法）：gschemas.compiled
-# 已在前面断言存在；有 gsettings 时再读一次，空列表读出来是 @a(ss) []。
+# 已在前面断言存在；有 gsettings 时再读一次，播种值读出来应为
+# [('xkb', 'cn'), ('ibus', 'libpinyin')]（2026-10-31 第三轮前此
+# 处断言的是空表 @a(ss) []，与清表修法一并反转）。
 if command -v gsettings >/dev/null 2>&1; then
     _input_src="$(GSETTINGS_SCHEMA_DIR="$FULL_ROOT/usr/share/glib-2.0/schemas" GSETTINGS_BACKEND=memory gsettings get org.gnome.desktop.input-sources sources 2>/dev/null)" || {
         echo 'compiled input-sources schema default is unreadable (gschemas.compiled stale or broken)' >&2; exit 1; }
-    [ "$_input_src" = '@a(ss) []' ] || {
-        echo "compiled input-sources schema default is not empty (got $_input_src); redundant English (US) source would return" >&2; exit 1; }
+    [ "$_input_src" = "[('xkb', 'cn'), ('ibus', 'libpinyin')]" ] || {
+        echo "compiled input-sources schema default is not the seeded pair (got $_input_src)" >&2; exit 1; }
 else
     echo 'note: gsettings unavailable, skipping compiled input-sources effective-value check' >&2
 fi
@@ -1158,46 +1171,55 @@ FCITX_BEHAVIOR_SECTION="$WORK/fcitx5-behavior"
 awk '/^\[Behavior\]/{in_section=1; next} /^\[/{in_section=0} in_section' "$FCITX_CFG" > "$FCITX_BEHAVIOR_SECTION"
 grep -q '^ActiveByDefault=True$' "$FCITX_BEHAVIOR_SECTION" || {
     echo 'fcitx5 [Behavior] ActiveByDefault is not True in skel config (fcitx5 would start INACTIVE at login; user must activate once by hand before Shift toggling works)' >&2; exit 1; }
-# 屏幕键盘（2026-10-31 改版）：GNOME 官方屏幕键盘走 IBus、本系统无
-# IBus，它输不了中文——用户授权换掉。改版后断言三件事：GNOME 键盘
-# 默认关（防两个键盘同弹）；Onboard 的自动弹出与最小化启动默认值
-# 在位（小节级）；Onboard 本体与自启文件进了镜像。另外 GTK 输入法
-# 模块经 xsettings 通道钉死为 fcitx 的旧断言保留（物理键盘与
-# Onboard 落点的 GTK 文本框都须经此通道才走 fcitx）。
+# 屏幕键盘（2026-10-31 第三轮改版）：Onboard 弃用（用户裁决“更多
+# bug”），回到 GNOME 自带屏幕键盘 + IBus 双栈。断言面五组：
+# ① 自带键盘默认开（小节级断言 screen-keyboard-enabled=true；
+# 第二轮为 Onboard 断言的是 false，随改版反转）；
+# ② Onboard 彻底缺席：dconf 键文件不许再有 [org/onboard*] 小节，
+# 镜像不许有它的二进制/桌面文件/包自带自启/我们的自启（照 VLC
+# 清除那轮的缺席断言体例，查 squashfs 清单）；
+# ③ IBus 双栈送达：守护二进制、libpinyin 引擎组件、包自带的
+# GNOME 会话 systemd user unit 与 gnome-session.target.wants
+# 预置启用链接（登录即单实例常驻的原生载体，路径均对 ibus
+# 1.5.27-5 的 deb 清单核实）；
+# ④ 引擎预置文件 etc/dconf/db/ibus.d/50-xwlightos-ibus 在镜像里，
+# 且 [desktop/ibus/general] 小节内 preload-engines 与
+# engines-order 都是 libpinyin（小节级）；
+# ⑤ 无障碍总线 at-spi2-core 送达保留（GNOME 桌面标准件，与
+# Onboard 已解绑；上轮为 Onboard 补的两个 typelib 与 onboard-data
+# 已随包清单移除，不再断言）。
+# fcitx5 环境三变量仍为 fcitx 的断言在前文 IM 环境一节（双栈防
+# 污染关口），此处不重复。运行时组字行为构建证不了，属设备
+# 验证项，不得以本节全绿冒充“屏幕键盘已修好”。
 OSK_DCONF="$WORK/00-xwlightos-gnome-osk"
 cat_image_file 'etc/dconf/db/local.d/00-xwlightos-gnome' "$OSK_DCONF"
-grep -q '^screen-keyboard-enabled=false$' "$OSK_DCONF" || {
-    echo 'dconf does not disable the GNOME Shell on-screen keyboard by default (it cannot compose Chinese without IBus and must not fight Onboard)' >&2; exit 1; }
-ONBOARD_AUTOSHOW_SECTION="$WORK/onboard-autoshow"
-awk '/^\[org\/onboard\/auto-show\]/{in_section=1; next} /^\[/{in_section=0} in_section' "$OSK_DCONF" > "$ONBOARD_AUTOSHOW_SECTION"
-grep -q '^enabled=true$' "$ONBOARD_AUTOSHOW_SECTION" || {
-    echo 'dconf [org/onboard/auto-show] enabled is not true (Onboard would not pop up when a text field gains focus)' >&2; exit 1; }
-ONBOARD_MAIN_SECTION="$WORK/onboard-main"
-awk '/^\[org\/onboard\]/{in_section=1; next} /^\[/{in_section=0} in_section' "$OSK_DCONF" > "$ONBOARD_MAIN_SECTION"
-grep -q '^start-minimized=true$' "$ONBOARD_MAIN_SECTION" || {
-    echo 'dconf [org/onboard] start-minimized is not true (Onboard would cover the desktop from login)' >&2; exit 1; }
-require_path 'usr/bin/onboard'
-require_path 'etc/xdg/autostart/xwlightos-onboard.desktop'
-# Onboard 运行时缺口门禁（2026-10-31 用户在 Build 58 live 终端
-# 实证补）：onboard 启动硬依赖 AT-SPI 无障碍总线，镜像里缺其
-# 提供者 at-spi2-core 时，进程在 dbind-ERROR 后直接 abort——点
-# 图标无反应、自启实例同样死，而“二进制在位”类断言对此失明。
-# 逐项断言：总线服务定义与启动器（缺它的实证根因）、auto-show
-# 依赖的 Atspi typelib、状态图标 AppIndicator 后端的 typelib。
-# 图标一项订正（对 deb 本体复核）：.desktop 写 Icon=onboard，
-# 包本体就带 hicolor/scalable/apps/onboard.svg，名字文件都对得
-# 上——Build 58 的占位图标断在图标缓存查找（带缓存的主题目录
-# 只认缓存内容）。故除断言文件在位外，再断言出货的 hicolor
-# 缓存里真有 onboard 条目（1715 钩子负责重刷+当场校验）。
+A11Y_APPLICATIONS_SECTION="$WORK/gnome-a11y-applications"
+awk '/^\[org\/gnome\/desktop\/a11y\/applications\]/{in_section=1; next} /^\[/{in_section=0} in_section' "$OSK_DCONF" > "$A11Y_APPLICATIONS_SECTION"
+grep -q '^screen-keyboard-enabled=true$' "$A11Y_APPLICATIONS_SECTION" || {
+    echo 'dconf [org/gnome/desktop/a11y/applications] screen-keyboard-enabled is not true (the GNOME on-screen keyboard would not pop up when a text field gains focus)' >&2; exit 1; }
+if grep -q '^\[org/onboard' "$OSK_DCONF"; then
+    echo 'dconf still carries [org/onboard*] sections (Onboard was retired by user decision; its defaults must not be left behind)' >&2; exit 1; fi
+for onboard_leftover in usr/bin/onboard usr/share/applications/onboard.desktop \
+    etc/xdg/autostart/onboard-autostart.desktop etc/xdg/autostart/xwlightos-onboard.desktop; do
+    if grep -q -E "(^|/)${onboard_leftover//./\\.}$" "$LIST"; then
+        echo "Onboard leftover still in final ISO: /$onboard_leftover (Onboard was retired by user decision)" >&2
+        exit 1
+    fi
+done
+require_path 'usr/bin/ibus-daemon'
+require_path 'usr/share/ibus/component/libpinyin.xml'
+require_path 'usr/lib/systemd/user/org.freedesktop.IBus.session.GNOME.service'
+require_path 'usr/lib/systemd/user/gnome-session.target.wants/org.freedesktop.IBus.session.GNOME.service'
+IBUS_SEED="$WORK/50-xwlightos-ibus"
+cat_image_file 'etc/dconf/db/ibus.d/50-xwlightos-ibus' "$IBUS_SEED"
+IBUS_GENERAL_SECTION="$WORK/ibus-general-section"
+awk '/^\[desktop\/ibus\/general\]/{in_section=1; next} /^\[/{in_section=0} in_section' "$IBUS_SEED" > "$IBUS_GENERAL_SECTION"
+grep -q "^preload-engines=\['libpinyin'\]$" "$IBUS_GENERAL_SECTION" || {
+    echo 'IBus seed does not preload libpinyin (the engine would load only on demand — the exact race that broke the 2026-10-31 live experiment)' >&2; exit 1; }
+grep -q "^engines-order=\['libpinyin'\]$" "$IBUS_GENERAL_SECTION" || {
+    echo 'IBus seed does not pin libpinyin in engines-order' >&2; exit 1; }
 require_path 'usr/share/dbus-1/services/org.a11y.Bus.service'
 require_path 'usr/libexec/at-spi-bus-launcher'
-require_path 'usr/lib/x86_64-linux-gnu/girepository-1.0/Atspi-2.0.typelib'
-require_path 'usr/lib/x86_64-linux-gnu/girepository-1.0/AyatanaAppIndicator3-0.1.typelib'
-require_path 'usr/share/icons/hicolor/scalable/apps/onboard.svg'
-HICOLOR_CACHE="$WORK/hicolor-icon-theme.cache"
-cat_image_file 'usr/share/icons/hicolor/icon-theme.cache' "$HICOLOR_CACHE"
-grep -a -q 'onboard' "$HICOLOR_CACHE" || {
-    echo 'shipped hicolor icon-theme.cache has no onboard entry (app grid would show a placeholder icon)' >&2; exit 1; }
 # 输入反馈音门禁（用户 2026-10-31：调音量没提示音）：上游 schema
 # 里 input-feedback-sounds 默认 false（gsettings-desktop-schemas
 # 43.0 原文 "Whether to play sounds on input events"），event-sounds

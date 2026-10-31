@@ -1,0 +1,25 @@
+# XWLightOS: IBus 引擎预置（IBus 自有 dconf 库，不是 GNOME 的 local 库）。
+#
+# 机制（对 Bookworm 的 ibus 1.5.27-5 deb 逐项核实）：IBus 的通用
+# 配置不走 GSettings schema——包里没有 gschema 文件；它自带独立
+# 的 dconf profile（包内 /etc/dconf/profile/ibus：user-db:user +
+# system-db:ibus），上游默认值写在包内 /etc/dconf/db/ibus.d/
+# 00-upstream-settings 的 [desktop/ibus/general] 里，其中
+# preload-engines 上游默认是空数组（光装包不会预加载任何引擎）。
+# 该上游文件头注释给出的官方扩展方式就是“在旁边放一个更高编号
+# 的文件、跑 dconf update”——本文件即按此办理，50 号覆盖 00 号
+# 的同名键。1700 钩子与 postinstall 都会跑 dconf update 把本库
+# 编译成 /etc/dconf/db/ibus，live 与安装两路同源生效；profile 里
+# user-db 在前，用户日后用 ibus-setup 改的值仍优先，本文件只做
+# 出厂默认、不锁定。
+#
+# 为什么必须预置：屏幕键盘切到拼音源时 GNOME 向 IBus 点名
+# libpinyin 引擎；引擎若不在守护启动时预加载，点名要走按需加载
+# 的竞态路径——用户 2026-10-31 活体实验正是死在这里（手工启动
+# 守护后立刻设引擎，撞上初始化未完成而失败，按键被吞进无引擎
+# 通道“一打就消失”）。preload-engines 让守护一起来就装好
+# libpinyin；engines-order 同步钉它为首位，引擎顺序确定。成套
+# 交付、不留任何运行时手工步骤，是本文件存在的全部理由。
+[desktop/ibus/general]
+engines-order=['libpinyin']
+preload-engines=['libpinyin']

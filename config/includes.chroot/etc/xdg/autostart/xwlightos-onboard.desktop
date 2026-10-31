@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Onboard Screen Keyboard
-Name[zh_CN]=Onboard 屏幕键盘
-Comment=On-screen keyboard (replaces the GNOME Shell keyboard, which cannot compose Chinese without IBus)
-Exec=onboard
-OnlyShowIn=GNOME;
-X-GNOME-Autostart-enabled=true
-NoDisplay=true

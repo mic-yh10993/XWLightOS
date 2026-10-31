@@ -180,30 +180,48 @@ libqt6dbus6
 libqt6printsupport6
 libgdk-pixbuf-2.0-0
 
-# 屏幕键盘 Onboard（X11）：用户 2026-10-31 授权换掉 GNOME 官方屏幕键盘。
-# 根因已钉死：GNOME Shell 的屏幕键盘走 IBus 框架，本系统只有 fcitx5、
-# 没有 IBus，Shell 键盘永远调不出中文候选。Onboard 是 X11 会话的键盘，
-# 按键经 XTest 注入、走应用自身的输入法通道（GTK/Qt 的 fcitx 前端），
-# 因此能真正用拼音打中文；Wayland 协议类键盘（squeekboard/wvkbd）依赖
-# mutter 不实现的 input-method 协议，在本系统的 Xorg 会话上不可用。
-onboard
-# Onboard 的运行时缺口（2026-10-31 用户在 Build 58 live 终端实证）：
-# onboard 本体的 Depends 不含无障碍总线——org.a11y.Bus 的提供者
-# at-spi2-core（usr/share/dbus-1/services/org.a11y.Bus.service 与
-# usr/libexec/at-spi-bus-launcher，归属已对 bookworm 的 deb 逐项核实）
-# 在上游只是桌面栈的常规成员，本镜像手工拼装清单 + --apt-recommends
-# false 把它漏在外面。后果：Onboard 启动时 libatspi 连不上无障碍
-# 总线，dbind-ERROR 后进程直接 abort（用户终端原文："The name
-# org.a11y.Bus was not provided by any .service files"、随后进程
-# 中断），点图标毫无反应，自启实例同样死。我们为 Onboard 写的
-# auto-show 默认（文本框聚焦自动弹出）也依赖同一条总线与其
-# typelib；状态图标在 GNOME 下走 AppIndicator 后端，同理需要
-# typelib。这四包都是 onboard 的上游 Recommends/桌面栈成员，
-# 逐个对应已证实的缺口，不是猜测性加包：
+# 屏幕键盘中文（2026-10-31 第三轮定版）：Onboard 弃用（用户裁决：
+# “更多bug”），回到 GNOME 自带屏幕键盘 + IBus 双栈。根因已在用户
+# 已安装系统上活体钉死：GNOME Shell 屏幕键盘只经 IBus 通道组字，
+# 而本系统此前根本没装 IBus（dpkg 无 ibus/ibus-libpinyin、
+# ibus-daemon 不存在），GNOME 输入源只有 xkb 布局——屏幕键盘敲出
+# 的只能是原始键码，永远组不了中文。本轮把 IBus 作为“只伺候
+# Shell/屏幕键盘”的第二框架成套装进构建：
+# - 守护启动走 Bookworm 原生形态（对 ibus 1.5.27-5 的 deb 逐项
+#   核实）：包自带 systemd user unit org.freedesktop.IBus.session.
+#   GNOME.service，并在 gnome-session.target.wants/ 里预置了启用
+#   链接，登录后由 gnome-session 拉起单实例 ibus-daemon（X11 下
+#   --xim、--panel disable），不需要我们再写任何自启文件，更不
+#   碰会话输入法环境变量。不采 Debian im-config 链：其包内
+#   21_ibus.rc 在接管时会把 XMODIFIERS/GTK_IM_MODULE/QT_IM_
+#   MODULE 整体改写成 ibus（包内文件实证），会污染 fcitx5 通道。
+# - 引擎预置走 IBus 自有 dconf 库（包内 /etc/dconf/profile/ibus
+#   与 db/ibus.d/00-upstream-settings 实证，键在 [desktop/ibus/
+#   general]）：见 includes 的 etc/dconf/db/ibus.d/50-xwlightos-
+#   ibus，把 libpinyin 预置为守护启动即加载的引擎，绝不依赖运行
+#   时手工命令——用户 2026-10-31 活体实验的事故（手工启守护撞上
+#   初始化竞态、设引擎失败、按键被吞进无引擎通道）正是缺了这
+#   一层成套交付。
+# - 实体键盘与应用继续归 fcitx5：/etc/environment 三变量、
+#   Xsession.d、xsettings 通道一律不动（校验脚本有专断言）。
+# 运行时行为（切到拼音源后屏幕键盘能否组字、切源是否扰动
+# fcitx5 的 Shift 切换）构建证不了，列为设备验证项。
+ibus
+ibus-libpinyin
+# 无障碍总线（独立保留，与 Onboard 无关）：org.a11y.Bus 的提供者
+# at-spi2-core（usr/share/dbus-1/services/org.a11y.Bus.service、
+# usr/libexec/at-spi-bus-launcher，归属已对 bookworm 的 deb 核实）
+# 是 GNOME 桌面无障碍栈的标准成员，缺失时任何 AT-SPI 消费者都
+# 会连不上总线直接失败（2026-10-31 已实证过一次进程 abort）。
+# 上轮随 Onboard 补进来的另三件经包元数据复核都是 onboard
+# 1.4.1-5+b7 的 Recommends（其 Depends 里没有，本镜像
+# --no-install-recommends 不会带入）：gir1.2-atspi-2.0 与
+# gir1.2-ayatanaappindicator3-0.1 是它 auto-show/状态图标用的
+# typelib，onboard-data 是它的词模型；且无其它在装包依赖它们
+# （gnome-shell-extension-appindicator 46-1 的 Depends 只有
+# gnome-shell 与 gsettings 后端），故随 Onboard 一并移除，
+# at-spi2-core 独立保留。
 at-spi2-core
-gir1.2-atspi-2.0
-gir1.2-ayatanaappindicator3-0.1
-onboard-data
 
 # 用户目录查找链（2026-10-31 用户 Build 58 实测+探针实锤：右键
 # 没有“新建”）。模板文件本身齐备（/etc/skel 双目录各 10 个、

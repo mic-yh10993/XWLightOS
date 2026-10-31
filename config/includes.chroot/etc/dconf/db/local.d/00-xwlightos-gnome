@@ -136,29 +136,19 @@ show-home=false
 show-trash=false
 show-volumes=false
 
-# 屏幕键盘：2026-10-31 起改用 Onboard，GNOME 官方屏幕键盘默认关闭。
-# 历史：2026-10-25 邮件《继续修复》第 1 项曾把此键设为 true（此前仓库
-# 没写过这个键、GNOME 上游默认 false，真机上键盘默认不出）。但 Build 57
-# 实测钉死：GNOME Shell 屏幕键盘走 IBus 框架输入，本系统只有 fcitx5、
-# 没有 IBus，它弹出来也输不了中文（物理键盘正常）。用户 2026-10-31
-# 明确授权换掉 GNOME 官方键盘，故此处改回 false 防止两个键盘同时弹，
-# 屏幕键盘职责移交 Onboard（X11/XTest 注入，走应用的 fcitx 通道）。
-# 本节与 dock/主题同一机制：系统级 dconf 默认（1700 钩子 dconf update
-# 编译），全新安装的用户首次登录即生效；用户自己在设置里改过的值
-# 仍优先于系统默认。
+# 屏幕键盘：GNOME 自带屏幕键盘，默认开启（2026-10-31 第三轮定版）。
+# 历史三段：2026-10-25 曾把此键写 true（此前仓库没写过、GNOME 上游
+# 默认 false）；Build 58 改用 Onboard 时曾改 false 防两个键盘同弹；
+# 本轮用户裁决弃用 Onboard（“更多bug”），回到自带键盘，恢复 true。
+# 自带键盘此前输不了中文的根因已在用户已安装系统上活体钉死：它只
+# 经 IBus 通道组字，而镜像当时根本没装 IBus。本轮 IBus 双栈已成套
+# 进构建（包清单 ibus/ibus-libpinyin、etc/dconf/db/ibus.d 引擎
+# 预置、本文件输入源播种），此键只负责让键盘在文本框聚焦时弹出，
+# 组字靠 IBus 那条链。机制与 dock/主题同：系统级 dconf 默认（1700
+# 钩子 dconf update 编译），用户自己改过的值仍优先于系统默认。
 # 注意：本节只管桌面会话，不动 gdm.d 登录页——登录页键盘不在本次要求内。
 [org/gnome/desktop/a11y/applications]
-screen-keyboard-enabled=false
-
-# Onboard 屏幕键盘默认（org.onboard schema，dconf 路径写法）：
-# auto-show 打开——文本框获得焦点时自动弹出、失焦收起（靠 AT-SPI
-# 焦点事件，Xorg 会话可用）；start-minimized 让它登录时先藏起来，
-# 需要时才出现，不常驻挡桌面。
-[org/onboard]
-start-minimized=true
-
-[org/onboard/auto-show]
-enabled=true
+screen-keyboard-enabled=true
 
 # 输入反馈音默认打开（用户 2026-10-31：调音量时的提示音等基本没声）。
 # org.gnome.desktop.sound 的上游默认（gsettings-desktop-schemas 43.0
@@ -192,26 +182,31 @@ mpv-options='hwdec=auto-safe'
 [org/gnome/settings-daemon/plugins/xsettings]
 overrides={'Gtk/IMModule':<'fcitx'>}
 
-# 用户 2026-10-25 11:41 反馈：输入法 Shift 不能切换，是多了个英语（美国）
-# 输入法抢了 fcitx5 的位置，切换成 fcitx5 就可用，要求移除多余的输入法。
-# 根因（仓库核查）：构建里没有任何一处写过 org.gnome.desktop.input-sources，
-# 也没有装 ibus、没有 /etc/default/keyboard 覆盖、没有任何钩子碰输入源——
-# 于是首次登录的输入源就是 GNOME 上游 schema 默认的 xkb us，即设置里和顶栏
-# 看到的那个“英语（美国）”。它与此前“skel 继承漏 fcitx5 配置”不是同一层：
-# 之前修的是 fcitx5 内部的 Shift 触发键缺失（fcitx5 已是输入通道时 Shift
-# 仍不切换）；这次是 GNOME 一侧的输入源优先级——登录后当前源是 xkb 英语，
-# fcitx5 不是默认输入通道，用户须手动切换过去才可用。之前那次修法仍必要
-# （触发键还在 skel 配置与 postinstall 补种里），但只修触发键盖不住这一层。
-# 修法：把 GNOME 一侧的输入源列表清掉。注意 GNOME 输入源类型只支持 xkb
-# 与 ibus 两种（gsettings describe 原文），fcitx5 无法写进这个列表——它走
-# IM 模块通道（/etc/environment 三变量 + 自启动 + skel 配置 + kimpanel
-# 顶栏面板），本来就不依赖这个列表。列表为空时 GNOME 不碰 XKB、不启用
-# IBus（gsettings describe 原文），顶栏不再出现与 fcitx5 竞争的英语源，
-# 唯一输入通道剩 fcitx5。空列表须带类型注解 @a(ss)，否则 schema-less 的
-# dconf 键文件解析无法推断空数组的元素类型（1700 钩子 dconf update 会
-# 直接失败、构建红灯，不会静默带病出包）。
-# 千万别把 fcitx5 内部的 keyboard-us 也删掉：那是 Shift 切换的英文一侧，
-# 删了它 Shift 就无英文可切；要删的是 GNOME 一侧这个多余的 xkb us 源。
-# 第二层在 90-xwlightos-input-sources.gschema.override（schema 默认本身也改空）。
+# GNOME 输入源播种（2026-10-31 第三轮改版；本段历史结论部分作废）。
+# 历史：2026-10-25 用户反馈输入法 Shift 不能切换，是多了个英语
+# （美国）输入法抢了 fcitx5 的位置。仓库核查确认当时构建从未写过
+# org.gnome.desktop.input-sources，首次登录的输入源就是 GNOME 上游
+# schema 默认的 xkb us；当时的修法是把列表清空（@a(ss) []，此处
+# dconf 默认 + gschema override 两层），让 GNOME 侧不剩任何源、
+# 输入只走 fcitx5 的 IM 模块通道。那次还有一条不变量至今成立：
+# 千万别删 fcitx5 内部的 keyboard-us，那是 Shift 切换的英文一侧；
+# 且 GNOME 输入源只支持 xkb 与 ibus 两类（gsettings describe
+# 原文），fcitx5 本来就写不进这个列表、不依赖它。
+# 本轮为屏幕键盘引进 IBus 双栈后，空表不再成立：屏幕键盘要切到
+# 拼音，前提是 ('ibus','libpinyin') 在这个列表里登记着（用户
+# 2026-10-31 活体实验实证：源不在列表里，屏幕键盘无拼音可切；
+# 源登记了但守护没起，输出还会掉进死通道）。故播种恰好两项，
+# current=0：登录后的当前源仍是第一项 xkb cn（与实验前用户机器
+# 上的实际状态 [('xkb','cn')] 一致），实体键盘与应用继续经
+# fcitx5 的 IM 模块通道（/etc/environment 三变量 + 本文件
+# xsettings 钉死 + 自启动 + skel 配置）工作；当年要清掉的
+# xkb us 不在播种内，不会回潮。用户切到第二项时，Shell 的输入
+# 通道交给已预置 libpinyin 的 IBus 守护，专供屏幕键盘组字。
+# 诚实边界：切到拼音源后，实体键盘经 fcitx5 的 Shift 切中英
+# 是否受扰，是运行时行为、构建证不了，列为设备验证项；若设备
+# 证实受扰，再另行定夺（回退空表或只留单项），不在本轮预设。
+# 第二层在 90-xwlightos-input-sources.gschema.override，写同一
+# 播种（防 dconf 库被绕过时 schema 默认漂移回上游 xkb us）。
 [org/gnome/desktop/input-sources]
-sources=@a(ss) []
+current=0
+sources=[('xkb', 'cn'), ('ibus', 'libpinyin')]
