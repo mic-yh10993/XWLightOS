@@ -520,6 +520,27 @@ INITRD_PLYMOUTH_CONF="$(find "$INITRD_UNPACK" -path '*etc/plymouth/plymouthd.con
     || { echo 'initrd contains no etc/plymouth/plymouthd.conf (plymouth would boot with the compiled-in default theme)' >&2; exit 1; }
 grep -q '^Theme=xwlightos$' "$INITRD_PLYMOUTH_CONF" \
     || { echo 'initrd plymouthd.conf does not name Theme=xwlightos' >&2; exit 1; }
+# Plymouth 主题脚本真解析门禁（2026-10-31 用户 plymouth.debug 日志
+# 实证补）：从主题诞生到 Build 58，上面的存在性/配置断言全过，但
+# xwlightos.script 第 116 行用了 Plymouth 脚本语法里不存在的 `and`
+# 关键字（只有 &&/||），plymouthd 在启动动画时解析连环报错、放弃
+# 整个脚本——动画从未执行，而文件在不在、配置对不对这类断言对
+# 语法错误完全失明。这里用 Plymouth 22.02.122 自己的解析器
+# （scripts/plymouth-script-check/，取自与镜像内 plymouthd 相同的
+# 上游版本同套源码，script_parse_file 即 plymouthd 的解析入口）
+# 对 squashfs 与 initrd 内的两份脚本各做一次真解析，任一失败
+# 即拦下；解析器报错原文会打到 stderr，与设备调试日志同格式。
+INITRD_XW_SCRIPT="$(find "$INITRD_UNPACK" -path '*usr/share/plymouth/themes/xwlightos/xwlightos.script' -type f | head -n 1)"
+[ -n "$INITRD_XW_SCRIPT" ] \
+    || { echo 'initrd contains no xwlightos.script (nothing to parse-check; theme delivery broken)' >&2; exit 1; }
+PLY_CHECK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/plymouth-script-check" && pwd)"
+PLY_CHECK_BIN="$WORK/ply-script-check"
+bash "$PLY_CHECK_DIR/build.sh" "$PLY_CHECK_BIN" >/dev/null \
+    || { echo 'failed to build the Plymouth script parser checker (a C compiler is required for this gate; see scripts/plymouth-script-check/README.md)' >&2; exit 1; }
+for ply_script_copy in "$PLYMOUTH_WORK/usr/share/plymouth/themes/xwlightos/xwlightos.script" "$INITRD_XW_SCRIPT"; do
+    "$PLY_CHECK_BIN" "$ply_script_copy" \
+        || { echo "plymouth theme script fails to parse with the real Plymouth parser: $ply_script_copy (boot animation would never run)" >&2; exit 1; }
+done
 # 镜像出厂的 initramfs 配置：MODULES=most 必须被显式钉死（conf.d
 # 覆盖层），DRM 驱动强制清单必须齐——不许依赖打包默认值恰好如此
 # （live 镜像的 initramfs 在构建环境生成，dep 模式只会带构建机驱动）。
@@ -1126,6 +1147,20 @@ grep -q '^start-minimized=true$' "$ONBOARD_MAIN_SECTION" || {
     echo 'dconf [org/onboard] start-minimized is not true (Onboard would cover the desktop from login)' >&2; exit 1; }
 require_path 'usr/bin/onboard'
 require_path 'etc/xdg/autostart/xwlightos-onboard.desktop'
+# Onboard 运行时缺口门禁（2026-10-31 用户在 Build 58 live 终端
+# 实证补）：onboard 启动硬依赖 AT-SPI 无障碍总线，镜像里缺其
+# 提供者 at-spi2-core 时，进程在 dbind-ERROR 后直接 abort——点
+# 图标无反应、自启实例同样死，而“二进制在位”类断言对此失明。
+# 逐项断言：总线服务定义与启动器（缺它的实证根因）、auto-show
+# 依赖的 Atspi typelib、状态图标 AppIndicator 后端的 typelib、
+# 以及图标名兜底钩子（1715）补进 hicolor 的 onboard.svg
+# （.desktop 写 Icon=onboard，包自带图标名为 org.onboard.Onboard，
+# 不补名则应用网格里是占位图标）。
+require_path 'usr/share/dbus-1/services/org.a11y.Bus.service'
+require_path 'usr/libexec/at-spi-bus-launcher'
+require_path 'usr/lib/x86_64-linux-gnu/girepository-1.0/Atspi-2.0.typelib'
+require_path 'usr/lib/x86_64-linux-gnu/girepository-1.0/AyatanaAppIndicator3-0.1.typelib'
+require_path 'usr/share/icons/hicolor/scalable/apps/onboard.svg'
 # 输入反馈音门禁（用户 2026-10-31：调音量没提示音）：上游 schema
 # 里 input-feedback-sounds 默认 false（gsettings-desktop-schemas
 # 43.0 原文 "Whether to play sounds on input events"），event-sounds

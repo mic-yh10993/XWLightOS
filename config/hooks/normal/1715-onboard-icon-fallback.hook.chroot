@@ -1,0 +1,37 @@
+#!/bin/sh
+set -eu
+
+# Onboard 图标名兜底（2026-10-31 Build 58 用户实测：应用网格里
+# Onboard 显示为占位图标）。根因已对 onboard 1.4.1-5 的 deb 逐项
+# 核实：它的 onboard.desktop 写 Icon=onboard，但包自带的图标文件
+# 只有 hicolor 里的 org.onboard.Onboard.svg 与 /usr/share/pixmaps/
+# onboard.svg——前者名字对不上，后者不在 GNOME Shell 的图标主题
+# 查找链上，WhiteSur 主题里也没有名为 onboard 的图标，于是查找
+# 一路落空、回退占位图。
+# 修法：把包自带的 org.onboard.Onboard.svg 在 hicolor 里补一份
+# onboard.svg，让 Icon=onboard 经标准回落链（当前主题→hicolor）
+# 必然命中；随后刷新 hicolor 图标缓存（1700 钩子也会再刷一遍，
+# 这里先刷是为了让缓存与文件在本钩子结束时就一致；无缓存工具
+# 时删掉过期缓存，让查找走目录扫描）。live 与安装系统共用同一
+# squashfs，本钩子的产物两边平价。
+SRC=/usr/share/icons/hicolor/scalable/apps/org.onboard.Onboard.svg
+DST=/usr/share/icons/hicolor/scalable/apps/onboard.svg
+
+[ -f "$SRC" ] || {
+    echo "XWLightOS: onboard package icon missing at $SRC (cannot provide the 'onboard' icon name the desktop file asks for)" >&2
+    exit 1
+}
+cp -a "$SRC" "$DST"
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    gtk-update-icon-cache -f /usr/share/icons/hicolor >/dev/null 2>&1 || {
+        echo 'XWLightOS: gtk-update-icon-cache failed for hicolor (Onboard icon could stay a placeholder)' >&2
+        exit 1
+    }
+elif [ -f /usr/share/icons/hicolor/icon-theme.cache ]; then
+    rm -f /usr/share/icons/hicolor/icon-theme.cache
+fi
+[ -s "$DST" ] || {
+    echo "XWLightOS: $DST missing after copy (Onboard would keep the placeholder icon)" >&2
+    exit 1
+}
+echo "XWLightOS: Onboard icon name 'onboard' provided in hicolor (org.onboard.Onboard.svg copy)"

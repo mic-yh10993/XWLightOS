@@ -113,7 +113,7 @@ flow_b_total = 198.62;
 fun seg_pos (segs, nsegs, total, dist) {
     local.d = dist;
     local.guard = 0;
-    while (local.d >= total and local.guard < 8) {
+    while (local.d >= total && local.guard < 8) {
         local.d = local.d - total;
         local.guard = local.guard + 1;
     }

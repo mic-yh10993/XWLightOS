@@ -187,6 +187,35 @@ libgdk-pixbuf-2.0-0
 # 因此能真正用拼音打中文；Wayland 协议类键盘（squeekboard/wvkbd）依赖
 # mutter 不实现的 input-method 协议，在本系统的 Xorg 会话上不可用。
 onboard
+# Onboard 的运行时缺口（2026-10-31 用户在 Build 58 live 终端实证）：
+# onboard 本体的 Depends 不含无障碍总线——org.a11y.Bus 的提供者
+# at-spi2-core（usr/share/dbus-1/services/org.a11y.Bus.service 与
+# usr/libexec/at-spi-bus-launcher，归属已对 bookworm 的 deb 逐项核实）
+# 在上游只是桌面栈的常规成员，本镜像手工拼装清单 + --apt-recommends
+# false 把它漏在外面。后果：Onboard 启动时 libatspi 连不上无障碍
+# 总线，dbind-ERROR 后进程直接 abort（用户终端原文："The name
+# org.a11y.Bus was not provided by any .service files"、随后进程
+# 中断），点图标毫无反应，自启实例同样死。我们为 Onboard 写的
+# auto-show 默认（文本框聚焦自动弹出）也依赖同一条总线与其
+# typelib；状态图标在 GNOME 下走 AppIndicator 后端，同理需要
+# typelib。这四包都是 onboard 的上游 Recommends/桌面栈成员，
+# 逐个对应已证实的缺口，不是猜测性加包：
+at-spi2-core
+gir1.2-atspi-2.0
+gir1.2-ayatanaappindicator3-0.1
+onboard-data
+
+# 用户目录查找链（2026-10-31 用户 Build 58 实测：右键没有“新建”）。
+# 模板文件本身齐备（/etc/skel 双目录各 10 个、1700 钩子整份 skel
+# 拷进 live 家目录，B57 镜像清单实证送达），但全系统没有任何一份
+# ~/.config/user-dirs.dirs：写它的 xdg-user-dirs-update（属
+# xdg-user-dirs 包）从不在包清单里，Nautilus 与桌面 DING 扩展读
+# 模板目录都经 GLib 的 user-special-dir 查找，没有这份文件时查找
+# 落点不受控。装上本包提供登录时维护该文件的机制；目录名由
+# /etc/skel/.config/user-dirs.dirs 出厂钉死为与种子一致的英文名
+# （避免 zh_CN 本地化把桌面/模板指到空的新目录），两者配合才
+# 是确定性的查找链。
+xdg-user-dirs
 
 # Chinese locale and Fcitx5 input method
 locales
