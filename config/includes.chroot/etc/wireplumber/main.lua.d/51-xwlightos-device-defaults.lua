@@ -1,0 +1,18 @@
+-- XWLightOS: 新设备（无存档状态）的默认输出音量。
+--
+-- 定案（用户 2026-10-31 三轮诊断实证，Build 57 虚拟机）：声音链没坏，
+-- WirePlumber 对没有存档状态的新设备使用内置默认音量——线性 0.064
+-- （见随包文件 /usr/share/wireplumber/main.lua.d/40-device-defaults.lua
+-- 里被注释的示例行 --["default-volume"] = 0.064，注释原文 "the default
+-- volumes to apply to ACP device nodes, in the linear scale"）。PipeWire
+-- 的音量显示是线性值的立方根，0.064 恰好显示为 wpctl 的 0.40——实际
+-- 增益只有约 6%，满幅测试音还能听见、人声和应用音频等于没声。用户把
+-- sink 拉到 1.0 后同一段音频立刻清楚，证明病灶就是这个默认值。
+--
+-- live 会话每次开机都是“新设备无存档”，安装后系统首启同样如此，
+-- 所以必须在镜像层钉死，而不是让用户逐台去调。
+--
+-- 取值：线性 0.614，wpctl 显示约 0.85。不到 1.0 是给教室硬件留余量
+-- （首次开机不炸耳），0.85 的显示刻度足够保证应用音频清晰可闻；
+-- 用户之后自己调的音量照常被存档恢复，不受本默认值影响。
+device_defaults.properties["default-volume"] = 0.614
