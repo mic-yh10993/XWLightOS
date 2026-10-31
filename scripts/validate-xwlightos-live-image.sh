@@ -1152,15 +1152,21 @@ require_path 'etc/xdg/autostart/xwlightos-onboard.desktop'
 # 提供者 at-spi2-core 时，进程在 dbind-ERROR 后直接 abort——点
 # 图标无反应、自启实例同样死，而“二进制在位”类断言对此失明。
 # 逐项断言：总线服务定义与启动器（缺它的实证根因）、auto-show
-# 依赖的 Atspi typelib、状态图标 AppIndicator 后端的 typelib、
-# 以及图标名兜底钩子（1715）补进 hicolor 的 onboard.svg
-# （.desktop 写 Icon=onboard，包自带图标名为 org.onboard.Onboard，
-# 不补名则应用网格里是占位图标）。
+# 依赖的 Atspi typelib、状态图标 AppIndicator 后端的 typelib。
+# 图标一项订正（对 deb 本体复核）：.desktop 写 Icon=onboard，
+# 包本体就带 hicolor/scalable/apps/onboard.svg，名字文件都对得
+# 上——Build 58 的占位图标断在图标缓存查找（带缓存的主题目录
+# 只认缓存内容）。故除断言文件在位外，再断言出货的 hicolor
+# 缓存里真有 onboard 条目（1715 钩子负责重刷+当场校验）。
 require_path 'usr/share/dbus-1/services/org.a11y.Bus.service'
 require_path 'usr/libexec/at-spi-bus-launcher'
 require_path 'usr/lib/x86_64-linux-gnu/girepository-1.0/Atspi-2.0.typelib'
 require_path 'usr/lib/x86_64-linux-gnu/girepository-1.0/AyatanaAppIndicator3-0.1.typelib'
 require_path 'usr/share/icons/hicolor/scalable/apps/onboard.svg'
+HICOLOR_CACHE="$WORK/hicolor-icon-theme.cache"
+cat_image_file 'usr/share/icons/hicolor/icon-theme.cache' "$HICOLOR_CACHE"
+grep -a -q 'onboard' "$HICOLOR_CACHE" || {
+    echo 'shipped hicolor icon-theme.cache has no onboard entry (app grid would show a placeholder icon)' >&2; exit 1; }
 # 输入反馈音门禁（用户 2026-10-31：调音量没提示音）：上游 schema
 # 里 input-feedback-sounds 默认 false（gsettings-desktop-schemas
 # 43.0 原文 "Whether to play sounds on input events"），event-sounds
