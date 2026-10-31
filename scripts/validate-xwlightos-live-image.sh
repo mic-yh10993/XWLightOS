@@ -30,7 +30,7 @@ ISO="$1"
     echo "ISO is missing or empty: $ISO" >&2
     exit 1
 }
-for command in xorriso unsquashfs lsinitramfs grep; do
+for command in xorriso unsquashfs lsinitramfs unmkinitramfs grep; do
     command -v "$command" >/dev/null 2>&1 || {
         echo "required command is unavailable: $command" >&2
         exit 1
@@ -115,10 +115,55 @@ require_path 'etc/xdg/autostart/xwlightos-touch-diag.desktop'
 # 老 Intel VA-API（i965-va-driver）、vainfo 诊断工具。
 require_path 'usr/bin/vainfo'
 require_path 'usr/lib/x86_64-linux-gnu/dri/i965_drv_video.so'
-# 音频：PulseAudio 兼容层（pipewire-pulse，Firefox/VLC 等 PA 应用必需）、
+# 音频：PulseAudio 兼容层（pipewire-pulse，桌面播放类应用必需）、
 # ALSA 兼容层（pipewire-alsa）、蓝牙音频（libspa-0.2-bluetooth）、pavucontrol。
 require_path 'usr/bin/pipewire-pulse'
 require_path 'usr/bin/pavucontrol'
+# pactl（pulseaudio-utils）：2026-10-31 声音诊断时镜像里连 pactl 都没有，
+# 现场无法查 Pulse 层状态——诊断工具必须随镜像走。
+require_path 'usr/bin/pactl'
+# ALSA UCM 配置数据（alsa-ucm-conf）：HDA/SOF 声卡的端口/增益拓扑靠它
+# 描述，缺失时适配器可能激活中止（Build 57 wireplumber 日志出现过
+# WpSiAudioAdapter activation aborted）。
+require_path 'usr/share/alsa/ucm2'
+# 系统提示音主题（sound-theme-freedesktop）：包清单里没显式写它，
+# 它是经 GNOME 依赖链进的镜像（Build 57 构建日志可查 libcanberra0、
+# libcanberra-pulse、sound-theme-freedesktop 均已安装）。用户
+# 2026-10-31 报“系统提示音基本没声”与默认音量 0.40 同根（提示音也走
+# 同一个 sink、约 6% 增益），但主题文件若哪天被依赖链变动悄悄丢掉，
+# 提示音会以另一种方式全灭——这里钉住调音量提示音的样本文件在位。
+require_path 'usr/share/sounds/freedesktop/stereo/audio-volume-change.oga'
+# 新设备默认音量（用户 2026-10-31 定案）：WirePlumber 对无存档新设备
+# 的内置默认是线性 0.064（wpctl 显示 0.40、实际增益约 6%，应用音频
+# 等于没声；用户实测拉到 1.0 立刻清楚）。镜像 drop-in 必须把
+# device_defaults 的 default-volume 钉到线性 0.614（显示约 0.85）。
+WP_DEFAULTS_DROPIN="$WORK/wp-device-defaults"
+cat_image_file 'etc/wireplumber/main.lua.d/51-xwlightos-device-defaults.lua' "$WP_DEFAULTS_DROPIN"
+grep -q '^\s*device_defaults\.properties\["default-volume"\] = 0\.614' "$WP_DEFAULTS_DROPIN" || {
+    echo 'wireplumber drop-in does not raise the new-device default volume to 0.614 linear (~0.85 shown; fresh/live sessions would start at ~6% gain)' >&2; exit 1; }
+# 播放缓冲门禁（用户 2026-10-31 实测：VM 里看视频声音持续断续，
+# speaker-test 大缓冲却干净——小 quantum 实时投递喂不及模拟 HDA）。
+# drop-in 必须把 vm.node.defaults 的 period 提到 1024 并给全部 ALSA
+# 输出节点追加同组规则（属性名以随包 50-alsa-config.lua 为准）。
+WP_BUFFERING_DROPIN="$WORK/wp-alsa-buffering"
+cat_image_file 'etc/wireplumber/main.lua.d/52-xwlightos-alsa-buffering.lua' "$WP_BUFFERING_DROPIN"
+grep -q 'alsa_monitor\.properties\["vm\.node\.defaults"\]' "$WP_BUFFERING_DROPIN" || {
+    echo 'wireplumber buffering drop-in does not override vm.node.defaults' >&2; exit 1; }
+grep -q 'table\.insert(alsa_monitor\.rules' "$WP_BUFFERING_DROPIN" || {
+    echo 'wireplumber buffering drop-in adds no alsa_monitor rule for output nodes' >&2; exit 1; }
+grep -q '\["api\.alsa\.period-size"\] = 1024' "$WP_BUFFERING_DROPIN" || {
+    echo 'wireplumber buffering drop-in does not raise api.alsa.period-size to 1024' >&2; exit 1; }
+grep -q '\["api\.alsa\.headroom"\] = 8192' "$WP_BUFFERING_DROPIN" || {
+    echo 'wireplumber buffering drop-in does not set api.alsa.headroom to 8192' >&2; exit 1; }
+# 图 quantum 下限 + 实时优先级（同属抗负载断续一线）：随包 pipewire.conf
+# 出厂 min-quantum=16，单个流能把图拉到 0.33ms 一轮，弱虚拟 CPU 上
+# 数据线程被饿死。drop-in 必须钉到 1024；rtkit 必须真实进镜像
+# （Build 57 缺它，module-rt 申请不到 SCHED_FIFO）。
+PW_QUANTUM_DROPIN="$WORK/pw-quantum"
+cat_image_file 'etc/pipewire/pipewire.conf.d/51-xwlightos-quantum.conf' "$PW_QUANTUM_DROPIN"
+grep -q 'default\.clock\.min-quantum = 1024' "$PW_QUANTUM_DROPIN" || {
+    echo 'pipewire drop-in does not floor default.clock.min-quantum at 1024 (a stream could drag the graph to 16-sample quanta and starve on weak virtual CPUs)' >&2; exit 1; }
+require_path 'usr/libexec/rtkit-daemon'
 # 摄像头：cheese（GNOME 拍照应用）。
 require_path 'usr/bin/cheese'
 require_path 'usr/sbin/gdm3'
@@ -449,10 +494,44 @@ lsinitramfs "$INITRD" | grep -q 'usr/share/plymouth/themes/xwlightos/xwlightos.s
 # 2026-10-25 Plymouth 排查补强：只查主题脚本不够，渲染链（script 插件、
 # DRM/framebuffer 渲染器、i915 驱动）缺任一环都会导致 initrd 阶段无动画。
 # Debian plymouth hook 本应把这几项都打进 initrd，这里逐项断言，缺失即拦下。
+# 2026-10-31 补强（Build 57 虚拟机实测仍无动画、日志里没有任何 plymouth
+# 守护行，用户定调参考 Kali 的多设备兼容）：再逐项断言 plymouthd 本体、
+# init-premount 启动脚本和全套目标 DRM 驱动（希沃 i915、VMware vmwgfx、
+# QEMU virtio-gpu/qxl、独显 amdgpu/radeon/nouveau）都真实进了 initrd。
 for plymouth_initrd_item in 'plymouth/script.so' 'plymouth/renderers/drm.so' \
-    'plymouth/renderers/frame-buffer.so' 'drm/i915/i915.ko'; do
-    lsinitramfs "$INITRD" | grep -q "$plymouth_initrd_item" \
+    'plymouth/renderers/frame-buffer.so' 'drm/i915/i915.ko' \
+    'sbin/plymouthd' 'scripts/init-premount/plymouth' \
+    'drm/vmwgfx/vmwgfx.ko' 'drm/virtio/virtio-gpu.ko' 'drm/qxl/qxl.ko' \
+    'drm/amd/amdgpu/amdgpu.ko' 'drm/nouveau/nouveau.ko' \
+    'drm/radeon/radeon.ko'; do
+    grep -Fq "$plymouth_initrd_item" "$INITRD_LIST" \
         || { echo "plymouth initrd lacks renderer/driver item: $plymouth_initrd_item" >&2; exit 1; }
+done
+# initrd 内部的 plymouth 配置必须点名 xwlightos 主题：squashfs 里的
+# plymouthd.conf 写对、但 initrd 生成时用了另一份配置的事故形态，
+# 只有解开 initrd 本人才能排除（unmkinitramfs 与 lsinitramfs 同出
+# initramfs-tools）。
+INITRD_UNPACK="$WORK/initrd-unpack"
+rm -rf "$INITRD_UNPACK"
+mkdir -p "$INITRD_UNPACK"
+unmkinitramfs "$INITRD" "$INITRD_UNPACK" >/dev/null 2>&1
+INITRD_PLYMOUTH_CONF="$(find "$INITRD_UNPACK" -path '*etc/plymouth/plymouthd.conf' -type f | head -n 1)"
+[ -n "$INITRD_PLYMOUTH_CONF" ] \
+    || { echo 'initrd contains no etc/plymouth/plymouthd.conf (plymouth would boot with the compiled-in default theme)' >&2; exit 1; }
+grep -q '^Theme=xwlightos$' "$INITRD_PLYMOUTH_CONF" \
+    || { echo 'initrd plymouthd.conf does not name Theme=xwlightos' >&2; exit 1; }
+# 镜像出厂的 initramfs 配置：MODULES=most 必须被显式钉死（conf.d
+# 覆盖层），DRM 驱动强制清单必须齐——不许依赖打包默认值恰好如此
+# （live 镜像的 initramfs 在构建环境生成，dep 模式只会带构建机驱动）。
+INITRAMFS_CONFD="$WORK/initramfs-confd"
+cat_image_file 'etc/initramfs-tools/conf.d/xwlightos.conf' "$INITRAMFS_CONFD"
+grep -q '^MODULES=most$' "$INITRAMFS_CONFD" \
+    || { echo 'shipped initramfs conf.d does not pin MODULES=most' >&2; exit 1; }
+INITRAMFS_MODULES="$WORK/initramfs-modules"
+cat_image_file 'etc/initramfs-tools/modules' "$INITRAMFS_MODULES"
+for initramfs_forced_module in i915 amdgpu radeon nouveau virtio-gpu vmwgfx qxl; do
+    grep -qx "$initramfs_forced_module" "$INITRAMFS_MODULES" \
+        || { echo "shipped /etc/initramfs-tools/modules lacks forced DRM module: $initramfs_forced_module" >&2; exit 1; }
 done
 # GDM 登录页光标主题（01-xwlightos-branding）：greeter 不读用户会话的 dconf，
 # 不显式设置就永远是 Adwaita 黑指针。
@@ -914,8 +993,33 @@ MIMEAPPS="$WORK/mimeapps.list"
 cat_image_file 'etc/xdg/mimeapps.list' "$MIMEAPPS"
 grep -q '^text/plain=org.gnome.TextEditor.desktop$' "$MIMEAPPS"
 grep -q '^image/jpeg=org.gnome.eog.desktop$' "$MIMEAPPS"
-grep -q '^video/mp4=vlc.desktop$' "$MIMEAPPS"
 grep -q '^application/zip=org.gnome.FileRoller.desktop$' "$MIMEAPPS"
+# 默认播放器 Celluloid（用户 2026-10-31：VLC 换 Celluloid）。它在
+# 自己的 .desktop 里声明的全部视频类型、以及镜像里没有别的专用
+# 音频播放器认领的音频类型，默认都必须落到它；VLC 必须彻底退出
+# （二进制、桌面文件、skel vlcrc、mimeapps 引用四处都不许留）。
+require_path 'usr/bin/celluloid'
+require_path 'usr/share/applications/io.github.celluloid_player.Celluloid.desktop'
+require_path 'usr/share/locale/zh_CN/LC_MESSAGES/celluloid.mo'
+for celluloid_mime in video/mp4 video/x-matroska video/webm \
+    video/x-msvideo video/quicktime audio/mpeg audio/ogg \
+    audio/x-wav audio/flac; do
+    grep -q "^${celluloid_mime}=io.github.celluloid_player.Celluloid.desktop$" "$MIMEAPPS" || {
+        echo "Celluloid is not the default handler for $celluloid_mime in final ISO" >&2
+        exit 1
+    }
+done
+if grep -qi 'vlc' "$MIMEAPPS"; then
+    echo 'mimeapps.list still references VLC after the Celluloid switch' >&2
+    exit 1
+fi
+for vlc_leftover in usr/bin/vlc usr/share/applications/vlc.desktop \
+    etc/skel/.config/vlc/vlcrc; do
+    if grep -q -E "(^|/)${vlc_leftover//./\\.}$" "$LIST"; then
+        echo "VLC leftover still in final ISO: /$vlc_leftover" >&2
+        exit 1
+    fi
+done
 # ONLYOFFICE is the default handler for office documents and PDF.
 grep -q '^application/pdf=onlyoffice-desktopeditors.desktop$' "$MIMEAPPS"
 for oo_mime in \
@@ -992,13 +1096,50 @@ grep -q '^0=Shift_L$' "$FCITX_ALT_SECTION" || {
     echo 'fcitx5 Shift_L is not inside [Hotkey/AltTriggerKeys] (Shift trigger would not fire)' >&2; exit 1; }
 grep -q '^1=Shift_R$' "$FCITX_ALT_SECTION" || {
     echo 'fcitx5 Shift_R is not inside [Hotkey/AltTriggerKeys] (Shift trigger would not fire)' >&2; exit 1; }
-# 用户 2026-10-25 邮件第 1 项：屏幕键盘默认开启（此前仓库从未写过
-# 该键，GNOME 默认 false），且 GTK 输入法模块经 xsettings 通道钉死
-# 为 fcitx（屏幕键盘落点的 GTK 文本框须经此通道才走 fcitx）。
+# 登录默认激活门禁（用户 2026-10-31 Build 57 实测：profile 完全正确——
+# DefaultIM=pinyin、组内 keyboard-us 在前 pinyin 在后——但 fcitx5-remote
+# 状态为 1/INACTIVE、当前输入法 keyboard-us，必须手动切一次中文后
+# Shift 切换才生效）。病灶在全局 config 的 [Behavior] ActiveByDefault：
+# fcitx5 上游缺省 False = 启动不激活，DefaultIM 只决定“激活后用哪个”。
+# 小节级断言，和 AltTrigger 同标准，不许别处的同名键蒙混。
+FCITX_BEHAVIOR_SECTION="$WORK/fcitx5-behavior"
+awk '/^\[Behavior\]/{in_section=1; next} /^\[/{in_section=0} in_section' "$FCITX_CFG" > "$FCITX_BEHAVIOR_SECTION"
+grep -q '^ActiveByDefault=True$' "$FCITX_BEHAVIOR_SECTION" || {
+    echo 'fcitx5 [Behavior] ActiveByDefault is not True in skel config (fcitx5 would start INACTIVE at login; user must activate once by hand before Shift toggling works)' >&2; exit 1; }
+# 屏幕键盘（2026-10-31 改版）：GNOME 官方屏幕键盘走 IBus、本系统无
+# IBus，它输不了中文——用户授权换掉。改版后断言三件事：GNOME 键盘
+# 默认关（防两个键盘同弹）；Onboard 的自动弹出与最小化启动默认值
+# 在位（小节级）；Onboard 本体与自启文件进了镜像。另外 GTK 输入法
+# 模块经 xsettings 通道钉死为 fcitx 的旧断言保留（物理键盘与
+# Onboard 落点的 GTK 文本框都须经此通道才走 fcitx）。
 OSK_DCONF="$WORK/00-xwlightos-gnome-osk"
 cat_image_file 'etc/dconf/db/local.d/00-xwlightos-gnome' "$OSK_DCONF"
-grep -q '^screen-keyboard-enabled=true$' "$OSK_DCONF" || {
-    echo 'dconf does not enable the on-screen keyboard by default (user mail 2026-10-25 item 1)' >&2; exit 1; }
+grep -q '^screen-keyboard-enabled=false$' "$OSK_DCONF" || {
+    echo 'dconf does not disable the GNOME Shell on-screen keyboard by default (it cannot compose Chinese without IBus and must not fight Onboard)' >&2; exit 1; }
+ONBOARD_AUTOSHOW_SECTION="$WORK/onboard-autoshow"
+awk '/^\[org\/onboard\/auto-show\]/{in_section=1; next} /^\[/{in_section=0} in_section' "$OSK_DCONF" > "$ONBOARD_AUTOSHOW_SECTION"
+grep -q '^enabled=true$' "$ONBOARD_AUTOSHOW_SECTION" || {
+    echo 'dconf [org/onboard/auto-show] enabled is not true (Onboard would not pop up when a text field gains focus)' >&2; exit 1; }
+ONBOARD_MAIN_SECTION="$WORK/onboard-main"
+awk '/^\[org\/onboard\]/{in_section=1; next} /^\[/{in_section=0} in_section' "$OSK_DCONF" > "$ONBOARD_MAIN_SECTION"
+grep -q '^start-minimized=true$' "$ONBOARD_MAIN_SECTION" || {
+    echo 'dconf [org/onboard] start-minimized is not true (Onboard would cover the desktop from login)' >&2; exit 1; }
+require_path 'usr/bin/onboard'
+require_path 'etc/xdg/autostart/xwlightos-onboard.desktop'
+# 输入反馈音门禁（用户 2026-10-31：调音量没提示音）：上游 schema
+# 里 input-feedback-sounds 默认 false（gsettings-desktop-schemas
+# 43.0 原文 "Whether to play sounds on input events"），event-sounds
+# 总开关默认 true 也救不了它。出厂默认必须钉 true（小节级断言）。
+GNOME_SOUND_SECTION="$WORK/gnome-desktop-sound"
+awk '/^\[org\/gnome\/desktop\/sound\]/{in_section=1; next} /^\[/{in_section=0} in_section' "$OSK_DCONF" > "$GNOME_SOUND_SECTION"
+grep -q '^input-feedback-sounds=true$' "$GNOME_SOUND_SECTION" || {
+    echo 'dconf [org/gnome/desktop/sound] input-feedback-sounds is not true (volume-change and other input feedback sounds would stay silent)' >&2; exit 1; }
+# Celluloid 硬解默认门禁：经它自带的 GSettings 键 mpv-options 传
+# mpv 的 hwdec=auto-safe（应用支持的默认机制，非改内部文件）。
+CELLULOID_SECTION="$WORK/celluloid-defaults"
+awk '/^\[io\/github\/celluloid_player\/Celluloid\]/{in_section=1; next} /^\[/{in_section=0} in_section' "$OSK_DCONF" > "$CELLULOID_SECTION"
+grep -q "^mpv-options='hwdec=auto-safe'$" "$CELLULOID_SECTION" || {
+    echo 'dconf [io/github/celluloid_player/Celluloid] mpv-options is not hwdec=auto-safe (Celluloid would software-decode on low-spec Intel hardware)' >&2; exit 1; }
 grep -q "^overrides={'Gtk/IMModule':<'fcitx'>}$" "$OSK_DCONF" || {
     echo 'dconf xsettings does not pin Gtk/IMModule to fcitx (GTK apps could bypass fcitx)' >&2; exit 1; }
 FCITX_PROFILE="$WORK/fcitx5-profile"
