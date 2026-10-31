@@ -1,0 +1,17 @@
+# XWLightOS 出厂用户目录表（user-dirs.dirs 格式，$HOME 由 GLib 展开）。
+# 为什么必须钉死：Nautilus 与桌面 DING 扩展的“新建文档”都经 GLib
+# g_get_user_special_dir(TEMPLATES) 找模板目录，其落点由本文件决定。
+# 本系统不预置本文件时（xdg-user-dirs 历史上从未进包清单），查找
+# 落点不受控——Build 58 实测模板齐备、已送达家目录，右键却没有
+# “新建”。这里把 8 个标准目录钉为与 /etc/skel 种子一致的英文名
+# （Desktop/Templates 即种子目录名），避免 xdg-user-dirs-update 在
+# zh_CN 下把条目本地化指向空目录；文件随 skel 送达 live 用户
+# （1700 钩子整份拷贝）与安装账号（postinstall 另有 cp -n 保证）。
+XDG_DESKTOP_DIR="$HOME/Desktop"
+XDG_DOWNLOAD_DIR="$HOME/Downloads"
+XDG_TEMPLATES_DIR="$HOME/Templates"
+XDG_PUBLICSHARE_DIR="$HOME/Public"
+XDG_DOCUMENTS_DIR="$HOME/Documents"
+XDG_MUSIC_DIR="$HOME/Music"
+XDG_PICTURES_DIR="$HOME/Pictures"
+XDG_VIDEOS_DIR="$HOME/Videos"

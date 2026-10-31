@@ -155,6 +155,35 @@ if [ -d /etc/skel/.config/gtk-4.0 ]; then
         echo "XWLightOS: could not seed gtk-4.0 theme for $installed_account" >&2
     chown -R "$installed_account:$installed_account" "/home/$installed_account/.config/gtk-4.0" 2>/dev/null || true
 fi
+# 用户 2026-10-31 Build 58 实测：右键没有“新建”。与 fcitx5/主题
+# 同款教训、同款修法，分两半：
+# (1) 查找表 user-dirs.dirs：Nautilus 与桌面 DING 的“新建文档”
+#     都经 GLib user-special-dir 找模板目录，落点由家目录的
+#     ~/.config/user-dirs.dirs 决定。Build 58 里这份文件全系统
+#     不存在（生成它的 xdg-user-dirs 本轮才进包清单），查找
+#     落点不受控。出厂表在 skel 里钉死为英文目录名，这里按
+#     cp -n 补进安装账号——不许只靠 Calamares 的 skel 继承。
+# (2) 模板文件本体：/etc/skel 的 Templates 与 模板 各 10 个，
+#     逐个 cp -n 补缺（用户已有的同名文件绝不覆盖）。
+if [ -f /etc/skel/.config/user-dirs.dirs ]; then
+    mkdir -p "/home/$installed_account/.config" 2>/dev/null || true
+    cp -n /etc/skel/.config/user-dirs.dirs \
+        "/home/$installed_account/.config/user-dirs.dirs" 2>/dev/null || \
+        echo "XWLightOS: could not seed user-dirs.dirs for $installed_account (right-click New Document lookup would stay unpinned)" >&2
+    chown "$installed_account:$installed_account" "/home/$installed_account/.config/user-dirs.dirs" 2>/dev/null || true
+fi
+for _tpl_dir in Templates 模板; do
+    if [ -d "/etc/skel/$_tpl_dir" ]; then
+        mkdir -p "/home/$installed_account/$_tpl_dir" 2>/dev/null || true
+        for _tpl_file in "/etc/skel/$_tpl_dir"/*; do
+            [ -f "$_tpl_file" ] || continue
+            cp -n "$_tpl_file" "/home/$installed_account/$_tpl_dir/" 2>/dev/null || \
+                echo "XWLightOS: could not seed template $_tpl_file for $installed_account" >&2
+        done
+        chown -R "$installed_account:$installed_account" "/home/$installed_account/$_tpl_dir" 2>/dev/null || true
+    fi
+done
+unset _tpl_dir _tpl_file
 if command -v systemctl >/dev/null 2>&1; then
     systemctl enable xwlightos-installed-cleanup.service >/dev/null 2>&1 || true
     systemctl enable gdm.service >/dev/null 2>&1 || true

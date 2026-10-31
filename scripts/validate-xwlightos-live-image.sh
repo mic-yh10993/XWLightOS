@@ -1372,6 +1372,35 @@ assert magic == bytes.fromhex("D0CF11E0A1B11AE1"), "template OLE magic wrong"
 print("XWLightOS: template OLE valid:", sys.argv[1])
 PYEOF
 done
+# 右键“新建”查找链门禁（2026-10-31 用户 Build 58 实测补）：上面
+# 只断言了 skel 里有模板，但 Build 58 里模板齐备、且经 1700 钩子
+# 送达 live 家目录（镜像清单可查），右键菜单却没有“新建”——断点
+# 在查找：Nautilus 与桌面 DING 的“新建文档”都经 GLib
+# user-special-dir 找模板目录，落点由 ~/.config/user-dirs.dirs
+# 决定，而 Build 58 全系统没有这份文件（生成它的 xdg-user-dirs
+# 从未进包清单）。本轮把链路三段全部钉进门禁：
+# (1) 出厂查找表在 skel 里、且把 TEMPLATES 与 DESKTOP 钉在与
+#     种子一致的英文目录名上（本地化指向空目录同样算断链）；
+# (2) live 家目录里查找表与模板真实送达（1700 整份拷贝的结果，
+#     不再只查 skel 仓库）；
+# (3) 安装侧 postinstall 带 user-dirs.dirs 与模板的 cp -n 补种
+#     段（机制断言：查镜像内 postinstall 本人，不查仓库副本）。
+require_path 'etc/skel/.config/user-dirs.dirs'
+USER_DIRS_PIN="$WORK/user-dirs-dirs-pin"
+cat_image_file 'etc/skel/.config/user-dirs.dirs' "$USER_DIRS_PIN"
+grep -q '^XDG_TEMPLATES_DIR="\$HOME/Templates"$' "$USER_DIRS_PIN" || {
+    echo 'skel user-dirs.dirs does not pin XDG_TEMPLATES_DIR to $HOME/Templates (New Document lookup would float)' >&2; exit 1; }
+grep -q '^XDG_DESKTOP_DIR="\$HOME/Desktop"$' "$USER_DIRS_PIN" || {
+    echo 'skel user-dirs.dirs does not pin XDG_DESKTOP_DIR to $HOME/Desktop (desktop icons lookup would float)' >&2; exit 1; }
+require_path 'home/user/.config/user-dirs.dirs'
+require_path 'home/user/Templates/新建文本文件.txt'
+require_path 'home/user/模板/新建文本文件.txt'
+POSTINSTALL_IMG="$WORK/postinstall-img"
+cat_image_file 'usr/local/libexec/xwlightos-target-postinstall.sh' "$POSTINSTALL_IMG"
+grep -q 'user-dirs.dirs' "$POSTINSTALL_IMG" || {
+    echo 'in-image postinstall does not seed user-dirs.dirs for the installed account (New Document lookup unpinned after install)' >&2; exit 1; }
+grep -q 'could not seed template' "$POSTINSTALL_IMG" || {
+    echo 'in-image postinstall does not seed Templates for the installed account (New Document would vanish after install if skel inheritance leaks)' >&2; exit 1; }
 
 # All Apps must not surface session/power helpers as regular applications.  This
 # validates the fully installed filesystem rather than trusting the source hook.
