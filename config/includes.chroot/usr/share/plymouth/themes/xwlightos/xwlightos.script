@@ -34,6 +34,31 @@ dot_img    = Image ("dot.png");
 barbg_img  = Image ("bar-bg.png");
 barfg_img  = Image ("bar-fg.png");
 
+# 小分辨率适配（如此前虚拟机里的小帧缓冲）：设计框 690x183 在窄屏上
+# 会溢出边缘。按屏宽/屏高把全部素材与布局常量同比例缩小，相对位置
+# 不变；大屏（fit = 1）行为与原来完全一致。
+fit = 1.0;
+if (screen_w < 730) {
+    fit = screen_w / 730;
+}
+if (screen_h < 280 && screen_h / 280 < fit) {
+    fit = screen_h / 280;
+}
+if (fit < 1.0) {
+    mark_img  = mark_img.Scale (mark_img.GetWidth () * fit, mark_img.GetHeight () * fit);
+    glow_img  = glow_img.Scale (glow_img.GetWidth () * fit, glow_img.GetHeight () * fit);
+    main_img  = main_img.Scale (main_img.GetWidth () * fit, main_img.GetHeight () * fit);
+    sub_img   = sub_img.Scale (sub_img.GetWidth () * fit, sub_img.GetHeight () * fit);
+    dot_img   = dot_img.Scale (dot_img.GetWidth () * fit, dot_img.GetHeight () * fit);
+    barbg_img = barbg_img.Scale (barbg_img.GetWidth () * fit, barbg_img.GetHeight () * fit);
+    barfg_img = barfg_img.Scale (barfg_img.GetWidth () * fit, barfg_img.GetHeight () * fit);
+    CONTENT_W = CONTENT_W * fit;
+    CONTENT_H = CONTENT_H * fit;
+    SCALE = SCALE * fit;
+    ox = (screen_w - CONTENT_W) / 2;
+    oy = (screen_h - CONTENT_H) / 2 - 40;
+}
+
 mark_w = mark_img.GetWidth ();    # 314
 mark_h = mark_img.GetHeight ();   # 248
 
@@ -75,7 +100,7 @@ dot_a = Sprite (dot_img);
 dot_a.SetOpacity (0);
 dot_b = Sprite (dot_img);
 dot_b.SetOpacity (0);
-DOT_HALF = 28;
+DOT_HALF = 28 * fit;
 
 # ---------------- 折线路径表 ----------------
 # 每段 [x0, y0, dx, dy, len]，单位 viewBox

@@ -55,5 +55,20 @@ if command -v lsinitramfs >/dev/null 2>&1; then
             exit 1
         }
     done
+    # 用户 2026-10-31 定调参考 Kali 的多设备兼容：主题文件在 initrd 里
+    # 只是必要条件——Plymouth 守护进程本体、它的 init-premount 启动脚本、
+    # 以及目标硬件的 DRM 驱动模块缺任何一个，开机动画都不会出现
+    # （Build 57 在 VMware 里实测无动画、日志里连 plymouth 都没有）。
+    # 驱动清单与 /etc/initramfs-tools/modules 的强制清单对应。
+    for _need in 'sbin/plymouthd' 'scripts/init-premount/plymouth' \
+                 'drm/i915/i915.ko' 'drm/vmwgfx/vmwgfx.ko' \
+                 'drm/virtio/virtio-gpu.ko' 'drm/qxl/qxl.ko' \
+                 'drm/amd/amdgpu/amdgpu.ko' 'drm/nouveau/nouveau.ko' \
+                 'drm/radeon/radeon.ko'; do
+        lsinitramfs "/boot/initrd.img-${_kver}" | grep -q "$_need" || {
+            echo "XWLightOS: rebuilt initrd lacks ${_need} (plymouth cannot start or finds no DRM device on some target hardware)" >&2
+            exit 1
+        }
+    done
 fi
 echo "XWLightOS: initrd rebuilt with the xwlightos plymouth theme (kernel ${_kver})"

@@ -1,0 +1,16 @@
+# XWLightOS: 强制进 initramfs 的显卡 DRM 驱动（每行一个模块名）。
+# /etc/initramfs-tools/modules 里列出的模块会被 update-initramfs
+# 无条件打进 initramfs，与 MODULES 设置无关——这是给 Plymouth 的
+# DRM 渲染器上的保险：开机动画在 initramfs 阶段就要拿到图形设备，
+# 目标硬件跨度大（希沃 Intel 核显 i915、VMware 的 vmwgfx、QEMU 的
+# virtio-gpu 与 qxl、独显机的 amdgpu/radeon/nouveau），逐一钉死，
+# 不赌 MODULES=most 的裁剪结果（用户 2026-10-31：参考 Kali 的
+# 多设备兼容做法；Debian Wiki 的 plymouth 页同样建议把 DRM 驱动
+# 显式写进本文件）。
+i915
+amdgpu
+radeon
+nouveau
+virtio-gpu
+vmwgfx
+qxl
