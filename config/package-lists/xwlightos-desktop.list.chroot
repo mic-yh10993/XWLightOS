@@ -110,6 +110,21 @@ pipewire-pulse
 pipewire-alsa
 libspa-0.2-bluetooth
 pavucontrol
+# 用户 2026-10-31 Build 57 虚拟机实测：speaker-test 有声、桌面应用全无声，
+# 且 pactl 命令不存在。pulseaudio-utils 提供 pactl（Pulse 兼容层诊断与
+# 默认设备控制的事实标准工具），缺了它现场连查都没法查。
+pulseaudio-utils
+# ALSA UCM 配置数据：HDA/SOF 声卡的端口与增益拓扑靠它描述，缺失时
+# WirePlumber 的音频适配器可能激活中止或选错 profile（Build 57 实测
+# wireplumber 日志出现 WpSiAudioAdapter activation aborted）。这是声卡
+# 兼容的标配数据包，与具体根因无关都应进镜像。
+alsa-ucm-conf
+# rtkit：PipeWire 的 module-rt 靠它（D-Bus 激活）给数据线程申请实时
+# 优先级。Build 57 构建日志核实它没进镜像（仅在别的包的推荐列表里
+# 出现过一次），用户实测 wireplumber 日志也有 RTKit 相关告警——没有
+# 它，数据线程只有 nice 让步、没有 SCHED_FIFO，弱 CPU/虚拟机负载一
+# 上来实时投递先被饿死（看视频断续的因素之一）。
+rtkit
 
 # GNOME runtime dependencies
 libx11-6
@@ -165,6 +180,14 @@ libqt6dbus6
 libqt6printsupport6
 libgdk-pixbuf-2.0-0
 
+# 屏幕键盘 Onboard（X11）：用户 2026-10-31 授权换掉 GNOME 官方屏幕键盘。
+# 根因已钉死：GNOME Shell 的屏幕键盘走 IBus 框架，本系统只有 fcitx5、
+# 没有 IBus，Shell 键盘永远调不出中文候选。Onboard 是 X11 会话的键盘，
+# 按键经 XTest 注入、走应用自身的输入法通道（GTK/Qt 的 fcitx 前端），
+# 因此能真正用拼音打中文；Wayland 协议类键盘（squeekboard/wvkbd）依赖
+# mutter 不实现的 input-method 协议，在本系统的 Xorg 会话上不可用。
+onboard
+
 # Chinese locale and Fcitx5 input method
 locales
 fonts-noto-cjk
@@ -181,15 +204,16 @@ fcitx5-pinyin
 # 用户 2026-10-25 指令：PeaZip 语言设置里没中文，改用 GNOME 归档查看器。
 # PeaZip 已从 binaries.lock.tsv 移除；File Roller 须显式声明（本清单不用
 # gnome-core 整包，File Roller 不会随依赖自动进来）。
-vlc
-# 用户 2026-10-25 Build 37 真机反馈：VLC 默认英文。根因是 Debian 把 VLC
-# 翻译单独拆在 vlc-l10n 包里，vlc 本身不依赖它，镜像里一直没装。
-vlc-l10n
+# 用户 2026-10-31 指令：默认播放器由 VLC 换成 Celluloid（mpv 前端、
+# GTK 界面贴合 WhiteSur、对低配硬件更轻）。Celluloid 本体经依赖带入
+# libmpv；它的简体中文目录（zh_CN/celluloid.mo）随本体包自带，不像
+# VLC 那样要单独的 -l10n 包。VLC 与 vlc-l10n 就此退出镜像。
+celluloid
 file-roller
-# 用户 2026-10-25 指令：VLC 性能以希沃设备的 Intel 核显为准（不以
-# 5060/nouveau 机器为准）。VA-API 硬解驱动两代都装（iHD 管新核显、
-# i965 管老核显，互不冲突，libva 自动选），VLC 默认自动硬解在 Intel
-# 上才能真正找到驱动；找不到驱动时 VLC 自动回落软解。
+# VA-API 硬解驱动两代都装（iHD 管新核显、i965 管老核显，互不冲突，
+# libva 自动选）：Celluloid/mpv 的 hwdec=auto-safe（出厂默认经 dconf
+# 写入 Celluloid 的 mpv-options 设置键）与 Firefox 的硬解都要靠它们
+# 在 Intel 上真正找到驱动；找不到驱动时自动回落软解。
 intel-media-va-driver
 i965-va-driver
 eog

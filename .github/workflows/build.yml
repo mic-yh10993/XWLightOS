@@ -306,7 +306,7 @@ jobs:
 
           This hybrid ISO includes the GNOME desktop with the WhiteSur macOS-like
           theme, XWLightOS boot and installer branding, Chinese Fcitx5 input
-          support, Firefox ESR, VLC, Image Viewer, Text Editor, File Roller, and
+          support, Firefox ESR, Celluloid, Image Viewer, Text Editor, File Roller, and
           ONLYOFFICE DesktopEditors (default for documents/spreadsheets/
           presentations/PDF, multi-window mode). ONLYOFFICE comes from the pinned
           official DEB in packages/binaries.lock.tsv.

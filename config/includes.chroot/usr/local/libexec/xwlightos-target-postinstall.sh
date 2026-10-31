@@ -155,16 +155,6 @@ if [ -d /etc/skel/.config/gtk-4.0 ]; then
         echo "XWLightOS: could not seed gtk-4.0 theme for $installed_account" >&2
     chown -R "$installed_account:$installed_account" "/home/$installed_account/.config/gtk-4.0" 2>/dev/null || true
 fi
-# 用户 2026-10-25 指令：VLC 输出用兼容性最好的 XVideo（以 Intel 核显为准）。
-# skel 里的 vlcrc 只管 live 用户，安装账号同款补种（cp -n，绝不覆盖
-# 已有配置），值仍以 skel 为准。
-if [ -f /etc/skel/.config/vlc/vlcrc ]; then
-    mkdir -p "/home/$installed_account/.config/vlc" 2>/dev/null || true
-    cp -n /etc/skel/.config/vlc/vlcrc \
-        "/home/$installed_account/.config/vlc/vlcrc" 2>/dev/null || \
-        echo "XWLightOS: could not seed vlc vlcrc for $installed_account" >&2
-    chown "$installed_account:$installed_account" "/home/$installed_account/.config/vlc/vlcrc" 2>/dev/null || true
-fi
 if command -v systemctl >/dev/null 2>&1; then
     systemctl enable xwlightos-installed-cleanup.service >/dev/null 2>&1 || true
     systemctl enable gdm.service >/dev/null 2>&1 || true

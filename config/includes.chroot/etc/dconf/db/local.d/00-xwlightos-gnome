@@ -136,15 +136,49 @@ show-home=false
 show-trash=false
 show-volumes=false
 
-# 用户 2026-10-25 邮件《继续修复》第 1 项：屏幕键盘默认开启。
-# 根因：此前仓库里没有任何一处写过这个键，GNOME 上游默认值就是
-# false（关闭），所以真机上屏幕键盘默认不出、用户须手动去设置里开。
+# 屏幕键盘：2026-10-31 起改用 Onboard，GNOME 官方屏幕键盘默认关闭。
+# 历史：2026-10-25 邮件《继续修复》第 1 项曾把此键设为 true（此前仓库
+# 没写过这个键、GNOME 上游默认 false，真机上键盘默认不出）。但 Build 57
+# 实测钉死：GNOME Shell 屏幕键盘走 IBus 框架输入，本系统只有 fcitx5、
+# 没有 IBus，它弹出来也输不了中文（物理键盘正常）。用户 2026-10-31
+# 明确授权换掉 GNOME 官方键盘，故此处改回 false 防止两个键盘同时弹，
+# 屏幕键盘职责移交 Onboard（X11/XTest 注入，走应用的 fcitx 通道）。
 # 本节与 dock/主题同一机制：系统级 dconf 默认（1700 钩子 dconf update
 # 编译），全新安装的用户首次登录即生效；用户自己在设置里改过的值
-# 仍优先于系统默认（不会把用户手动关掉的键盘再强行打开）。
+# 仍优先于系统默认。
 # 注意：本节只管桌面会话，不动 gdm.d 登录页——登录页键盘不在本次要求内。
 [org/gnome/desktop/a11y/applications]
-screen-keyboard-enabled=true
+screen-keyboard-enabled=false
+
+# Onboard 屏幕键盘默认（org.onboard schema，dconf 路径写法）：
+# auto-show 打开——文本框获得焦点时自动弹出、失焦收起（靠 AT-SPI
+# 焦点事件，Xorg 会话可用）；start-minimized 让它登录时先藏起来，
+# 需要时才出现，不常驻挡桌面。
+[org/onboard]
+start-minimized=true
+
+[org/onboard/auto-show]
+enabled=true
+
+# 输入反馈音默认打开（用户 2026-10-31：调音量时的提示音等基本没声）。
+# org.gnome.desktop.sound 的上游默认（gsettings-desktop-schemas 43.0
+# 的 schema 原文）：event-sounds=true（用户事件音，总开关本来就是开的）、
+# input-feedback-sounds=false（"Whether to play sounds on input
+# events"——输入事件反馈音，出厂关）。音量调节反馈音属输入反馈类，
+# 总开关开着也轮不到它响。用户明确要这个提示音，故出厂钉为 true；
+# 与之独立的另一半病灶是 WirePlumber 新设备默认音量 0.40（实际增益
+# 约 6%），修法在 wireplumber 的 drop-in 配置里，两处缺一不可。
+[org/gnome/desktop/sound]
+input-feedback-sounds=true
+
+# Celluloid 默认播放器（用户 2026-10-31：VLC 换 Celluloid）：经它
+# 自己的 GSettings 设置键 mpv-options 给 mpv 传 hwdec=auto-safe——
+# mpv 官方的“安全硬解”模式（白名单编解码/后端，找不到 VA-API 驱动
+# 自动回落软解）。这是应用自带的支持机制，不是改它的内部文件；
+# 镜像里的 VA-API 驱动（intel-media-va-driver/i965-va-driver）让
+# Intel 核显上硬解真正可用，服务低配硬件的播放流畅度。
+[io/github/celluloid_player/Celluloid]
+mpv-options='hwdec=auto-safe'
 
 # 用户 2026-10-25 邮件第 1 项后半（屏幕键盘输不了中文）与第 6 项的
 # GTK 应用侧前提：GNOME 会话里 GTK 应用的输入法模块不只看环境变量，
