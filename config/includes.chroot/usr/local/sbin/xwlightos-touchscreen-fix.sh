@@ -33,12 +33,22 @@ GENERIC_DRV="/sys/bus/hid/drivers/hid-generic"
 MULTITOUCH_DRV="/sys/bus/hid/drivers/hid-multitouch"
 KNOWN_IDS_CONF="/etc/xwlightos/touchscreen-known-ids.conf"
 
+# 日志文件落 /tmp 固定路径（2026-11-01 第五轮附带小修）：本脚本既被
+# systemd 服务以 root 身份开机跑，又被触屏诊断脚本以 live 用户身份
+# 在登录后重跑——原先写 /var/log/xwlightos-touchscreen-fix.log，开机
+# 跑出的文件是 root 属主，live 用户重跑时追加被拒（Build 64 live
+# 实测照片：cannot create /var/log/... permission denied），诊断
+# 证据留不下。改落 /tmp：两个身份引用同一绝对路径，诊断脚本也从
+# 这里读；追加时以 umask 000 建文件，先建者（root 或用户）留下的
+# 都是 0666，后来者不会被属主挡住。
+LOG_FILE="/tmp/xwlightos-touchscreen-fix.log"
+
 log() {
     echo "xwlightos-touchscreen-fix: $*" >&2
     logger -t xwlightos-touchscreen-fix "$*" 2>/dev/null || true
     # 再写一份普通用户可读的日志：live 用户未必能读系统 journal，
     # 诊断终端靠这个文件看脚本到底跑没跑、跑到哪一步。
-    echo "$(date '+%Y-%m-%d %H:%M:%S') xwlightos-touchscreen-fix: $*" >> /var/log/xwlightos-touchscreen-fix.log 2>/dev/null || true
+    ( umask 000; echo "$(date '+%Y-%m-%d %H:%M:%S') xwlightos-touchscreen-fix: $*" >> "$LOG_FILE" ) 2>/dev/null || true
 }
 
 # 先主动加载 hid-multitouch（见文件头注释），再检查驱动目录。

@@ -31,11 +31,11 @@ echo "4. 触屏修复服务："
 echo "  开机启用：$(systemctl is-enabled xwlightos-touchscreen-fix 2>&1)"
 systemctl show xwlightos-touchscreen-fix -p ActiveState -p Result 2>/dev/null | tr '\n' ' '; echo
 echo "  修复脚本日志："
-ls -l /var/log/xwlightos-touchscreen-fix.log 2>&1 | head -1
-tail -4 /var/log/xwlightos-touchscreen-fix.log 2>/dev/null || echo "  （日志文件不存在：脚本从未跑到写日志这一步）"
+ls -l /tmp/xwlightos-touchscreen-fix.log 2>&1 | head -1
+tail -4 /tmp/xwlightos-touchscreen-fix.log 2>/dev/null || echo "  （日志文件不存在：脚本从未跑到写日志这一步）"
 echo "  重跑修复脚本……"
 /usr/local/sbin/xwlightos-touchscreen-fix.sh 2>&1 | tail -2
-tail -3 /var/log/xwlightos-touchscreen-fix.log 2>/dev/null
+tail -3 /tmp/xwlightos-touchscreen-fix.log 2>/dev/null
 echo "5. 内核消息（hid/1ff7）："
 _dm=$(dmesg 2>/dev/null | grep -iE 'hid|1ff7' | tail -6)
 if test -n "$_dm"; then echo "$_dm"; else echo "  （无匹配输出：可能无权限读内核日志）"; fi
