@@ -378,6 +378,63 @@ TS_WANTS_LINK="$SVC_WORK/etc/systemd/system/multi-user.target.wants/xwlightos-to
 [ -e "$TS_WANTS_LINK" ] || { echo 'xwlightos-touchscreen-fix.service wants symlink is dangling (touchscreen fix would never run at boot)' >&2; exit 1; }
 [ "$(readlink "$TS_WANTS_LINK")" = '../xwlightos-touchscreen-fix.service' ] || { echo 'xwlightos-touchscreen-fix.service wants symlink points at the wrong unit' >&2; exit 1; }
 grep -q '^ExecStart=/usr/local/sbin/xwlightos-touchscreen-fix.sh$' "$SVC_WORK/etc/systemd/system/xwlightos-touchscreen-fix.service" || { echo 'xwlightos-touchscreen-fix.service lost its ExecStart' >&2; exit 1; }
+# 触屏修复脚本的日志落点必须是普通用户可写域（2026-11-01 第五轮
+# 附带小修）：该脚本既被 systemd 以 root 跑、又被诊断脚本以 live
+# 用户身份重跑，原先写 /var/log 的 root 属主文件让用户重跑追加被
+# 拒（Build 64 live 实测 permission denied、诊断证据留不下）。
+# 定版落 /tmp 固定文件（两个身份唯一能共用的绝对路径）。断言三
+# 件：LOG_FILE 精确指向 /tmp 路径；脚本代码行（先剔注释，注释里
+# 会提到旧路径作历史）不得再写 /var/log 那份日志；诊断脚本的读
+# 路径与之同为该 /tmp 路径。
+TS_FIX_SCRIPT="$WORK/xwlightos-touchscreen-fix.sh"
+cat_image_file 'usr/local/sbin/xwlightos-touchscreen-fix.sh' "$TS_FIX_SCRIPT"
+grep -q '^LOG_FILE="/tmp/xwlightos-touchscreen-fix.log"$' "$TS_FIX_SCRIPT" \
+    || { echo 'touchscreen fix log path is not the user-writable /tmp file (live-user rerun would lose the diagnostic log)' >&2; exit 1; }
+if grep -v '^[[:space:]]*#' "$TS_FIX_SCRIPT" | grep -q '/var/log/xwlightos-touchscreen-fix\.log'; then
+    echo 'touchscreen fix script still writes its log under /var/log in code (root-owned file blocks the live-user rerun append)' >&2; exit 1; fi
+TS_DIAG_SCRIPT="$WORK/xwlightos-touch-diag.sh"
+cat_image_file 'usr/local/sbin/xwlightos-touch-diag.sh' "$TS_DIAG_SCRIPT"
+grep -q '/tmp/xwlightos-touchscreen-fix\.log' "$TS_DIAG_SCRIPT" \
+    || { echo 'touch diag script does not read the touchscreen fix log from its /tmp path (diagnosis screen would lose the log)' >&2; exit 1; }
+# 实体键盘在场守候门禁（2026-11-01 第五轮，用户要求：连着实体
+# 键盘不自动弹 OSK、没连才弹）。基础播种 screen-keyboard-enabled
+# =true 不变（a11y 小节另行断言），守候只在判定变化时改该键。静
+# 态证据四件：脚本本体、user unit、default.target.wants 启用链
+# 接与 ExecStart 对位。再加判定逻辑离线自检：合成设备树喂脚本
+# 的 --check 模式——PS/2 键盘（位图末词含 KEY_Q/KEY_ENTER/
+# KEY_SPACE）判有；触摸屏（BTN_TOUCH 在高词、末词为 0）、电源
+# 键（KEY_POWER=116 在第二词）、鼠标（按钮 272+ 在高词）判无。
+require_path 'usr/local/sbin/xwlightos-keyboard-watch.sh'
+require_path 'etc/systemd/user/xwlightos-keyboard-watch.service'
+unsquashfs -f -d "$SVC_WORK" "$FS" \
+    etc/systemd/user/xwlightos-keyboard-watch.service \
+    etc/systemd/user/default.target.wants/xwlightos-keyboard-watch.service \
+    >/dev/null 2>&1
+KB_WANTS_LINK="$SVC_WORK/etc/systemd/user/default.target.wants/xwlightos-keyboard-watch.service"
+[ -e "$KB_WANTS_LINK" ] || { echo 'xwlightos-keyboard-watch.service user wants symlink is dangling (keyboard watcher would never start at login)' >&2; exit 1; }
+[ "$(readlink "$KB_WANTS_LINK")" = '../xwlightos-keyboard-watch.service' ] || { echo 'xwlightos-keyboard-watch.service user wants symlink points at the wrong unit' >&2; exit 1; }
+grep -q '^ExecStart=/usr/local/sbin/xwlightos-keyboard-watch.sh$' "$SVC_WORK/etc/systemd/user/xwlightos-keyboard-watch.service" || { echo 'xwlightos-keyboard-watch.service lost its ExecStart' >&2; exit 1; }
+KB_WATCH_SCRIPT="$WORK/xwlightos-keyboard-watch.sh"
+cat_image_file 'usr/local/sbin/xwlightos-keyboard-watch.sh' "$KB_WATCH_SCRIPT"
+KB_FAKE="$WORK/kbd-fake-sysfs"
+_kb_mkcase() {
+    rm -rf "$KB_FAKE"
+    mkdir -p "$KB_FAKE/event0/device/capabilities"
+    printf '%s\n' "$1" > "$KB_FAKE/event0/device/capabilities/key"
+    echo 'synthetic' > "$KB_FAKE/event0/device/name"
+}
+_kb_mkcase '1 200000010010000'
+XW_KBD_WATCH_SYSFS="$KB_FAKE" bash "$KB_WATCH_SCRIPT" --check >/dev/null 2>&1 \
+    || { echo 'keyboard watcher self-test: a PS/2-style keyboard keymap was not detected as a real keyboard (OSK would pop up over a physical keyboard)' >&2; exit 1; }
+_kb_mkcase '400 0 0 0 0 0'
+if XW_KBD_WATCH_SYSFS="$KB_FAKE" bash "$KB_WATCH_SCRIPT" --check >/dev/null 2>&1; then
+    echo 'keyboard watcher self-test: a touchscreen keymap was misdetected as a real keyboard (OSK would never pop up on a keyboard-less panel)' >&2; exit 1; fi
+_kb_mkcase '8000 10000000000000 0'
+if XW_KBD_WATCH_SYSFS="$KB_FAKE" bash "$KB_WATCH_SCRIPT" --check >/dev/null 2>&1; then
+    echo 'keyboard watcher self-test: a power-button keymap was misdetected as a real keyboard' >&2; exit 1; fi
+_kb_mkcase '10000 0 0 0 0'
+if XW_KBD_WATCH_SYSFS="$KB_FAKE" bash "$KB_WATCH_SCRIPT" --check >/dev/null 2>&1; then
+    echo 'keyboard watcher self-test: a mouse keymap was misdetected as a real keyboard' >&2; exit 1; fi
 # 通用兜底：镜像 systemd 配置里不允许出现任何断链（改名残留最爱藏在这里）。
 # 注意两个坑，Build 49（Run 38899185892）曾被它们坑过一次：
 # 1) vendor 的 wants 符号链接（如 pipewire、NetworkManager、display-manager）
@@ -715,42 +772,47 @@ if grep -q 'kimpanel@kde.org' "$GNOME_DEFAULTS"; then
     echo 'enabled-extensions still lists kimpanel (fcitx5 panel frontend; fcitx5 was retired)' >&2; exit 1; fi
 if grep -q -E '(^|/)usr/share/gnome-shell/extensions/kimpanel@kde\.org' "$LIST"; then
     echo 'kimpanel shell extension still in final ISO (fcitx5 was retired)' >&2; exit 1; fi
-# 输入源播种门禁（2026-11-01 第四轮：单框架定版，此前断言两度
+# 输入源播种门禁（2026-11-01 第五轮：单源定版，此前断言三度
 # 反转）。历史：2026-10-25 曾因 xkb us 源抢位把列表清空（只走
 # fcitx5 的 IM 模块通道）；2026-10-31 第三轮引进 IBus 双栈、播种
-# 两项且 current=0。本轮全量换框架：两层（dconf 键文件 + gschema
-# 覆盖）精确断言播种值 [('xkb','cn'), ('ibus','libpinyin')] 且
-# current=1——登录即落在 libpinyin 引擎上、开机直接中文；当年要
-# 清的 xkb us 若回潮，精确等值断言同样会红。
+# 两项且 current=0；第四轮全量换框架、播种两项且 current=1，
+# 被 Build 64 live 实测证伪（开机默认落在“汉语”xkb cn）。根因
+# 是 gnome-shell 43.9 根本不读 current 选初始源（keyboard.js：
+# InputSourceSessionSettings 只有 sources/mru-sources/xkb-options/
+# per-window 四键），开机当前源是 sources 名单第一项。本轮按
+# 用户裁决去掉“汉语”：两层（dconf 键文件 + gschema 覆盖）精确
+# 断言播种值 [('ibus','libpinyin')] 单源且 current=0；任何 xkb
+# 源（cn/us）回潮，精确等值断言同样会红。
 grep -q '^\[org/gnome/desktop/input-sources\]$' "$GNOME_DEFAULTS" \
     || { echo 'dconf defaults lack input-sources section (seeded input sources missing)' >&2; exit 1; }
-grep -q "^sources=\[('xkb', 'cn'), ('ibus', 'libpinyin')\]$" "$GNOME_DEFAULTS" \
-    || { echo "dconf input-sources is not the seeded pair [('xkb','cn'), ('ibus','libpinyin')] (the on-screen keyboard would have no pinyin source to switch to)" >&2; exit 1; }
+grep -q "^sources=\[('ibus', 'libpinyin')\]$" "$GNOME_DEFAULTS" \
+    || { echo "dconf input-sources is not the single seeded source [('ibus','libpinyin')] (an xkb source would win the boot-time first slot and leave no composed Chinese at boot)" >&2; exit 1; }
 INPUT_SOURCES_SECTION="$WORK/gnome-input-sources-section"
 awk '/^\[org\/gnome\/desktop\/input-sources\]/{in_section=1; next} /^\[/{in_section=0} in_section' "$GNOME_DEFAULTS" > "$INPUT_SOURCES_SECTION"
-grep -q '^current=1$' "$INPUT_SOURCES_SECTION" \
-    || { echo 'dconf input-sources current is not 1 (login would not start on the libpinyin engine; no composed Chinese at boot)' >&2; exit 1; }
+grep -q '^current=0$' "$INPUT_SOURCES_SECTION" \
+    || { echo 'dconf input-sources current is not 0 (single-source seed must keep current at the only slot)' >&2; exit 1; }
 INPUT_OVERRIDE="$WORK/90-xwlightos-input-sources.gschema.override"
 cat_image_file 'usr/share/glib-2.0/schemas/90-xwlightos-input-sources.gschema.override' "$INPUT_OVERRIDE"
 grep -q '^\[org.gnome.desktop.input-sources\]$' "$INPUT_OVERRIDE" \
     || { echo 'input-sources schema override section missing' >&2; exit 1; }
-grep -q "^sources=\[('xkb', 'cn'), ('ibus', 'libpinyin')\]$" "$INPUT_OVERRIDE" \
-    || { echo 'input-sources schema override does not seed the pair' >&2; exit 1; }
-grep -q '^current=1$' "$INPUT_OVERRIDE" \
-    || { echo 'input-sources schema override current is not 1' >&2; exit 1; }
+grep -q "^sources=\[('ibus', 'libpinyin')\]$" "$INPUT_OVERRIDE" \
+    || { echo 'input-sources schema override does not seed the single libpinyin source' >&2; exit 1; }
+grep -q '^current=0$' "$INPUT_OVERRIDE" \
+    || { echo 'input-sources schema override current is not 0' >&2; exit 1; }
 # 编译后的 schema 默认生效值（与 dock 三开关同款查法）：gschemas.compiled
 # 已在前面断言存在；有 gsettings 时再读一次，播种值读出来应为
-# [('xkb', 'cn'), ('ibus', 'libpinyin')] 且 current 应为 uint32 1
-#（2026-10-25 断言空表、第三轮断言 current=0，均已随修法反转）。
+# [('ibus', 'libpinyin')] 且 current 应为 uint32 0（2026-10-25
+# 断言空表、第三轮断言两项+current=0、第四轮断言两项+current=1，
+# 均已随修法反转；本轮含 current 的编译后读回断言）。
 if command -v gsettings >/dev/null 2>&1; then
     _input_src="$(GSETTINGS_SCHEMA_DIR="$FULL_ROOT/usr/share/glib-2.0/schemas" GSETTINGS_BACKEND=memory gsettings get org.gnome.desktop.input-sources sources 2>/dev/null)" || {
         echo 'compiled input-sources schema default is unreadable (gschemas.compiled stale or broken)' >&2; exit 1; }
-    [ "$_input_src" = "[('xkb', 'cn'), ('ibus', 'libpinyin')]" ] || {
-        echo "compiled input-sources schema default is not the seeded pair (got $_input_src)" >&2; exit 1; }
+    [ "$_input_src" = "[('ibus', 'libpinyin')]" ] || {
+        echo "compiled input-sources schema default is not the single seeded source (got $_input_src)" >&2; exit 1; }
     _input_cur="$(GSETTINGS_SCHEMA_DIR="$FULL_ROOT/usr/share/glib-2.0/schemas" GSETTINGS_BACKEND=memory gsettings get org.gnome.desktop.input-sources current 2>/dev/null)" || {
         echo 'compiled input-sources current is unreadable (gschemas.compiled stale or broken)' >&2; exit 1; }
-    [ "$_input_cur" = "uint32 1" ] || {
-        echo "compiled input-sources current is not 1 (got $_input_cur; login would not start on the libpinyin engine)" >&2; exit 1; }
+    [ "$_input_cur" = "uint32 0" ] || {
+        echo "compiled input-sources current is not 0 (got $_input_cur; single-source seed must keep current at the only slot)" >&2; exit 1; }
 else
     echo 'note: gsettings unavailable, skipping compiled input-sources effective-value check' >&2
 fi
