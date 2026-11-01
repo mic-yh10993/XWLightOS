@@ -180,20 +180,33 @@ mpv-options='hwdec=auto-safe'
 [org/gnome/settings-daemon/plugins/xsettings]
 overrides={'Gtk/IMModule':<'ibus'>}
 
-# GNOME 输入源播种（2026-11-01 第四轮：单框架定版）。
-# 历史两段都已作废、只留教训：2026-10-25 曾因 xkb us 源抢位而把
+# GNOME 输入源播种（2026-11-01 第五轮：单源定版）。
+# 历史三段都已作废、只留教训：2026-10-25 曾因 xkb us 源抢位而把
 # 列表清空（只走 fcitx5 的 IM 模块通道）；2026-10-31 第三轮为
-# 屏幕键盘引进 IBus 双栈、播种两项且 current=0（登录落在 xkb
-# 一侧、实体键盘归 fcitx5）。本轮用户裁决全量换框架：fcitx5
-# 退出、IBus 为唯一框架，播种仍是两项 [('xkb','cn'),
-# ('ibus','libpinyin')]，但 current=1——登录即落在 libpinyin
-# 引擎上，开机直接中文（用户自 fcitx 时代定死的要求）；第一项
-# xkb cn 保留为纯布局回落位（误切过去是无组字的原始布局，
-# Super+Space 可切回）。当年要清掉的 xkb us 不在播种内，不会
-# 回潮。GNOME 输入源只支持 xkb 与 ibus 两类（gsettings describe
-# 原文），单框架后此列表就是全部输入形态的总登记。
+# 屏幕键盘引进 IBus 双栈、播种两项且 current=0；2026-11-01
+# 第四轮全量换框架（fcitx5 退出、IBus 为唯一框架），播种两项
+# [('xkb','cn'), ('ibus','libpinyin')] 且 current=1，以为登录即
+# 落在 libpinyin 上——Build 64 live 实测证伪：开机默认落在
+# “汉语”(xkb cn) 输不了中文，须手按 Win+Space 切智能拼音。
+# gnome-shell 43.9 源码取证（js/ui/status/keyboard.js，与
+# Bookworm 43.9-0+deb12u2 同版）：InputSourceSessionSettings
+# 只读 sources/mru-sources/xkb-options/per-window 四键，根本不
+# 读 current；初始当前源由 _inputSourcesChanged() 结尾的
+# _mruSources[0].activate(false) 决定，新家目录里 mru-sources
+# 为空时 MRU 按 sources 名单顺序拼——名单第一项就是开机当前
+# 源，xkb cn 排第一且永远可解析，故双源下开机必落 xkb。
+# 本轮用户 13:12 裁决“直接去除汉语，只剩智能拼音”：只播种
+# [('ibus','libpinyin')] 单源、current=0。没有 xkb 源可回退，
+# 开机当前源只能是拼音引擎；英文靠引擎内 Shift 切模式（91 号
+# 覆盖钉 main-switch='<Shift>'、init-chinese=true）。Shell 的
+# 内存回退（infosList 为空时以 DEFAULT_LAYOUT='us' 顶替）只在
+# 已配置源一个都没解析出来时触发（守护未就绪的窗口期），守护
+# 一就绪即重建落在拼音源上，不写设置、不会固化；守护若始终
+# 不起，会话停在内存 us 布局只能打英文——与 fcitx 时代同级的
+# 单点故障，接受并在此明说。current 保留播种是给其它消费方
+# （如设置面板）的登记，Shell 不用它选初始源。
 # 第二层在 90-xwlightos-input-sources.gschema.override，写同一
 # 播种（防 dconf 库被绕过时 schema 默认漂移回上游 xkb us）。
 [org/gnome/desktop/input-sources]
-current=1
-sources=[('xkb', 'cn'), ('ibus', 'libpinyin')]
+current=0
+sources=[('ibus', 'libpinyin')]

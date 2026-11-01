@@ -3,12 +3,27 @@
 # 历史：2026-10-25 曾因 xkb us 源抢位把 sources 清空（两层同清）；
 # 2026-10-31 第三轮引进 IBus 双栈后改为播种两项且 current=0；
 # 2026-11-01 第四轮全量换框架（fcitx5 退出、IBus 为唯一框架），
-# 本层与 dconf 默认同步定版为播种两项 [('xkb','cn'),
-# ('ibus','libpinyin')] 且 current=1——登录即落在 libpinyin 引擎
-# 上、开机直接中文；xkb cn 保留为纯布局回落位，当年要清除的
-# xkb us 不在播种内。保留本层是防 dconf 库被绕过时 schema 默认
-# 漂移回上游的 xkb us。1700 钩子编译本文件（glib-compile-schemas），
-# 编译失败构建即红灯；校验脚本另查编译后的 schema 默认生效值。
+# 改为播种两项 [('xkb','cn'), ('ibus','libpinyin')] 且 current=1。
+# 第五轮（2026-11-01，用户 13:12 裁决“直接去除汉语，只剩智能
+# 拼音”）：Build 64 live 实测开机默认落在“汉语”(xkb cn) 输不了
+# 中文、须手按 Win+Space 切智能拼音。gnome-shell 43.9 源码取证
+# （js/ui/status/keyboard.js，与 Bookworm 43.9-0+deb12u2 同版）：
+# InputSourceSessionSettings 只读 sources/mru-sources/xkb-options/
+# per-window 四键，根本不读 current——current=1 对 Shell 的开机
+# 初始选择是无效投递；初始当前源由 _inputSourcesChanged() 结尾
+# 的 _mruSources[0].activate(false) 决定，新家目录里 mru-sources
+# 为空时 MRU 按 sources 名单顺序拼，第一项就是开机当前源。xkb
+# cn 排第一且永远可解析，故双源下开机必落 xkb，与 current 无关。
+# 定版：只播种 [('ibus','libpinyin')] 单源、current=0——没有
+# xkb 源可回退，名单第一项就是拼音引擎；英文靠引擎内 Shift 切
+# 模式（91 号覆盖钉 main-switch='<Shift>'、init-chinese=true）。
+# Shell 的内存回退（infosList 为空时以 DEFAULT_LAYOUT='us' 顶替）
+# 只在“已配置源一个都没解析出来”时触发——即守护未就绪的窗口
+# 期，守护一就绪 _ibusReadyCallback 即重建并落在拼音源上，不写
+# 任何设置、不会固化为配置源。current 保留播种是给其它消费方
+# （如设置面板）的登记，Shell 不用它选初始源。1700 钩子编译本
+# 文件（glib-compile-schemas），编译失败构建即红灯；校验脚本另
+# 查编译后的 schema 默认生效值。
 [org.gnome.desktop.input-sources]
-current=1
-sources=[('xkb', 'cn'), ('ibus', 'libpinyin')]
+current=0
+sources=[('ibus', 'libpinyin')]

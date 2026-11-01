@@ -117,16 +117,18 @@ grep -q '^enable-hot-corners=false$' /usr/share/glib-2.0/schemas/90-xwlightos-in
 }
 # 输入源覆盖（2026-10-25 原为清空多余的英语（美国）源；2026-10-31 第三轮
 # 引进 IBus 双栈后改为播种对；2026-11-01 第四轮全量换 IBus 后 current
-# 改为 1）：与 dock 覆盖同款构建期文本检查，override 必须是
-# [('xkb','cn'), ('ibus','libpinyin')] 且 current=1（登录即落在
-# libpinyin 引擎上、开机直接中文），与 dconf 默认、校验脚本同值；
-# 文件丢了或漂回空表/xkb us/current=0 时构建即红灯。
-grep -q "^sources=\[('xkb', 'cn'), ('ibus', 'libpinyin')\]$" /usr/share/glib-2.0/schemas/90-xwlightos-input-sources.gschema.override || {
-    echo 'XWLightOS: input-sources schema override is not the seeded pair (xkb cn + ibus libpinyin)' >&2
+# 改为 1；第五轮同日改为单源）：与 dock 覆盖同款构建期文本检查，
+# override 必须是 [('ibus','libpinyin')] 单源且 current=0，与 dconf
+# 默认、校验脚本同值；文件丢了或漂回空表/xkb 源/current=1 时构建
+# 即红灯。单源的理由见 90 号覆盖头注：gnome-shell 43.9 根本不读
+# current 选初始源，开机当前源是 sources 名单第一项——双源时 xkb
+# cn 永远抢位（Build 64 实测），故按用户裁决整个去掉“汉语”。
+grep -q "^sources=\[('ibus', 'libpinyin')\]$" /usr/share/glib-2.0/schemas/90-xwlightos-input-sources.gschema.override || {
+    echo 'XWLightOS: input-sources schema override is not the single seeded source (ibus libpinyin only)' >&2
     exit 1
 }
-grep -q '^current=1$' /usr/share/glib-2.0/schemas/90-xwlightos-input-sources.gschema.override || {
-    echo 'XWLightOS: input-sources schema override does not pin current to 1' >&2
+grep -q '^current=0$' /usr/share/glib-2.0/schemas/90-xwlightos-input-sources.gschema.override || {
+    echo 'XWLightOS: input-sources schema override does not pin current to 0' >&2
     exit 1
 }
 # libpinyin 引擎偏好覆盖（2026-11-01 第四轮）：同款构建期文本检查。
