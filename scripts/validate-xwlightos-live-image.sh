@@ -396,20 +396,24 @@ TS_DIAG_SCRIPT="$WORK/xwlightos-touch-diag.sh"
 cat_image_file 'usr/local/sbin/xwlightos-touch-diag.sh' "$TS_DIAG_SCRIPT"
 grep -q '/tmp/xwlightos-touchscreen-fix\.log' "$TS_DIAG_SCRIPT" \
     || { echo 'touch diag script does not read the touchscreen fix log from its /tmp path (diagnosis screen would lose the log)' >&2; exit 1; }
-# 触屏诊断 evdev 之上取证（2026-11-01 第六轮，用户定版证据通道：
-# 开机拍照就 OK，真机不再手敲任何命令）：Build 65 真机已证内核→
-# evdev 段全通，断点只剩“H1 节点根本不产事件”与“H2 事件出了但
-# Xorg/libinput 没认领”二选一。诊断脚本必须自带这两层的判读材
-# 料——触屏节点的 ABS 能力位图（/sys capabilities/abs）、udev 分
-# 类标签（udevadm info 的 ID_INPUT*）、Xorg 认领行（Xorg.0.log 的
-# tagged 行）、libinput/xinput 两节与末尾一页结论区。libinput 与
-# xinput 两个官方小包为此进镜像（二进制在场断言在下；B57 实物清
-# 单先验两者均缺席）。诊断脚本新节一条都不许丢，丢了下一张照片
-# 就又落不了层。
+# 触屏诊断取证（2026-11-01 第六轮，用户定版证据通道：开机拍照
+# 就 OK，真机不再手敲任何命令）：Build 65 真机定案 event5 在持
+# 续触摸下 8 秒字节数 =0——节点不产事件、上层（libinput/Xorg/
+# GNOME）无罪，断点在 hid-multitouch 到 input 的映射段。诊断的
+# 定案材料因此分三组钉住：一是映射段岔口——四节点与 hidraw 同
+# 窗口并读采样（hidraw 大于 0 而 evdev 全 0 指向映射/quirks、同
+# 为 0 指向设备没发报告）、触摸窗口内的 hidraw 占用扫描、HID
+# 报告描述符触摸段（debugfs rdesc，定 quirks 的源码依据）；二
+# 是厂商服务/udi 在跑状态（结论区，验证厂商初始化假设）；三是
+# 存档组——ABS 位图（/sys capabilities/abs）、udev 标签、Xorg
+# 认领行、libinput/xinput 两节。libinput 与 xinput 两个官方小
+# 包为存档组进镜像（二进制在场断言在下；B57 实物清单先验两者
+# 均缺席）。诊断脚本这些节一条都不许丢，丢了下一张照片就又落
+# 不了层。
 require_path 'usr/bin/libinput'
 require_path 'usr/bin/xinput'
 grep -q 'capabilities/abs' "$TS_DIAG_SCRIPT" \
-    || { echo 'touch diag script lost its ABS capability section (sysfs capabilities/abs; without it the next photo cannot judge the H1 descriptor-mapping suspect)' >&2; exit 1; }
+    || { echo 'touch diag script lost its ABS capability section (sysfs capabilities/abs archive)' >&2; exit 1; }
 grep -q 'udevadm info' "$TS_DIAG_SCRIPT" \
     || { echo 'touch diag script lost its udev classification section (udevadm info ID_INPUT tags)' >&2; exit 1; }
 grep -q 'Xorg.0.log' "$TS_DIAG_SCRIPT" \
@@ -419,7 +423,17 @@ grep -q 'libinput list-devices' "$TS_DIAG_SCRIPT" \
 grep -q 'xinput list' "$TS_DIAG_SCRIPT" \
     || { echo 'touch diag script lost its xinput list section' >&2; exit 1; }
 grep -q '结论区' "$TS_DIAG_SCRIPT" \
-    || { echo 'touch diag script lost its one-page conclusion block (the boot photo would not settle H1 vs H2)' >&2; exit 1; }
+    || { echo 'touch diag script lost its one-page conclusion block (the boot photo would not settle the mapping-layer fork)' >&2; exit 1; }
+grep -q 'hidraw' "$TS_DIAG_SCRIPT" \
+    || { echo 'touch diag script lost its hidraw raw-report sampling (the decisive fork below evdev: raw bytes present while evdev is silent means the kernel mapping/quirk layer)' >&2; exit 1; }
+grep -q '并读' "$TS_DIAG_SCRIPT" \
+    || { echo 'touch diag script lost its same-window parallel sampling of the four touch nodes (per-node byte counts from separate windows would be untrustworthy)' >&2; exit 1; }
+grep -q 'debug/hid' "$TS_DIAG_SCRIPT" \
+    || { echo 'touch diag script lost its HID report-descriptor section (debugfs rdesc; the source-level basis for any future quirk)' >&2; exit 1; }
+grep -q 'com.seewo' "$TS_DIAG_SCRIPT" \
+    || { echo 'touch diag script lost its vendor-service status line in the conclusion block (Seewo/udi init-service hypothesis check)' >&2; exit 1; }
+grep -q 'hidraw 占用' "$TS_DIAG_SCRIPT" \
+    || { echo 'touch diag script lost its in-window hidraw holder scan in the conclusion block' >&2; exit 1; }
 # 实体键盘在场守候已删除（2026-11-01 第六轮，用户裁决）：第五轮
 # 的 xwlightos-keyboard-watch（连着实体键盘就不弹 OSK）在希沃上
 # 必然误判——希沃遥控器的接收器在 evdev 眼里就是一个带完整键位
