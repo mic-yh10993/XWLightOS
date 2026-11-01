@@ -314,6 +314,14 @@ libdrm2
 libsystemd0
 pciutils
 usbutils
+# 触屏诊断取证工具（2026-11-01 第六轮）：libinput-tools 提供
+# /usr/bin/libinput（list-devices 给出 libinput 对触屏节点的最终
+# 分类判定），xinput 提供 /usr/bin/xinput（list 看触屏是否挂到
+# Virtual core pointer 下）。用户定版证据通道是“开机拍照就 OK”，
+# 诊断脚本必须自带 evdev 之上两层的判读，不能再指望真机手敲命令
+# （B57 实物清单先验：两包均缺席、镜像里只有 libinput 库本体）。
+libinput-tools
+xinput
 fwupd
 linux-headers-amd64
 procps
