@@ -116,15 +116,35 @@ grep -q '^enable-hot-corners=false$' /usr/share/glib-2.0/schemas/90-xwlightos-in
     exit 1
 }
 # 输入源覆盖（2026-10-25 原为清空多余的英语（美国）源；2026-10-31 第三轮
-# 引进 IBus 双栈后改为播种对）：与 dock 覆盖同款构建期文本检查，override
-# 必须是 [('xkb','cn'), ('ibus','libpinyin')] 且 current=0，与 dconf 默认、
-# 校验脚本同值；文件丢了或漂回空表/xkb us 时构建即红灯。
+# 引进 IBus 双栈后改为播种对；2026-11-01 第四轮全量换 IBus 后 current
+# 改为 1）：与 dock 覆盖同款构建期文本检查，override 必须是
+# [('xkb','cn'), ('ibus','libpinyin')] 且 current=1（登录即落在
+# libpinyin 引擎上、开机直接中文），与 dconf 默认、校验脚本同值；
+# 文件丢了或漂回空表/xkb us/current=0 时构建即红灯。
 grep -q "^sources=\[('xkb', 'cn'), ('ibus', 'libpinyin')\]$" /usr/share/glib-2.0/schemas/90-xwlightos-input-sources.gschema.override || {
     echo 'XWLightOS: input-sources schema override is not the seeded pair (xkb cn + ibus libpinyin)' >&2
     exit 1
 }
-grep -q '^current=0$' /usr/share/glib-2.0/schemas/90-xwlightos-input-sources.gschema.override || {
-    echo 'XWLightOS: input-sources schema override does not pin current to 0' >&2
+grep -q '^current=1$' /usr/share/glib-2.0/schemas/90-xwlightos-input-sources.gschema.override || {
+    echo 'XWLightOS: input-sources schema override does not pin current to 1' >&2
+    exit 1
+}
+# libpinyin 引擎偏好覆盖（2026-11-01 第四轮）：同款构建期文本检查。
+# 91-xwlightos-libpinyin.gschema.override 必须把 main-switch 钉为
+# '<Shift>'（Shift 切中英）、init-chinese 钉为 true（初始中文）；
+# 两键的取证见该文件头注（ibus-libpinyin 1.15.1-1 的 deb 内
+# gschema）。文件丢了或值漂移构建即红灯；编译后生效值由校验脚本
+# 另行读回断言。
+grep -q '^\[com.github.libpinyin.ibus-libpinyin.libpinyin\]$' /usr/share/glib-2.0/schemas/91-xwlightos-libpinyin.gschema.override || {
+    echo 'XWLightOS: libpinyin preference override section missing' >&2
+    exit 1
+}
+grep -q "^main-switch='<Shift>'$" /usr/share/glib-2.0/schemas/91-xwlightos-libpinyin.gschema.override || {
+    echo 'XWLightOS: libpinyin preference override does not pin main-switch to <Shift>' >&2
+    exit 1
+}
+grep -q '^init-chinese=true$' /usr/share/glib-2.0/schemas/91-xwlightos-libpinyin.gschema.override || {
+    echo 'XWLightOS: libpinyin preference override does not pin init-chinese to true' >&2
     exit 1
 }
 

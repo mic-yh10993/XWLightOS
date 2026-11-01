@@ -45,7 +45,7 @@ button-layout=':minimize,maximize,close'
 # 40-5，Shell 43 兼容），并把固定栏里那个系统监视器程序去掉钉住。
 # 用户 2026-10-24 23:31 邮件：输入法面板扩展也要（此前 22:53 撤回，
 # 现按最新要求重新加回启用；Shift 切换配置本身的修法保留）。
-enabled-extensions=['apps-menu@gnome-shell-extensions.gcampax.github.com', 'dash-to-dock@micxgx.gmail.com', 'ding@rastersoft.com', 'native-window-placement@gnome-shell-extensions.gcampax.github.com', 'places-menu@gnome-shell-extensions.gcampax.github.com', 'drive-menu@gnome-shell-extensions.gcampax.github.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'ubuntu-appindicators@ubuntu.com', 'system-monitor@paradoxxx.zero.gmail.com', 'kimpanel@kde.org']
+enabled-extensions=['apps-menu@gnome-shell-extensions.gcampax.github.com', 'dash-to-dock@micxgx.gmail.com', 'ding@rastersoft.com', 'native-window-placement@gnome-shell-extensions.gcampax.github.com', 'places-menu@gnome-shell-extensions.gcampax.github.com', 'drive-menu@gnome-shell-extensions.gcampax.github.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'ubuntu-appindicators@ubuntu.com', 'system-monitor@paradoxxx.zero.gmail.com']
 # 用户 2026-10-20 邮件指令：固定栏固定 7 个应用——希沃白板、希沃视频展台、
 # 班级优化大师、ONLYOFFICE、钉钉、微信、QQ（按此顺序）。
 # 用户 2026-10-20 邮件指令：dock 栏把"文件"和 Firefox 加回去，放最前面。
@@ -170,43 +170,30 @@ input-feedback-sounds=true
 [io/github/celluloid_player/Celluloid]
 mpv-options='hwdec=auto-safe'
 
-# 用户 2026-10-25 邮件第 1 项后半（屏幕键盘输不了中文）与第 6 项的
-# GTK 应用侧前提：GNOME 会话里 GTK 应用的输入法模块不只看环境变量，
-# gnome-settings-daemon 的 xsettings 插件还会向 GTK 发布 Gtk/IMModule。
-# 一旦该通道被别的框架值占住，GTK 应用（屏幕键盘最常落点的文本框
-# 绝大多数是 GTK 应用）就绕开 fcitx，表现为物理键盘能输中文、屏幕
-# 键盘/部分 GTK 应用不能。此处把该通道也钉死为 fcitx，与
-# /etc/environment 的三变量同一值、互为备份；不是本次两项的已证实
-# 唯一根因（图标切换能用说明多数应用已走 fcitx），而是补齐 GTK 一侧
-# 的送达链路，防该通道在个别机器上成为漏网项。
+# GTK 应用侧的输入法模块通道（2026-10-25 立、2026-11-01 第四轮随
+# 框架更换改值）：GNOME 会话里 GTK 应用的输入法模块不只看环境
+# 变量，gnome-settings-daemon 的 xsettings 插件还会向 GTK 发布
+# Gtk/IMModule；该通道一旦被别的框架值占住，GTK 应用（屏幕键盘
+# 最常落点的文本框绝大多数是 GTK 应用）就会绕开会话选定的框架。
+# 此处把它与 /etc/environment 等通道同值钉死，互为备份：第四轮起
+# 全系统唯一框架是 IBus，故钉 ibus。
 [org/gnome/settings-daemon/plugins/xsettings]
-overrides={'Gtk/IMModule':<'fcitx'>}
+overrides={'Gtk/IMModule':<'ibus'>}
 
-# GNOME 输入源播种（2026-10-31 第三轮改版；本段历史结论部分作废）。
-# 历史：2026-10-25 用户反馈输入法 Shift 不能切换，是多了个英语
-# （美国）输入法抢了 fcitx5 的位置。仓库核查确认当时构建从未写过
-# org.gnome.desktop.input-sources，首次登录的输入源就是 GNOME 上游
-# schema 默认的 xkb us；当时的修法是把列表清空（@a(ss) []，此处
-# dconf 默认 + gschema override 两层），让 GNOME 侧不剩任何源、
-# 输入只走 fcitx5 的 IM 模块通道。那次还有一条不变量至今成立：
-# 千万别删 fcitx5 内部的 keyboard-us，那是 Shift 切换的英文一侧；
-# 且 GNOME 输入源只支持 xkb 与 ibus 两类（gsettings describe
-# 原文），fcitx5 本来就写不进这个列表、不依赖它。
-# 本轮为屏幕键盘引进 IBus 双栈后，空表不再成立：屏幕键盘要切到
-# 拼音，前提是 ('ibus','libpinyin') 在这个列表里登记着（用户
-# 2026-10-31 活体实验实证：源不在列表里，屏幕键盘无拼音可切；
-# 源登记了但守护没起，输出还会掉进死通道）。故播种恰好两项，
-# current=0：登录后的当前源仍是第一项 xkb cn（与实验前用户机器
-# 上的实际状态 [('xkb','cn')] 一致），实体键盘与应用继续经
-# fcitx5 的 IM 模块通道（/etc/environment 三变量 + 本文件
-# xsettings 钉死 + 自启动 + skel 配置）工作；当年要清掉的
-# xkb us 不在播种内，不会回潮。用户切到第二项时，Shell 的输入
-# 通道交给已预置 libpinyin 的 IBus 守护，专供屏幕键盘组字。
-# 诚实边界：切到拼音源后，实体键盘经 fcitx5 的 Shift 切中英
-# 是否受扰，是运行时行为、构建证不了，列为设备验证项；若设备
-# 证实受扰，再另行定夺（回退空表或只留单项），不在本轮预设。
+# GNOME 输入源播种（2026-11-01 第四轮：单框架定版）。
+# 历史两段都已作废、只留教训：2026-10-25 曾因 xkb us 源抢位而把
+# 列表清空（只走 fcitx5 的 IM 模块通道）；2026-10-31 第三轮为
+# 屏幕键盘引进 IBus 双栈、播种两项且 current=0（登录落在 xkb
+# 一侧、实体键盘归 fcitx5）。本轮用户裁决全量换框架：fcitx5
+# 退出、IBus 为唯一框架，播种仍是两项 [('xkb','cn'),
+# ('ibus','libpinyin')]，但 current=1——登录即落在 libpinyin
+# 引擎上，开机直接中文（用户自 fcitx 时代定死的要求）；第一项
+# xkb cn 保留为纯布局回落位（误切过去是无组字的原始布局，
+# Super+Space 可切回）。当年要清掉的 xkb us 不在播种内，不会
+# 回潮。GNOME 输入源只支持 xkb 与 ibus 两类（gsettings describe
+# 原文），单框架后此列表就是全部输入形态的总登记。
 # 第二层在 90-xwlightos-input-sources.gschema.override，写同一
 # 播种（防 dconf 库被绕过时 schema 默认漂移回上游 xkb us）。
 [org/gnome/desktop/input-sources]
-current=0
+current=1
 sources=[('xkb', 'cn'), ('ibus', 'libpinyin')]

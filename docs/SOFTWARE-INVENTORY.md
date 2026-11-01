@@ -35,7 +35,7 @@
 
 ## 输入法
 
-- fcitx5（单击左/右 Shift 切换中英文，Ctrl+Space 保留）
+- IBus + libpinyin（2026-11-01 起为唯一输入法框架；Shift 切换中英文，登录即中文模式）
 
 ## 驱动/固件
 

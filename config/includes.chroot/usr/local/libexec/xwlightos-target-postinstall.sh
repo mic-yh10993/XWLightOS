@@ -76,7 +76,7 @@ EOF
 # session, which on bookworm is Wayland when available. Every
 # session-level fix validated on the live X11 session then silently
 # stops applying on the installed system: /etc/X11/Xsession.d and
-# /etc/profile.d are never sourced (fcitx5 IM variables, Qt theme),
+# /etc/profile.d are never sourced (IM variables, Qt theme),
 # and X11-oriented components run under a session they were never
 # tested in. Force X11 for the installed account exactly like the
 # live user, so installed == live.
@@ -102,29 +102,11 @@ ACCEOF
 # 用户 2026-10-25 09:01 指令：希沃侧边栏暂时删除，上面那段
 # sidebar-off 标志写入已随侧边栏删除一并去掉（不再给不存在的
 # 组件写关闭标志）。恢复侧边栏时 revert 删除提交即可。
-# 用户 2026-10-25 邮件《继续修复》第 6 项：Shift 切换仍失效。
-# 已核实 Build 33 代码侧链路本身是全的：skel 配置有双 Shift
-# AltTriggerKeys、profile 有中英双端点、/etc/environment 有三变量、
-# 自启动文件与面板扩展都在，live 用户经 1700 钩子 cp -a skel 必得该
-# 配置。但安装账号的家目录只经 Calamares 建用户一环继承 skel——
-# 1700 钩子的 cp -a 只管 live 用户，postinstall 此前从未给安装账号
-# 补过 fcitx5 配置。只要 skel 继承链路有任何一环漏掉（与 4908b0a
-# 的 live/安装不一致教训同类），安装后用户拿到的就是 fcitx5 默认
-# 配置：守护进程在跑、点图标能切换（图标走 D-Bus 不走触发键），
-# 唯独 Shift 触发键不存在——与用户本次反馈的现象逐项吻合。
-# 因此这里只补缺口（cp -n，绝不覆盖已有配置）、失败只警告不拖垮
-# 安装，把“skel 一定继承”从假设变成 postinstall 保证。注意：
-# 本段修的是继承链路，不是触发键本身——触发键值（Shift_L/Shift_R）
-# 仍以 skel 文件为准，此处不改值。
-if [ -d /etc/skel/.config/fcitx5 ]; then
-    mkdir -p "/home/$installed_account/.config/fcitx5" 2>/dev/null || true
-    for _fcitx5_conf in config profile; do
-        cp -n "/etc/skel/.config/fcitx5/$_fcitx5_conf" \
-            "/home/$installed_account/.config/fcitx5/$_fcitx5_conf" 2>/dev/null || \
-            echo "XWLightOS: could not seed fcitx5 $_fcitx5_conf for $installed_account (Shift trigger may be missing)" >&2
-    done
-    chown -R "$installed_account:$installed_account" "/home/$installed_account/.config/fcitx5" 2>/dev/null || true
-fi
+# 输入法配置的安装账号补种已随 fcitx5 全栈移除而取消（2026-11-01
+# 第四轮全量换 IBus）：IBus/libpinyin 的出厂值全部走系统级通道
+# （dconf 系统默认、gschema override、ibus.d 引擎预置），不依赖
+# 任何 per-user 输入法配置文件，安装账号无需补种输入法。主题
+# 文件的补种（下段）与此无关、原样保留。
 # 用户 2026-10-25 邮件第 1 项（所有程序还是黑色文字+背景）——主题文件的
 # 安装账号补种，与上面 fcitx5 同款教训、同款修法：
 # live 用户经 1700 钩子 cp -a skel 必得主题文件，但安装账号只靠
@@ -305,9 +287,9 @@ fi
 # 格式，不带 export），而不是直接发一个注定起不来的后端。
 if [ ! -f /etc/environment ]; then
     cat > /etc/environment <<'ENVEOF'
-GTK_IM_MODULE=fcitx
-QT_IM_MODULE=fcitx
-XMODIFIERS=@im=fcitx
+GTK_IM_MODULE=ibus
+QT_IM_MODULE=ibus
+XMODIFIERS=@im=ibus
 QT_QPA_PLATFORMTHEME=gtk2
 ENVEOF
     echo 'XWLightOS: /etc/environment missing in installed target, recreated (vendor manager unit hard-fails without it)'

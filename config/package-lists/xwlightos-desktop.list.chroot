@@ -79,10 +79,10 @@ gnome-shell-extension-system-monitor
 gir1.2-gtop-2.0
 gir1.2-nm-1.0
 gir1.2-clutter-1.0
-# 用户 2026-10-24 23:31 邮件：输入法面板扩展也要（此前 22:53 撤回，
-# 现按最新要求重新加回；kimpanel@kde.org，Shell 43 兼容；
-# fcitx5 自带 kimpanel 插件已在 fcitx5-modules 内）。
-gnome-shell-extension-kimpanel
+# 输入法面板扩展 kimpanel@kde.org 已随 fcitx5 全栈移除（2026-11-01
+# 第四轮）：它只是 fcitx5 的面板协议前端（2026-10-24 曾按用户要求
+# 加回），IBus 在 GNOME Shell 里有原生输入指示器，不再需要它；
+# dconf 的 enabled-extensions 同步摘除，校验脚本有缺席断言。
 # “扩展”入口应用：GNOME 43 的 Tweaks 已不带扩展管理页，没有这个包系统里
 # 就根本没有“扩展”入口（用户 2026-10-24 反馈）。官方 org.gnome.Extensions。
 gnome-shell-extension-prefs
@@ -180,34 +180,51 @@ libqt6dbus6
 libqt6printsupport6
 libgdk-pixbuf-2.0-0
 
-# 屏幕键盘中文（2026-10-31 第三轮定版）：Onboard 弃用（用户裁决：
-# “更多bug”），回到 GNOME 自带屏幕键盘 + IBus 双栈。根因已在用户
-# 已安装系统上活体钉死：GNOME Shell 屏幕键盘只经 IBus 通道组字，
-# 而本系统此前根本没装 IBus（dpkg 无 ibus/ibus-libpinyin、
-# ibus-daemon 不存在），GNOME 输入源只有 xkb 布局——屏幕键盘敲出
-# 的只能是原始键码，永远组不了中文。本轮把 IBus 作为“只伺候
-# Shell/屏幕键盘”的第二框架成套装进构建：
-# - 守护启动走 Bookworm 原生形态（对 ibus 1.5.27-5 的 deb 逐项
-#   核实）：包自带 systemd user unit org.freedesktop.IBus.session.
-#   GNOME.service，并在 gnome-session.target.wants/ 里预置了启用
-#   链接，登录后由 gnome-session 拉起单实例 ibus-daemon（X11 下
-#   --xim、--panel disable），不需要我们再写任何自启文件，更不
-#   碰会话输入法环境变量。不采 Debian im-config 链：其包内
-#   21_ibus.rc 在接管时会把 XMODIFIERS/GTK_IM_MODULE/QT_IM_
-#   MODULE 整体改写成 ibus（包内文件实证），会污染 fcitx5 通道。
-# - 引擎预置走 IBus 自有 dconf 库（包内 /etc/dconf/profile/ibus
-#   与 db/ibus.d/00-upstream-settings 实证，键在 [desktop/ibus/
-#   general]）：见 includes 的 etc/dconf/db/ibus.d/50-xwlightos-
-#   ibus，把 libpinyin 预置为守护启动即加载的引擎，绝不依赖运行
-#   时手工命令——用户 2026-10-31 活体实验的事故（手工启守护撞上
-#   初始化竞态、设引擎失败、按键被吞进无引擎通道）正是缺了这
-#   一层成套交付。
-# - 实体键盘与应用继续归 fcitx5：/etc/environment 三变量、
-#   Xsession.d、xsettings 通道一律不动（校验脚本有专断言）。
-# 运行时行为（切到拼音源后屏幕键盘能否组字、切源是否扰动
-# fcitx5 的 Shift 切换）构建证不了，列为设备验证项。
+# 输入法框架（2026-11-01 第四轮定版，取代第三轮双栈）：用户裁决
+# “GNOME 的 OSK 不支持 fcitx、只支持 ibus，直接把 fcitx 换成
+# ibus”。根因承继第三轮实证：GNOME Shell 屏幕键盘只经 IBus 通道
+# 组字。本轮把 IBus 立为唯一框架，fcitx5 全栈退出（包、skel、
+# postinstall 补种、自启、环境通道、校验断言全线处理，校验脚本
+# 有全缺席断言）：
+# - 守护启动沿用第三轮定版：ibus 包自带 systemd user unit
+#   org.freedesktop.IBus.session.GNOME.service + gnome-session.
+#   target.wants/ 预置启用链接（对 ibus 1.5.27-5 的 deb 核实），
+#   登录即单实例常驻，不写自启文件。仍不采 Debian im-config 链
+#   （其 21_ibus.rc 的接管方式与本镜像自管的环境通道不一致）；
+#   环境变量改由既有通道自管并统一写 ibus：/etc/environment、
+#   /etc/X11/Xsession.d/90ibus-xwlightos、/etc/profile.d/ibus-
+#   xwlightos.sh、dconf 的 xsettings Gtk/IMModule 覆盖四处同值，
+#   postinstall 的 /etc/environment 重建兜底同值。
+# - 前端模块（均对 Bookworm deb 清单实证）：GTK3 的 im-ibus.so
+#   在 ibus-gtk3、GTK4 的 libim-ibus.so 在 ibus-gtk4（ibus 本体
+#   不含、其 Depends 也不带，故在此显式列）；Qt 的
+#   libibusplatforminputcontextplugin.so 在 libqt5gui5 与
+#   libqt6gui6 内（前者由 qt5-gtk-platformtheme 锚定、后者在本
+#   清单显式列明），无需额外包。
+# - 引擎预置沿用第三轮：etc/dconf/db/ibus.d/50-xwlightos-ibus
+#   钉 preload-engines/engines-order=['libpinyin']，守护启动即
+#   装好引擎，绝不依赖运行时手工命令（2026-10-31 活体实验的
+#   竞态事故正是缺了这层成套交付）。
+# - 输入源播种仍是 [('xkb','cn'), ('ibus','libpinyin')]，但
+#   current 改为 1：登录即落在 libpinyin 引擎上、开机直接中文
+#   （用户自 fcitx 时代定死的要求）；xkb cn 源保留为纯布局
+#   回落位。
+# - Shift 切中英走引擎自身：ibus-libpinyin 1.15.1-1 的 deb 实证
+#   其偏好走真 GSettings schema com.github.libpinyin.ibus-
+#   libpinyin.libpinyin（设置程序 setup/main2.py 用 Gio.Settings
+#   读写、引擎二进制 ibus-engine-libpinyin 内嵌同一 schema id
+#   与键名字符串），键 main-switch（中英切换快捷键）上游默认即
+#   '<Shift>'、init-chinese（初始中文）默认即 true；本镜像经
+#   91-xwlightos-libpinyin.gschema.override 把两键显式钉成同值
+#   防上游默认漂移，校验脚本读编译后生效值断言。注意：该版本
+#   引擎偏好不读 IBus 自有 dconf 库，往 ibus.d 里写 engine 段是
+#   无效投递，故不采用那条通道。
+# 运行时行为（开机直接中文、Shift 手感、屏幕键盘不抢实体
+# 键盘）构建证不了，列为设备验证项。
 ibus
 ibus-libpinyin
+ibus-gtk3
+ibus-gtk4
 # 无障碍总线（独立保留，与 Onboard 无关）：org.a11y.Bus 的提供者
 # at-spi2-core（usr/share/dbus-1/services/org.a11y.Bus.service、
 # usr/libexec/at-spi-bus-launcher，归属已对 bookworm 的 deb 核实）
@@ -236,17 +253,12 @@ gir1.2-ayatanaappindicator3-0.1
 # 才是确定性的查找链。
 xdg-user-dirs
 
-# Chinese locale and Fcitx5 input method
+# Chinese locale（输入法框架已全量换成 IBus，见上方屏幕键盘一节的
+# ibus/ibus-libpinyin/ibus-gtk3/ibus-gtk4；fcitx5 全栈于 2026-11-01
+# 第四轮按用户裁决移除，校验脚本有全缺席断言）
 locales
 fonts-noto-cjk
 fonts-noto-color-emoji
-fcitx5
-fcitx5-config-qt
-fcitx5-frontend-gtk3
-fcitx5-frontend-gtk4
-fcitx5-frontend-qt5
-fcitx5-chinese-addons
-fcitx5-pinyin
 
 # Requested everyday applications
 # 用户 2026-10-25 指令：PeaZip 语言设置里没中文，改用 GNOME 归档查看器。

@@ -1,0 +1,21 @@
+# XWLightOS: ibus-libpinyin 引擎偏好出厂钉死（Shift 切中英 + 初始中文）。
+#
+# 取证（Bookworm 的 ibus-libpinyin 1.15.1-1 deb 逐项核实）：该版本
+# 引擎偏好走真 GSettings schema com.github.libpinyin.ibus-libpinyin.
+# libpinyin（包内 usr/share/glib-2.0/schemas/ 同名 gschema.xml；
+# 设置程序 setup/main2.py 用 Gio.Settings 读写、引擎二进制
+# ibus-engine-libpinyin 内嵌同一 schema id 与键名字符串）。其中：
+#   main-switch（中英模式切换快捷键，字符串）上游默认 '<Shift>'；
+#   init-chinese（初始是否为中文模式，布尔）上游默认 true。
+# 两键恰好就是用户定死的手感：单按 Shift（左右不分，'<Shift>'
+# 加速键两侧通吃，与原 fcitx5 的双侧 AltTriggerKeys 等效）在
+# 中英之间切换、登录初始即中文。本文件把两键显式钉成上游同值，
+# 目的是防上游默认漂移并给出厂状态一个可断言的落点，不是“修复”
+# 上游默认——默认本来就对。用户日后在引擎设置里改掉，用户值
+# 优先、本文件不锁定。
+# 注意：此版本的引擎偏好不读 IBus 自有 dconf 库（ibus.d 是守护的
+# 通用配置 [desktop/ibus/general] 的地盘），把 engine 段写进
+# etc/dconf/db/ibus.d/ 不会被该版本引擎读取，故不采用那条通道。
+[com.github.libpinyin.ibus-libpinyin.libpinyin]
+init-chinese=true
+main-switch='<Shift>'

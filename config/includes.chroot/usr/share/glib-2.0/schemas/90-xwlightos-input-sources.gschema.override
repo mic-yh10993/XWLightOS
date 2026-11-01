@@ -1,16 +1,14 @@
 # XWLightOS: GNOME 输入源 schema 默认播种（第二层，与 dconf 默认同值）。
 #
-# 历史：2026-10-25 用户反馈多了个英语（美国）xkb us 源抢 fcitx5 的
-# 位置，当时两层（dconf 系统默认 local.d/00-xwlightos-gnome + 本
-# override）一并把 sources 清空，让 GNOME 侧不剩任何源。2026-10-31
-# 第三轮为屏幕键盘引进 IBus 双栈：屏幕键盘切拼音的前提是
-# ('ibus','libpinyin') 登记在输入源列表里（用户活体实验实证），
-# 空表不再成立。故本层与 dconf 默认同步改为播种两项
-# [('xkb','cn'), ('ibus','libpinyin')] 且 current=0（登录当前源仍
-# 是 xkb 一侧，实体键盘继续归 fcitx5 的 IM 模块通道）；当年要清除
-# 的 xkb us 不在播种内。保留本层是防 dconf 库被绕过时 schema 默认
+# 历史：2026-10-25 曾因 xkb us 源抢位把 sources 清空（两层同清）；
+# 2026-10-31 第三轮引进 IBus 双栈后改为播种两项且 current=0；
+# 2026-11-01 第四轮全量换框架（fcitx5 退出、IBus 为唯一框架），
+# 本层与 dconf 默认同步定版为播种两项 [('xkb','cn'),
+# ('ibus','libpinyin')] 且 current=1——登录即落在 libpinyin 引擎
+# 上、开机直接中文；xkb cn 保留为纯布局回落位，当年要清除的
+# xkb us 不在播种内。保留本层是防 dconf 库被绕过时 schema 默认
 # 漂移回上游的 xkb us。1700 钩子编译本文件（glib-compile-schemas），
 # 编译失败构建即红灯；校验脚本另查编译后的 schema 默认生效值。
 [org.gnome.desktop.input-sources]
-current=0
+current=1
 sources=[('xkb', 'cn'), ('ibus', 'libpinyin')]

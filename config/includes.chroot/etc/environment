@@ -21,9 +21,9 @@
 # desktop session. Format here is VAR=value with no 'export' prefix
 # (pam_env and systemd EnvironmentFile both require that form).
 # The Xsession.d / profile.d copies stay as well (defense in depth).
-GTK_IM_MODULE=fcitx
-QT_IM_MODULE=fcitx
-XMODIFIERS=@im=fcitx
+GTK_IM_MODULE=ibus
+QT_IM_MODULE=ibus
+XMODIFIERS=@im=ibus
 #
 # Qt theme (deep-chain fix, user mail 2026-10-24 22:40: font-color
 # fixes keep not landing): Qt5 apps follow the GTK2 WhiteSur-Light
