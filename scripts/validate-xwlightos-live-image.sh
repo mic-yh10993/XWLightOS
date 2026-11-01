@@ -396,45 +396,48 @@ TS_DIAG_SCRIPT="$WORK/xwlightos-touch-diag.sh"
 cat_image_file 'usr/local/sbin/xwlightos-touch-diag.sh' "$TS_DIAG_SCRIPT"
 grep -q '/tmp/xwlightos-touchscreen-fix\.log' "$TS_DIAG_SCRIPT" \
     || { echo 'touch diag script does not read the touchscreen fix log from its /tmp path (diagnosis screen would lose the log)' >&2; exit 1; }
-# 实体键盘在场守候门禁（2026-11-01 第五轮，用户要求：连着实体
-# 键盘不自动弹 OSK、没连才弹）。基础播种 screen-keyboard-enabled
-# =true 不变（a11y 小节另行断言），守候只在判定变化时改该键。静
-# 态证据四件：脚本本体、user unit、default.target.wants 启用链
-# 接与 ExecStart 对位。再加判定逻辑离线自检：合成设备树喂脚本
-# 的 --check 模式——PS/2 键盘（位图末词含 KEY_Q/KEY_ENTER/
-# KEY_SPACE）判有；触摸屏（BTN_TOUCH 在高词、末词为 0）、电源
-# 键（KEY_POWER=116 在第二词）、鼠标（按钮 272+ 在高词）判无。
-require_path 'usr/local/sbin/xwlightos-keyboard-watch.sh'
-require_path 'etc/systemd/user/xwlightos-keyboard-watch.service'
-unsquashfs -f -d "$SVC_WORK" "$FS" \
+# 触屏诊断 evdev 之上取证（2026-11-01 第六轮，用户定版证据通道：
+# 开机拍照就 OK，真机不再手敲任何命令）：Build 65 真机已证内核→
+# evdev 段全通，断点只剩“H1 节点根本不产事件”与“H2 事件出了但
+# Xorg/libinput 没认领”二选一。诊断脚本必须自带这两层的判读材
+# 料——触屏节点的 ABS 能力位图（/sys capabilities/abs）、udev 分
+# 类标签（udevadm info 的 ID_INPUT*）、Xorg 认领行（Xorg.0.log 的
+# tagged 行）、libinput/xinput 两节与末尾一页结论区。libinput 与
+# xinput 两个官方小包为此进镜像（二进制在场断言在下；B57 实物清
+# 单先验两者均缺席）。诊断脚本新节一条都不许丢，丢了下一张照片
+# 就又落不了层。
+require_path 'usr/bin/libinput'
+require_path 'usr/bin/xinput'
+grep -q 'capabilities/abs' "$TS_DIAG_SCRIPT" \
+    || { echo 'touch diag script lost its ABS capability section (sysfs capabilities/abs; without it the next photo cannot judge the H1 descriptor-mapping suspect)' >&2; exit 1; }
+grep -q 'udevadm info' "$TS_DIAG_SCRIPT" \
+    || { echo 'touch diag script lost its udev classification section (udevadm info ID_INPUT tags)' >&2; exit 1; }
+grep -q 'Xorg.0.log' "$TS_DIAG_SCRIPT" \
+    || { echo 'touch diag script lost its Xorg claim section (Xorg.0.log tagged-by-udev lines)' >&2; exit 1; }
+grep -q 'libinput list-devices' "$TS_DIAG_SCRIPT" \
+    || { echo 'touch diag script lost its libinput list-devices section' >&2; exit 1; }
+grep -q 'xinput list' "$TS_DIAG_SCRIPT" \
+    || { echo 'touch diag script lost its xinput list section' >&2; exit 1; }
+grep -q '结论区' "$TS_DIAG_SCRIPT" \
+    || { echo 'touch diag script lost its one-page conclusion block (the boot photo would not settle H1 vs H2)' >&2; exit 1; }
+# 实体键盘在场守候已删除（2026-11-01 第六轮，用户裁决）：第五轮
+# 的 xwlightos-keyboard-watch（连着实体键盘就不弹 OSK）在希沃上
+# 必然误判——希沃遥控器的接收器在 evdev 眼里就是一个带完整键位
+# 图的键盘接口，守候会把“有键盘”永久判真、OSK 永远弹不出来。
+# 用户定版：不做在场检测，OSK 默认常开。删除范围：守候脚本、
+# user unit、1720 启用钩子（构建侧，随仓库删除）与镜像内的
+# default.target.wants 启用链接。screen-keyboard-enabled 的播种
+# 值 true 一字未动（a11y 小节独立断言），守候删后运行时再无任何
+# 东西写这个键，OSK 回到“默认开启”的原生形态。此处照 fcitx 清
+# 除的体例钉缺席断言，三件都不许回潮。
+for kb_leftover in usr/local/sbin/xwlightos-keyboard-watch.sh \
     etc/systemd/user/xwlightos-keyboard-watch.service \
-    etc/systemd/user/default.target.wants/xwlightos-keyboard-watch.service \
-    >/dev/null 2>&1
-KB_WANTS_LINK="$SVC_WORK/etc/systemd/user/default.target.wants/xwlightos-keyboard-watch.service"
-[ -e "$KB_WANTS_LINK" ] || { echo 'xwlightos-keyboard-watch.service user wants symlink is dangling (keyboard watcher would never start at login)' >&2; exit 1; }
-[ "$(readlink "$KB_WANTS_LINK")" = '../xwlightos-keyboard-watch.service' ] || { echo 'xwlightos-keyboard-watch.service user wants symlink points at the wrong unit' >&2; exit 1; }
-grep -q '^ExecStart=/usr/local/sbin/xwlightos-keyboard-watch.sh$' "$SVC_WORK/etc/systemd/user/xwlightos-keyboard-watch.service" || { echo 'xwlightos-keyboard-watch.service lost its ExecStart' >&2; exit 1; }
-KB_WATCH_SCRIPT="$WORK/xwlightos-keyboard-watch.sh"
-cat_image_file 'usr/local/sbin/xwlightos-keyboard-watch.sh' "$KB_WATCH_SCRIPT"
-KB_FAKE="$WORK/kbd-fake-sysfs"
-_kb_mkcase() {
-    rm -rf "$KB_FAKE"
-    mkdir -p "$KB_FAKE/event0/device/capabilities"
-    printf '%s\n' "$1" > "$KB_FAKE/event0/device/capabilities/key"
-    echo 'synthetic' > "$KB_FAKE/event0/device/name"
-}
-_kb_mkcase '1 200000010010000'
-XW_KBD_WATCH_SYSFS="$KB_FAKE" bash "$KB_WATCH_SCRIPT" --check >/dev/null 2>&1 \
-    || { echo 'keyboard watcher self-test: a PS/2-style keyboard keymap was not detected as a real keyboard (OSK would pop up over a physical keyboard)' >&2; exit 1; }
-_kb_mkcase '400 0 0 0 0 0'
-if XW_KBD_WATCH_SYSFS="$KB_FAKE" bash "$KB_WATCH_SCRIPT" --check >/dev/null 2>&1; then
-    echo 'keyboard watcher self-test: a touchscreen keymap was misdetected as a real keyboard (OSK would never pop up on a keyboard-less panel)' >&2; exit 1; fi
-_kb_mkcase '8000 10000000000000 0'
-if XW_KBD_WATCH_SYSFS="$KB_FAKE" bash "$KB_WATCH_SCRIPT" --check >/dev/null 2>&1; then
-    echo 'keyboard watcher self-test: a power-button keymap was misdetected as a real keyboard' >&2; exit 1; fi
-_kb_mkcase '10000 0 0 0 0'
-if XW_KBD_WATCH_SYSFS="$KB_FAKE" bash "$KB_WATCH_SCRIPT" --check >/dev/null 2>&1; then
-    echo 'keyboard watcher self-test: a mouse keymap was misdetected as a real keyboard' >&2; exit 1; fi
+    etc/systemd/user/default.target.wants/xwlightos-keyboard-watch.service; do
+    if grep -q -E "(^|/)${kb_leftover//./\\.}$" "$LIST"; then
+        echo "keyboard watcher leftover still in final ISO: /$kb_leftover (the presence watcher was retired in round 6: a Seewo remote receiver is indistinguishable from a keyboard and would suppress the OSK forever)" >&2
+        exit 1
+    fi
+done
 # 通用兜底：镜像 systemd 配置里不允许出现任何断链（改名残留最爱藏在这里）。
 # 注意两个坑，Build 49（Run 38899185892）曾被它们坑过一次：
 # 1) vendor 的 wants 符号链接（如 pipewire、NetworkManager、display-manager）
