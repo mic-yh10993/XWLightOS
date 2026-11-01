@@ -1,0 +1,12 @@
+[Unit]
+Description=XWLightOS keyboard presence watcher - auto-popup the GNOME on-screen keyboard only when no physical keyboard is attached
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/xwlightos-keyboard-watch.sh
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=default.target
