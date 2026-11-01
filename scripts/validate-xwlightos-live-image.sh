@@ -308,17 +308,24 @@ require_path 'usr/local/bin/xwlightos-power-action'
 require_path 'usr/local/bin/xwlightos-logout'
 require_path 'usr/local/libexec/xwlightos-privileged-action'
 require_path 'usr/share/polkit-1/actions/im.system-intel-mic.xwlightos.privileged-action.policy'
-require_path 'usr/bin/fcitx5'
-require_path 'etc/skel/.config/fcitx5/profile'
-require_path 'etc/skel/.config/fcitx5/config'
-# 用户 2026-10-18 邮件：程序列表只保留「fcitx 设置」
-# （org.fcitx.fcitx5-config-qt.desktop），「fcitx5」/「fcitx5 迁移助手」等
-# 多余启动器必须不在镜像里（1580 钩子删除）。
-require_path 'usr/share/applications/org.fcitx.fcitx5-config-qt.desktop'
-for pruned in org.fcitx.Fcitx5.desktop fcitx5-configtool.desktop \
-    org.fcitx.fcitx5-migrator.desktop kbd-layout-viewer5.desktop; do
-    if grep -q -E "(^|/)usr/share/applications/${pruned}$" "$LIST"; then
-        echo "redundant fcitx launcher still present in final ISO: $pruned" >&2
+# 输入法框架已全量换成 IBus（2026-11-01 第四轮，用户裁决“直接把
+# fcitx 换成 ibus”）：fcitx5 全栈必须彻底缺席——二进制、skel 配置、
+# 自启、环境文件旧名、五个启动器（含 2026-10-18 起只保留的「fcitx
+# 设置」org.fcitx.fcitx5-config-qt.desktop，它随框架更换一并退场）
+# 一件都不许回潮（照 VLC/Onboard 清除的缺席断言体例查 squashfs
+# 清单）。IBus 一侧的在场断言在下文 IM 环境节与 OSK/IBus 专节。
+for fcitx_leftover in usr/bin/fcitx5 \
+    etc/skel/.config/fcitx5/profile etc/skel/.config/fcitx5/config \
+    etc/xdg/autostart/fcitx5.desktop \
+    etc/X11/Xsession.d/90fcitx5-xwlightos \
+    etc/profile.d/fcitx5-xwlightos.sh \
+    usr/share/applications/org.fcitx.Fcitx5.desktop \
+    usr/share/applications/org.fcitx.fcitx5-config-qt.desktop \
+    usr/share/applications/fcitx5-configtool.desktop \
+    usr/share/applications/org.fcitx.fcitx5-migrator.desktop \
+    usr/share/applications/kbd-layout-viewer5.desktop; do
+    if grep -q -E "(^|/)${fcitx_leftover//./\\.}$" "$LIST"; then
+        echo "fcitx5 leftover still in final ISO: /$fcitx_leftover (fcitx5 was fully retired in the IBus switch)" >&2
         exit 1
     fi
 done
@@ -700,53 +707,50 @@ for _mon_key in cpu-style memory-style swap-style net-style disk-style; do
         exit 1
     }
 done
-# 用户 2026-10-24 23:31 邮件：输入法面板扩展也要（重新加回启用）。
-grep -q 'kimpanel@kde.org' "$GNOME_DEFAULTS" \
-    || { echo 'enabled-extensions missing kimpanel input method panel extension' >&2; exit 1; }
-# 输入源播种门禁（2026-10-31 第三轮改版，此前断言的“清表”已反转）。
-# 历史：2026-10-25 用户反馈英语（美国）xkb us 源抢 fcitx5 的位置
-# （构建里从未写过 input-sources，首次登录即 GNOME schema 默认的
-# xkb us；与 skel 漏 fcitx5 触发键不是同一层），当时修法是把列表
-# 清空（dconf 键文件 + gschema 覆盖两层，断言为空）。本轮 IBus
-# 双栈要求 ('ibus','libpinyin') 登记在列表里、供屏幕键盘切拼音，
-# 故两层一并改为精确断言播种值 [('xkb','cn'), ('ibus','libpinyin')]
-# 且 current=0（登录当前源仍是 xkb 一侧，实体键盘继续归 fcitx5
-# 的 IM 模块通道）；当年要清的 xkb us 若回潮，精确等值断言同样
-# 会红。fcitx5 内部的 keyboard-us 是 Shift 切换的英文一侧，必须
-# 保留、不得误伤（下方 skel profile 断言不动）。
+# 输入法面板扩展 kimpanel 已随 fcitx5 移除（2026-11-01 第四轮）：它
+# 只是 fcitx5 的面板协议前端（2026-10-24 曾按用户要求加回启用），
+# IBus 在 Shell 里有原生输入指示器；enabled-extensions 不许再带
+# 它，其扩展本体也不许留在镜像里（包已摘除）。
+if grep -q 'kimpanel@kde.org' "$GNOME_DEFAULTS"; then
+    echo 'enabled-extensions still lists kimpanel (fcitx5 panel frontend; fcitx5 was retired)' >&2; exit 1; fi
+if grep -q -E '(^|/)usr/share/gnome-shell/extensions/kimpanel@kde\.org' "$LIST"; then
+    echo 'kimpanel shell extension still in final ISO (fcitx5 was retired)' >&2; exit 1; fi
+# 输入源播种门禁（2026-11-01 第四轮：单框架定版，此前断言两度
+# 反转）。历史：2026-10-25 曾因 xkb us 源抢位把列表清空（只走
+# fcitx5 的 IM 模块通道）；2026-10-31 第三轮引进 IBus 双栈、播种
+# 两项且 current=0。本轮全量换框架：两层（dconf 键文件 + gschema
+# 覆盖）精确断言播种值 [('xkb','cn'), ('ibus','libpinyin')] 且
+# current=1——登录即落在 libpinyin 引擎上、开机直接中文；当年要
+# 清的 xkb us 若回潮，精确等值断言同样会红。
 grep -q '^\[org/gnome/desktop/input-sources\]$' "$GNOME_DEFAULTS" \
     || { echo 'dconf defaults lack input-sources section (seeded input sources missing)' >&2; exit 1; }
 grep -q "^sources=\[('xkb', 'cn'), ('ibus', 'libpinyin')\]$" "$GNOME_DEFAULTS" \
     || { echo "dconf input-sources is not the seeded pair [('xkb','cn'), ('ibus','libpinyin')] (the on-screen keyboard would have no pinyin source to switch to)" >&2; exit 1; }
 INPUT_SOURCES_SECTION="$WORK/gnome-input-sources-section"
 awk '/^\[org\/gnome\/desktop\/input-sources\]/{in_section=1; next} /^\[/{in_section=0} in_section' "$GNOME_DEFAULTS" > "$INPUT_SOURCES_SECTION"
-grep -q '^current=0$' "$INPUT_SOURCES_SECTION" \
-    || { echo 'dconf input-sources current is not 0 (login would not start on the xkb side)' >&2; exit 1; }
+grep -q '^current=1$' "$INPUT_SOURCES_SECTION" \
+    || { echo 'dconf input-sources current is not 1 (login would not start on the libpinyin engine; no composed Chinese at boot)' >&2; exit 1; }
 INPUT_OVERRIDE="$WORK/90-xwlightos-input-sources.gschema.override"
 cat_image_file 'usr/share/glib-2.0/schemas/90-xwlightos-input-sources.gschema.override' "$INPUT_OVERRIDE"
 grep -q '^\[org.gnome.desktop.input-sources\]$' "$INPUT_OVERRIDE" \
     || { echo 'input-sources schema override section missing' >&2; exit 1; }
 grep -q "^sources=\[('xkb', 'cn'), ('ibus', 'libpinyin')\]$" "$INPUT_OVERRIDE" \
     || { echo 'input-sources schema override does not seed the pair' >&2; exit 1; }
-grep -q '^current=0$' "$INPUT_OVERRIDE" \
-    || { echo 'input-sources schema override current is not 0' >&2; exit 1; }
-FCITX5_PROFILE="$WORK/fcitx5-profile"
-cat_image_file 'etc/skel/.config/fcitx5/profile' "$FCITX5_PROFILE"
-grep -q '^Name=keyboard-us$' "$FCITX5_PROFILE" \
-    || { echo 'fcitx5 keyboard-us missing from skel profile (Shift would have no English side)' >&2; exit 1; }
-grep -q '^Name=pinyin$' "$FCITX5_PROFILE" \
-    || { echo 'fcitx5 pinyin missing from skel profile' >&2; exit 1; }
-grep -q '^DefaultIM=pinyin$' "$FCITX5_PROFILE" \
-    || { echo 'fcitx5 DefaultIM is not pinyin' >&2; exit 1; }
+grep -q '^current=1$' "$INPUT_OVERRIDE" \
+    || { echo 'input-sources schema override current is not 1' >&2; exit 1; }
 # 编译后的 schema 默认生效值（与 dock 三开关同款查法）：gschemas.compiled
 # 已在前面断言存在；有 gsettings 时再读一次，播种值读出来应为
-# [('xkb', 'cn'), ('ibus', 'libpinyin')]（2026-10-31 第三轮前此
-# 处断言的是空表 @a(ss) []，与清表修法一并反转）。
+# [('xkb', 'cn'), ('ibus', 'libpinyin')] 且 current 应为 uint32 1
+#（2026-10-25 断言空表、第三轮断言 current=0，均已随修法反转）。
 if command -v gsettings >/dev/null 2>&1; then
     _input_src="$(GSETTINGS_SCHEMA_DIR="$FULL_ROOT/usr/share/glib-2.0/schemas" GSETTINGS_BACKEND=memory gsettings get org.gnome.desktop.input-sources sources 2>/dev/null)" || {
         echo 'compiled input-sources schema default is unreadable (gschemas.compiled stale or broken)' >&2; exit 1; }
     [ "$_input_src" = "[('xkb', 'cn'), ('ibus', 'libpinyin')]" ] || {
         echo "compiled input-sources schema default is not the seeded pair (got $_input_src)" >&2; exit 1; }
+    _input_cur="$(GSETTINGS_SCHEMA_DIR="$FULL_ROOT/usr/share/glib-2.0/schemas" GSETTINGS_BACKEND=memory gsettings get org.gnome.desktop.input-sources current 2>/dev/null)" || {
+        echo 'compiled input-sources current is unreadable (gschemas.compiled stale or broken)' >&2; exit 1; }
+    [ "$_input_cur" = "uint32 1" ] || {
+        echo "compiled input-sources current is not 1 (got $_input_cur; login would not start on the libpinyin engine)" >&2; exit 1; }
 else
     echo 'note: gsettings unavailable, skipping compiled input-sources effective-value check' >&2
 fi
@@ -815,13 +819,6 @@ grep -q '^whitesur-gdm-theme 2026-09-10' "$GDM_THEME_MARKER"
 LIVE_INIT="$WORK/xwlightos-live-session-init"
 cat_image_file 'usr/local/sbin/xwlightos-live-session-init' "$LIVE_INIT"
 ! grep -qE 'chpasswd|lightdm|nopasswdlogin' "$LIVE_INIT"
-FCITX5_CONFIG="$WORK/fcitx5-config"
-cat_image_file 'etc/skel/.config/fcitx5/config' "$FCITX5_CONFIG"
-grep -q '^\[Hotkey/AltTriggerKeys\]$' "$FCITX5_CONFIG"
-grep -q '^0=Shift_L$' "$FCITX5_CONFIG"
-FCITX5_PROFILE="$WORK/fcitx5-profile"
-cat_image_file 'etc/skel/.config/fcitx5/profile' "$FCITX5_PROFILE"
-grep -q '^Name=pinyin$' "$FCITX5_PROFILE"
 POWER_BRIDGE="$WORK/xwlightos-power-action"
 cat_image_file 'usr/local/bin/xwlightos-power-action' "$POWER_BRIDGE"
 grep -q '^exec pkexec /usr/local/libexec/xwlightos-privileged-action "\$action"$' "$POWER_BRIDGE"
@@ -1124,75 +1121,70 @@ require_path 'usr/sbin/cupsd'
 require_path 'usr/bin/gcc'
 require_path 'usr/bin/git'
 require_path 'usr/bin/ffmpeg'
-# Fcitx5 must autostart in the GNOME session and be wired as the input
-# method framework via Xsession.d (GNOME X11 session sources it).
-FCITX5_AUTOSTART="$WORK/fcitx5.desktop"
-cat_image_file 'etc/xdg/autostart/fcitx5.desktop' "$FCITX5_AUTOSTART"
-grep -q '^OnlyShowIn=GNOME;$' "$FCITX5_AUTOSTART"
-IM_ENV="$WORK/90fcitx5-xwlightos"
-cat_image_file 'etc/X11/Xsession.d/90fcitx5-xwlightos' "$IM_ENV"
-# fcitx5 上游文档（fcitx-im.org/wiki/Setup_Fcitx_5）规定的值是 =fcitx
-#（不是 =fcitx5）：GTK/QT 输入法模块名沿用 fcitx。
-grep -q '^export GTK_IM_MODULE=fcitx$' "$IM_ENV"
-grep -q '^export QT_IM_MODULE=fcitx$' "$IM_ENV"
-grep -q '^export XMODIFIERS=@im=fcitx$' "$IM_ENV"
-# 用户 2026-10-24 22:53 输入法修法：只写 Xsession.d/profile.d 不够，
-# GDM 默认路径的 GNOME 会话读不到它们；/etc/environment 经 pam_env
-# 对所有显示管理器登录生效（X11 与 Wayland 均可），必须同步写死。
+# IBus 是唯一输入法框架（2026-11-01 第四轮）：会话环境通道必须
+# 同值=ibus——/etc/X11/Xsession.d/90ibus-xwlightos、/etc/profile.d/
+# ibus-xwlightos.sh、/etc/environment 三份文件值（/etc/environment
+# 经 pam_env 对所有显示管理器登录生效，是 GDM 默认路径的 GNOME
+# 会话也读得到的通道，用户 2026-10-24 修法结论），加 dconf
+# xsettings 的 Gtk/IMModule 覆盖（在 OSK/IBus 专节断言）。fcitx
+# 时代的自启与旧文件名缺席断言在前文 fcitx 清除一节。
+IM_ENV="$WORK/90ibus-xwlightos"
+cat_image_file 'etc/X11/Xsession.d/90ibus-xwlightos' "$IM_ENV"
+grep -q '^export GTK_IM_MODULE=ibus$' "$IM_ENV"
+grep -q '^export QT_IM_MODULE=ibus$' "$IM_ENV"
+grep -q '^export XMODIFIERS=@im=ibus$' "$IM_ENV"
+PROFILE_ENV="$WORK/ibus-xwlightos-profile"
+cat_image_file 'etc/profile.d/ibus-xwlightos.sh' "$PROFILE_ENV"
+grep -q '^export GTK_IM_MODULE=ibus$' "$PROFILE_ENV"
+grep -q '^export QT_IM_MODULE=ibus$' "$PROFILE_ENV"
+grep -q '^export XMODIFIERS=@im=ibus$' "$PROFILE_ENV"
 SYS_ENV="$WORK/sys-environment"
 cat_image_file 'etc/environment' "$SYS_ENV"
-grep -q '^GTK_IM_MODULE=fcitx$' "$SYS_ENV"
-grep -q '^QT_IM_MODULE=fcitx$' "$SYS_ENV"
-grep -q '^XMODIFIERS=@im=fcitx$' "$SYS_ENV"
+grep -q '^GTK_IM_MODULE=ibus$' "$SYS_ENV"
+grep -q '^QT_IM_MODULE=ibus$' "$SYS_ENV"
+grep -q '^XMODIFIERS=@im=ibus$' "$SYS_ENV"
 grep -q '^QT_QPA_PLATFORMTHEME=gtk2$' "$SYS_ENV" || {
     echo 'system environment lacks Qt platform theme (Qt apps would drift off WhiteSur-Light)' >&2; exit 1; }
-# Shift 切换的结构性门禁：skel 配置必须同时有左右 Shift 触发键，
-# 且 profile 必须同时含 keyboard（英文端）与 pinyin（中文端），
-# 缺任一端 AltTrigger 切换就没有两个落点。
-FCITX_CFG="$WORK/fcitx5-config"
-cat_image_file 'etc/skel/.config/fcitx5/config' "$FCITX_CFG"
-grep -q '^0=Shift_L$' "$FCITX_CFG"
-grep -q '^1=Shift_R$' "$FCITX_CFG"
-# 小节级门禁：此前只在全文件 grep，Shift_L 出现在别处也能蒙混；
-# 触发键必须实打实落在 [Hotkey/AltTriggerKeys] 小节内才算数。
-FCITX_ALT_SECTION="$WORK/fcitx5-alttrigger"
-awk '/^\[Hotkey\/AltTriggerKeys\]/{in_section=1; next} /^\[/{in_section=0} in_section' "$FCITX_CFG" > "$FCITX_ALT_SECTION"
-grep -q '^0=Shift_L$' "$FCITX_ALT_SECTION" || {
-    echo 'fcitx5 Shift_L is not inside [Hotkey/AltTriggerKeys] (Shift trigger would not fire)' >&2; exit 1; }
-grep -q '^1=Shift_R$' "$FCITX_ALT_SECTION" || {
-    echo 'fcitx5 Shift_R is not inside [Hotkey/AltTriggerKeys] (Shift trigger would not fire)' >&2; exit 1; }
-# 登录默认激活门禁（用户 2026-10-31 Build 57 实测：profile 完全正确——
-# DefaultIM=pinyin、组内 keyboard-us 在前 pinyin 在后——但 fcitx5-remote
-# 状态为 1/INACTIVE、当前输入法 keyboard-us，必须手动切一次中文后
-# Shift 切换才生效）。病灶在全局 config 的 [Behavior] ActiveByDefault：
-# fcitx5 上游缺省 False = 启动不激活，DefaultIM 只决定“激活后用哪个”。
-# 小节级断言，和 AltTrigger 同标准，不许别处的同名键蒙混。
-FCITX_BEHAVIOR_SECTION="$WORK/fcitx5-behavior"
-awk '/^\[Behavior\]/{in_section=1; next} /^\[/{in_section=0} in_section' "$FCITX_CFG" > "$FCITX_BEHAVIOR_SECTION"
-grep -q '^ActiveByDefault=True$' "$FCITX_BEHAVIOR_SECTION" || {
-    echo 'fcitx5 [Behavior] ActiveByDefault is not True in skel config (fcitx5 would start INACTIVE at login; user must activate once by hand before Shift toggling works)' >&2; exit 1; }
-# 屏幕键盘（2026-10-31 第三轮改版）：Onboard 弃用（用户裁决“更多
-# bug”），回到 GNOME 自带屏幕键盘 + IBus 双栈。断言面五组：
+# 前端模块送达（均对 Bookworm deb 清单实证）：GTK3/GTK4 的输入法
+# 模块在 ibus-gtk3/ibus-gtk4 包里（ibus 本体不含、其 Depends 也不
+# 带），Qt5/Qt6 的 ibus 输入上下文插件分别在 libqt5gui5 与
+# libqt6gui6 里（libqt6gui6 在包清单显式列明，libqt5gui5 由
+# qt5-gtk-platformtheme 锚定）。
+require_path 'usr/lib/x86_64-linux-gnu/gtk-3.0/3.0.0/immodules/im-ibus.so'
+require_path 'usr/lib/x86_64-linux-gnu/gtk-4.0/4.0.0/immodules/libim-ibus.so'
+require_path 'usr/lib/x86_64-linux-gnu/qt5/plugins/platforminputcontexts/libibusplatforminputcontextplugin.so'
+require_path 'usr/lib/x86_64-linux-gnu/qt6/plugins/platforminputcontexts/libibusplatforminputcontextplugin.so'
+# 屏幕键盘（2026-10-31 第三轮立、2026-11-01 第四轮随单框架改版）：
+# Onboard 弃用（用户裁决“更多bug”），用 GNOME 自带屏幕键盘；
+# 第四轮起 IBus 是唯一输入法框架（fcitx5 全栈已退场，其缺席断言
+# 在前文），屏幕键盘与实体键盘共用同一 libpinyin 引擎与输入
+# 上下文，不存在第二栈抢占。断言面五组：
 # ① 自带键盘默认开（小节级断言 screen-keyboard-enabled=true；
 # 第二轮为 Onboard 断言的是 false，随改版反转）；
 # ② Onboard 彻底缺席：dconf 键文件不许再有 [org/onboard*] 小节，
 # 镜像不许有它的二进制/桌面文件/包自带自启/我们的自启（照 VLC
 # 清除那轮的缺席断言体例，查 squashfs 清单）；
-# ③ IBus 双栈送达：守护二进制、libpinyin 引擎组件、包自带的
+# ③ IBus 送达：守护二进制、libpinyin 引擎组件、包自带的
 # GNOME 会话 systemd user unit 与 gnome-session.target.wants
 # 预置启用链接（登录即单实例常驻的原生载体，路径均对 ibus
-# 1.5.27-5 的 deb 清单核实）；
+# 1.5.27-5 的 deb 清单核实）；前端模块（GTK/Qt）在前文 IM 环境
+# 一节断言；
 # ④ 引擎预置文件 etc/dconf/db/ibus.d/50-xwlightos-ibus 在镜像里，
 # 且 [desktop/ibus/general] 小节内 preload-engines 与
-# engines-order 都是 libpinyin（小节级）；
+# engines-order 都是 libpinyin（小节级）；另 libpinyin 引擎偏好
+# 覆盖 91-xwlightos-libpinyin.gschema.override 在镜像里且
+# main-switch='<Shift>'、init-chinese=true，并读编译后生效值
+#（取证：ibus-libpinyin 1.15.1-1 的偏好走真 GSettings schema、
+# 不读 ibus dconf 库，见覆盖文件头注）；
 # ⑤ 无障碍总线 at-spi2-core 送达保留（GNOME 桌面标准件，与
 # Onboard 已解绑）。onboard-data 已随 Onboard 移除；两个 typelib
 # （gir1.2-atspi-2.0、gir1.2-ayatanaappindicator3-0.1）按用户
 # 2026-10-31 18:50 的范围裁决保留在镜像中，本节不再为其设置
 # 断言（其去留不由 Onboard 的门禁裁决）。
-# fcitx5 环境三变量仍为 fcitx 的断言在前文 IM 环境一节（双栈防
-# 污染关口），此处不重复。运行时组字行为构建证不了，属设备
-# 验证项，不得以本节全绿冒充“屏幕键盘已修好”。
+# 会话环境通道=ibus 的断言在前文 IM 环境一节，此处不重复。
+# 运行时组字行为（开机直接中文、Shift 手感、屏幕键盘显示时
+# 实体键盘不被抢）构建证不了，属设备验证项，不得以本节全绿
+# 冒充“屏幕键盘已修好”。
 OSK_DCONF="$WORK/00-xwlightos-gnome-osk"
 cat_image_file 'etc/dconf/db/local.d/00-xwlightos-gnome' "$OSK_DCONF"
 A11Y_APPLICATIONS_SECTION="$WORK/gnome-a11y-applications"
@@ -1236,12 +1228,30 @@ CELLULOID_SECTION="$WORK/celluloid-defaults"
 awk '/^\[io\/github\/celluloid_player\/Celluloid\]/{in_section=1; next} /^\[/{in_section=0} in_section' "$OSK_DCONF" > "$CELLULOID_SECTION"
 grep -q "^mpv-options='hwdec=auto-safe'$" "$CELLULOID_SECTION" || {
     echo 'dconf [io/github/celluloid_player/Celluloid] mpv-options is not hwdec=auto-safe (Celluloid would software-decode on low-spec Intel hardware)' >&2; exit 1; }
-grep -q "^overrides={'Gtk/IMModule':<'fcitx'>}$" "$OSK_DCONF" || {
-    echo 'dconf xsettings does not pin Gtk/IMModule to fcitx (GTK apps could bypass fcitx)' >&2; exit 1; }
-FCITX_PROFILE="$WORK/fcitx5-profile"
-cat_image_file 'etc/skel/.config/fcitx5/profile' "$FCITX_PROFILE"
-grep -q '^Name=keyboard-us$' "$FCITX_PROFILE"
-grep -q '^Name=pinyin$' "$FCITX_PROFILE"
+grep -q "^overrides={'Gtk/IMModule':<'ibus'>}$" "$OSK_DCONF" || {
+    echo 'dconf xsettings does not pin Gtk/IMModule to ibus (GTK apps could bypass IBus)' >&2; exit 1; }
+LIBPINYIN_OVERRIDE="$WORK/91-xwlightos-libpinyin"
+cat_image_file 'usr/share/glib-2.0/schemas/91-xwlightos-libpinyin.gschema.override' "$LIBPINYIN_OVERRIDE"
+grep -q '^\[com.github.libpinyin.ibus-libpinyin.libpinyin\]$' "$LIBPINYIN_OVERRIDE" || {
+    echo 'libpinyin engine-preference override section missing in final ISO' >&2; exit 1; }
+grep -q "^main-switch='<Shift>'$" "$LIBPINYIN_OVERRIDE" || {
+    echo "libpinyin main-switch is not '<Shift>' in the override (Shift would not toggle Chinese/English in the engine)" >&2; exit 1; }
+grep -q '^init-chinese=true$' "$LIBPINYIN_OVERRIDE" || {
+    echo 'libpinyin init-chinese is not true in the override (engine would start in English mode)' >&2; exit 1; }
+# 编译后生效值（与输入源同款查法）：覆盖只有真编进 gschemas.compiled
+# 才算数；读回 main-switch 必须是 '<Shift>'、init-chinese 必须是 true。
+if command -v gsettings >/dev/null 2>&1; then
+    _lp_switch="$(GSETTINGS_SCHEMA_DIR="$FULL_ROOT/usr/share/glib-2.0/schemas" GSETTINGS_BACKEND=memory gsettings get com.github.libpinyin.ibus-libpinyin.libpinyin main-switch 2>/dev/null)" || {
+        echo 'compiled libpinyin schema is unreadable (gschemas.compiled stale or the libpinyin schema is missing)' >&2; exit 1; }
+    [ "$_lp_switch" = "'<Shift>'" ] || {
+        echo "compiled libpinyin main-switch is not '<Shift>' (got $_lp_switch)" >&2; exit 1; }
+    _lp_init="$(GSETTINGS_SCHEMA_DIR="$FULL_ROOT/usr/share/glib-2.0/schemas" GSETTINGS_BACKEND=memory gsettings get com.github.libpinyin.ibus-libpinyin.libpinyin init-chinese 2>/dev/null)" || {
+        echo 'compiled libpinyin init-chinese is unreadable' >&2; exit 1; }
+    [ "$_lp_init" = "true" ] || {
+        echo "compiled libpinyin init-chinese is not true (got $_lp_init)" >&2; exit 1; }
+else
+    echo 'note: gsettings unavailable, skipping compiled libpinyin effective-value checks' >&2
+fi
 # 写错值的 90xwlightos-fcitx5-im（=fcitx5）必须不存在，否则会覆盖正确值
 # （用户 2026-10-18 真机反馈中文无法输入）。
 if grep -q -E '(^|/)etc/X11/Xsession\.d/90xwlightos-fcitx5-im$' "$LIST"; then
@@ -1684,11 +1694,14 @@ grep -q 'XSession=gnome-xorg' "$TARGET_POSTINSTALL" || {
     echo 'target postinstall does not force X11 session for installed account' >&2; exit 1; }
 grep -q 'var/lib/AccountsService/users' "$TARGET_POSTINSTALL" || {
     echo 'target postinstall writes no AccountsService session file' >&2; exit 1; }
-# 用户 2026-10-25 邮件第 6 项：postinstall 必须把 skel 的 fcitx5 配置
-# （双 Shift 触发键）显式补给安装账号，只靠 Calamares 的 skel 继承
-# 一旦漏掉，安装后用户拿到的就是 fcitx5 默认配置、Shift 触发键缺失。
-grep -q 'skel/.config/fcitx5' "$TARGET_POSTINSTALL" || {
-    echo 'target postinstall does not seed fcitx5 config for installed account (Shift trigger relies on skel inheritance alone)' >&2; exit 1; }
+# 输入法补种缺席断言（2026-11-01 第四轮反转 2026-10-25 的在场
+# 断言）：fcitx5 全栈已移除，postinstall 不许再给安装账号补种
+# 任何 fcitx5 配置；IBus/libpinyin 的出厂值全走系统级通道，无
+# per-user 补种段。
+if grep -q 'skel/.config/fcitx5' "$TARGET_POSTINSTALL"; then
+    echo 'target postinstall still seeds fcitx5 config for the installed account (fcitx5 was retired)' >&2; exit 1; fi
+grep -q '^GTK_IM_MODULE=ibus$' "$TARGET_POSTINSTALL" || {
+    echo 'target postinstall /etc/environment recreation fallback does not pin GTK_IM_MODULE to ibus' >&2; exit 1; }
 # 用户 2026-10-25 邮件第 1 项：postinstall 必须把主题文件也补给安装账号，
 # 不能只补 fcitx5——此前三处主题文件全靠 Calamares 的 skel 继承，漏掉
 # 则安装后用户失去 gtk-3.0 深色关闭、.gtkrc-2.0 与 gtk-4.0 样式。
