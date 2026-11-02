@@ -26,12 +26,30 @@
 #   - 无触屏机器：扫描不到设备，直接 no-op 退出，零影响。
 #   - 幂等：已转到 hid-multitouch 的设备不会再被扫描到，可重复跑。
 #   - ops 机型：触屏正常则无事可做，天然跳过，无需专门检测。
+# 阶段三（第七轮，用户 2026-11-02 令“开启怪癖模式”）：
+#   Build 65/67 真机定案：希沃触屏框开机就原生绑在 hid-multitouch
+#   上，阶段一/二在真机上是 moved 0 的 no-op，但持续触摸下
+#   evdev 仍 0 字节——断点在 hid-multitouch 到 input 的映射段。
+#   MT_CLS_DEFAULT 不导出非触摸集合，疑似把触摸数据集合吞掉；
+#   改绑 MT_CLS_EXPORT_ALL_INPUTS（hid-multitouch.c 的 mt_classes
+#   表：0x0013，mt_probe 按 id->driver_data 选类），让驱动导出
+#   全部输入集合。new_id 第 4 字段即 driver_data（十六进制解
+#   析），故写 "3 1ff7 0f26 13"；再 unbind/bind 触发重 probe，类
+#   在 probe 期选定。注意：sysfs quirks 属性只能改 quirks 位掩
+#   码、改不了 export_all_inputs 标志，故不能用它代替本阶段。
+#   范围只限已知 ID 名单（通用阶段一的设备不动，防误伤正常触
+#   屏）；本启动内已处理过的设备名写 marker，诊断重跑时跳过
+#   （/tmp 重启清空，开机服务每启动重做）；重绑失败时用 plain
+#   new_id 再绑一次恢复怪癖前状态，绝不留设备无驱动。
 set -eu
 
 HID_SYS="/sys/bus/hid/devices"
 GENERIC_DRV="/sys/bus/hid/drivers/hid-generic"
 MULTITOUCH_DRV="/sys/bus/hid/drivers/hid-multitouch"
 KNOWN_IDS_CONF="/etc/xwlightos/touchscreen-known-ids.conf"
+# 阶段三类值：MT_CLS_EXPORT_ALL_INPUTS = 0x0013（十进制 19）。
+QUIRK_CLASS_HEX="13"
+QUIRK_MARKER="/tmp/xwlightos-touch-quirks-applied"
 
 # 日志文件落 /tmp 固定路径（2026-11-01 第五轮附带小修）：本脚本既被
 # systemd 服务以 root 身份开机跑，又被触屏诊断脚本以 live 用户身份
@@ -106,6 +124,64 @@ is_generic_bound() {
     [ "$(basename "$(readlink -f "$_drvlink" 2>/dev/null)")" = "hid-generic" ]
 }
 
+# 设备是否正被 hid-multitouch 驱动。
+is_multitouch_bound() {
+    _dev="$1"
+    _drvlink="$HID_SYS/$_dev/driver"
+    [ -L "$_drvlink" ] || return 1
+    [ "$(readlink "$_drvlink")" = "../../drivers/hid-multitouch" ] || \
+    [ "$(basename "$(readlink -f "$_drvlink" 2>/dev/null)")" = "hid-multitouch" ]
+}
+
+# 阶段三单设备：把已绑 hid-multitouch 的已知 ID 设备改绑
+# MT_CLS_EXPORT_ALL_INPUTS。参数：sysfs 设备名。
+# 调用者保证：设备当前绑 hid-multitouch、ID 在名单里。
+apply_mt_class_quirk() {
+    _dev="$1"
+    _uevent="$HID_SYS/$_dev/uevent"
+    [ -f "$_uevent" ] || return 0
+
+    _hid_id="$(sed -n 's/^HID_ID=//p' "$_uevent" | head -1)"
+    [ -n "$_hid_id" ] || return 0
+    _bus="$(echo "$_hid_id" | cut -d: -f1)"
+    _vid="$(echo "$_hid_id" | cut -d: -f2)"
+    _pid="$(echo "$_hid_id" | cut -d: -f3)"
+    _bus_h="$(printf '%x' "0x$_bus" 2>/dev/null || echo "$_bus")"
+    _vid_h="$(printf '%x' "0x$_vid" 2>/dev/null || echo "$_vid")"
+    _pid_h="$(printf '%x' "0x$_pid" 2>/dev/null || echo "$_pid")"
+    _name="$(sed -n 's/^HID_NAME=//p' "$_uevent" | head -1)"
+
+    # 重绑前该名字在输入设备里的节点数（类切换是否生效的旁证：
+    # EXPORT_ALL_INPUTS 会多导出非触摸集合，节点数应变多）。
+    _before="$(grep -cF "Name=\"$_name\"" /proc/bus/input/devices 2>/dev/null || true)"
+    [ -n "$_before" ] || _before=0
+
+    # 1. 注册带类值的 id（已注册过会报 exists，忽略）。
+    echo "$_bus_h $_vid_h $_pid_h $QUIRK_CLASS_HEX" > "$MULTITOUCH_DRV/new_id" 2>/dev/null || true
+    # 2. 解绑。
+    if ! echo "$_dev" > "$MULTITOUCH_DRV/unbind" 2>/dev/null; then
+        log "quirks: unbind $_dev ($_name) from hid-multitouch failed, skip"
+        return 0
+    fi
+    # 3. 重绑：probe 按 new_id 的 driver_data 选类。
+    if echo "$_dev" > "$MULTITOUCH_DRV/bind" 2>/dev/null; then
+        _after="$(grep -cF "Name=\"$_name\"" /proc/bus/input/devices 2>/dev/null || true)"
+        [ -n "$_after" ] || _after=0
+        log "quirks: $_dev ($_name) rebound to hid-multitouch with MT_CLS_EXPORT_ALL_INPUTS (0x13), input nodes ${_before}->${_after}"
+        ( umask 000; echo "$_dev" >> "$QUIRK_MARKER" ) 2>/dev/null || true
+        _quirked=$((_quirked + 1))
+    else
+        log "quirks: bind $_dev ($_name) with class failed, restoring plain binding"
+        echo "$_bus_h $_vid_h $_pid_h" > "$MULTITOUCH_DRV/new_id" 2>/dev/null || true
+        if echo "$_dev" > "$MULTITOUCH_DRV/bind" 2>/dev/null; then
+            log "quirks: $_dev ($_name) restored to hid-multitouch without class"
+        else
+            log "quirks: RESTORE FAILED for $_dev ($_name), device left unbound (needs replug/reboot)"
+        fi
+    fi
+    return 0
+}
+
 _moved=0
 
 # ---- 阶段一：通用兜底 ----
@@ -153,5 +229,38 @@ if [ -f "$KNOWN_IDS_CONF" ]; then
     done < "$KNOWN_IDS_CONF"
 fi
 
-log "done, moved $_moved device(s) to hid-multitouch"
+# ---- 阶段三：已知 ID 怪癖类（第七轮）----
+# 只对名单里的设备、且当前已绑 hid-multitouch 的做。本启动内
+# 已处理过的设备名在 marker 里，诊断重跑时跳过（/tmp 重启清空，
+# 开机服务每启动重做）。阶段一/二先跑完：hid-generic 上的名单
+# 设备被挪过来后，本循环正好接住它。
+_quirked=0
+if [ -f "$KNOWN_IDS_CONF" ]; then
+    while IFS= read -r _line || [ -n "$_line" ]; do
+        _line="$(echo "$_line" | sed 's/#.*//; s/[[:space:]]//g')"
+        [ -n "$_line" ] || continue
+        _wvid="$(echo "$_line" | cut -d: -f1 | tr 'A-F' 'a-f')"
+        _wpid="$(echo "$_line" | cut -d: -f2 | tr 'A-F' 'a-f')"
+        [ -n "$_wvid" ] && [ -n "$_wpid" ] || continue
+        _wvid_n="$(printf '%x' "0x$_wvid" 2>/dev/null || echo "$_wvid")"
+        _wpid_n="$(printf '%x' "0x$_wpid" 2>/dev/null || echo "$_wpid")"
+        for _devpath in "$HID_SYS"/*; do
+            _dev="$(basename "$_devpath")"
+            is_multitouch_bound "$_dev" || continue
+            _hid_id="$(sed -n 's/^HID_ID=//p' "$_devpath/uevent" 2>/dev/null | head -1)"
+            [ -n "$_hid_id" ] || continue
+            _dvid="$(printf '%x' "0x$(echo "$_hid_id" | cut -d: -f2)" 2>/dev/null)"
+            _dpid="$(printf '%x' "0x$(echo "$_hid_id" | cut -d: -f3)" 2>/dev/null)"
+            if [ "$_dvid" = "$_wvid_n" ] && [ "$_dpid" = "$_wpid_n" ]; then
+                if [ -f "$QUIRK_MARKER" ] && grep -qxF "$_dev" "$QUIRK_MARKER" 2>/dev/null; then
+                    log "quirks: $_dev already quirked this boot, skip"
+                    continue
+                fi
+                apply_mt_class_quirk "$_dev"
+            fi
+        done
+    done < "$KNOWN_IDS_CONF"
+fi
+
+log "done, moved $_moved device(s) to hid-multitouch, quirked $_quirked device(s)"
 exit 0

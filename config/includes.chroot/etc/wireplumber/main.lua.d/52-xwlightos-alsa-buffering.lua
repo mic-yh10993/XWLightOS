@@ -9,15 +9,18 @@
 -- 杠杆（属性名与结构均以随包文件 50-alsa-config.lua 为准，不猜）：
 -- WirePlumber 的 vm.node.defaults 对虚拟机给的是 period-size=256
 -- （48kHz 下约 5.3ms 一段，模拟声卡根本喂不及）、headroom=8192。
--- 这里把 VM 默认的 period 提到 1024（约 21ms），并给全部 ALSA
+-- 这里把 VM 默认的 period 提到 2048（约 42ms），并给全部 ALSA
 -- 输出节点追加同一组规则——真机（希沃 HDA）也适用：period 加大
--- 只增加约十几毫秒延迟、换欠载余量，对课堂播放无副作用。
+-- 只增加约几十毫秒延迟、换欠载余量，对课堂播放无副作用。
 -- 配套：图级 quantum 下限已在 pipewire 的 drop-in
--- （51-xwlightos-quantum.conf）同步钉到 1024、rtkit 已进包清单
--- （数据线程实时优先级）；若个别环境仍断续，下一杠杆是 2048。
+-- （51-xwlightos-quantum.conf）同步钉到 2048、rtkit 已进包清单
+-- （数据线程实时优先级）；2026-11-02 第七轮（用户令“调高缓存”，
+-- 推翻 10-31 不加档决定）：真机本地视频嘟嘟卡顿、选错设备已排
+-- 除，故 period 1024→2048、headroom 8192→16384；若本档仍断，
+-- 下一杠杆是查链路本身（USB 音频 gadget 路径），不是继续加档。
 alsa_monitor.properties["vm.node.defaults"] = {
-  ["api.alsa.period-size"] = 1024,
-  ["api.alsa.headroom"] = 8192,
+  ["api.alsa.period-size"] = 2048,
+  ["api.alsa.headroom"] = 16384,
 }
 
 table.insert(alsa_monitor.rules, {
@@ -27,7 +30,7 @@ table.insert(alsa_monitor.rules, {
     },
   },
   apply_properties = {
-    ["api.alsa.period-size"] = 1024,
-    ["api.alsa.headroom"] = 8192,
+    ["api.alsa.period-size"] = 2048,
+    ["api.alsa.headroom"] = 16384,
   },
 })

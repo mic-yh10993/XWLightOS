@@ -13,6 +13,10 @@
 # 窗口并读（第 7、8 节）+ 报告描述符触摸段（第 14 节）定下一岔
 # 口；ABS/udev/Xorg/libinput/xinput 各节降为存档。开机拍照即可。
 # 注意：本文件刻意不用方括号测试（用 test 命令），避免写盘时被改写。
+# 2026-11-02 第七轮：修复脚本新增阶段三（已知 ID 改绑
+# MT_CLS_EXPORT_ALL_INPUTS），诊断新增第 15 节怪癖状态与第 16 节
+# 音频诊断，结论区加第 8、9 项；用户只开机拍照即可验收怪癖与
+# 缓冲加档是否生效。
 OUT="$HOME/xwlightos-touch-diag.txt"
 {
 clear
@@ -199,6 +203,29 @@ else
 echo "  读不到报告描述符（debugfs 需 root，live 用户被拒属预期；此路不通则改走 root 通道回传）"
 _RDESC="读不到（debugfs 权限）"
 fi
+echo "15. 怪癖模式状态（第七轮：已知 ID 设备是否已改绑 EXPORT_ALL_INPUTS）："
+_QLINE=$(grep 'quirks:' /tmp/xwlightos-touchscreen-fix.log 2>/dev/null | tail -3)
+if test -n "$_QLINE"; then echo "$_QLINE" | sed 's/^/  /'; else echo "  （fix 日志里没有 quirks 行：阶段三未对任何设备动手）"; fi
+_QBIND=""
+for _qd in /sys/bus/hid/devices/*1FF7:0F26*; do
+test -e "$_qd/uevent" || continue
+if _qlink=$(readlink "$_qd/driver" 2>/dev/null); then _qdrv=$(basename "$_qlink"); else _qdrv="无驱动"; fi
+_QBIND="$_QBIND $(basename "$_qd")=$_qdrv"
+done
+if test -n "$_QBIND"; then echo "  1FF7:0F26 当前绑定：$_QBIND"; else echo "  （找不到 1FF7:0F26 的 HID 设备目录）"; fi
+if grep -q 'rebound to hid-multitouch with MT_CLS_EXPORT_ALL_INPUTS' /tmp/xwlightos-touchscreen-fix.log 2>/dev/null; then _QUIRK="已改绑 EXPORT_ALL_INPUTS（0x13）";
+elif grep -q 'already quirked' /tmp/xwlightos-touchscreen-fix.log 2>/dev/null; then _QUIRK="本启动已改绑（重跑跳过）";
+else _QUIRK="未应用"; fi
+echo "16. 音频诊断（第七轮新增：默认输出、音量、缓冲档位）："
+_PWU=$(systemctl --user is-active pipewire wireplumber 2>/dev/null | tr '\n' ' ')
+if test -n "$_PWU"; then echo "  pipewire/wireplumber 用户服务：$_PWU"; else echo "  （读不到用户服务状态）"; fi
+_DS=$(pactl info 2>/dev/null | grep 'Default Sink')
+if test -n "$_DS"; then echo "  $_DS"; else echo "  （pactl 读不到默认输出）"; fi
+_DV=$(pactl get-sink-volume @DEFAULT_SINK@ 2>/dev/null)
+if test -n "$_DV"; then echo "  默认输出音量：$_DV"; else echo "  （读不到默认输出音量）"; fi
+echo "  缓冲档位（镜像静态值）："
+grep -h 'min-quantum' /etc/pipewire/pipewire.conf.d/51-xwlightos-quantum.conf 2>/dev/null | head -1 | sed 's/^/    /'
+grep -h 'api.alsa.period-size\|api.alsa.headroom' /etc/wireplumber/main.lua.d/52-xwlightos-alsa-buffering.lua 2>/dev/null | head -2 | sed 's/^/    /'
 # 结论区第 6 项的取材：希沃厂商服务与 udi 条目的在跑状态（验证
 # “厂商服务负责触屏初始化/映射、而它没在 Linux 这边跑”这条假设）。
 _SEEWO=$(systemctl list-units --all 'com.seewo.*' --no-legend --no-pager 2>/dev/null | awk '{ gsub(/\.service$/, "", $1); printf "%s=%s ", $1, $3 }')
@@ -214,6 +241,8 @@ echo "4) 报告描述符（第14节）：${_RDESC:-未取}"
 echo "5) 上层存档（已定无罪）：udev ${_UDEVTS:-未知}；Xorg ${_XTAG:-未知}；xinput ${_XIN:-未知}"
 echo "6) 厂商服务：${_SEEWO}；udi 条目：${_UDI}"
 echo "7) 触摸窗口内 hidraw 占用：${_HOLDLINE:-未采样}"
-echo "判读：断点在 hid-multitouch 到 input 的映射段；下一步定案点是第 2 项与第 4 项。"
+echo "8) 怪癖模式（第15节）：${_QUIRK:-未知}"
+echo "9) 音频（第16节）：${_DS:-未知默认输出}；${_DV:-未知音量}"
+echo "判读：断点在 hid-multitouch 到 input 的映射段；本版已开启怪癖模式（EXPORT_ALL_INPUTS），若第 7/8 节仍为 0，说明怪癖未打通，下一岔口是安卓板转发/主机握手。"
 echo "诊断结束。请把本屏拍照发给助手。"
 } 2>&1 | tee "$OUT"

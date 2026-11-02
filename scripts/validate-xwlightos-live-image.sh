@@ -143,26 +143,28 @@ grep -q '^\s*device_defaults\.properties\["default-volume"\] = 0\.614' "$WP_DEFA
     echo 'wireplumber drop-in does not raise the new-device default volume to 0.614 linear (~0.85 shown; fresh/live sessions would start at ~6% gain)' >&2; exit 1; }
 # 播放缓冲门禁（用户 2026-10-31 实测：VM 里看视频声音持续断续，
 # speaker-test 大缓冲却干净——小 quantum 实时投递喂不及模拟 HDA）。
-# drop-in 必须把 vm.node.defaults 的 period 提到 1024 并给全部 ALSA
+# drop-in 必须把 vm.node.defaults 的 period 提到 2048 并给全部 ALSA
 # 输出节点追加同组规则（属性名以随包 50-alsa-config.lua 为准）。
+# 2026-11-02 第七轮（用户令“调高缓存”）：真机嘟嘟卡顿、选错设备
+# 已排除，period 1024→2048、headroom 8192→16384。
 WP_BUFFERING_DROPIN="$WORK/wp-alsa-buffering"
 cat_image_file 'etc/wireplumber/main.lua.d/52-xwlightos-alsa-buffering.lua' "$WP_BUFFERING_DROPIN"
 grep -q 'alsa_monitor\.properties\["vm\.node\.defaults"\]' "$WP_BUFFERING_DROPIN" || {
     echo 'wireplumber buffering drop-in does not override vm.node.defaults' >&2; exit 1; }
 grep -q 'table\.insert(alsa_monitor\.rules' "$WP_BUFFERING_DROPIN" || {
     echo 'wireplumber buffering drop-in adds no alsa_monitor rule for output nodes' >&2; exit 1; }
-grep -q '\["api\.alsa\.period-size"\] = 1024' "$WP_BUFFERING_DROPIN" || {
-    echo 'wireplumber buffering drop-in does not raise api.alsa.period-size to 1024' >&2; exit 1; }
-grep -q '\["api\.alsa\.headroom"\] = 8192' "$WP_BUFFERING_DROPIN" || {
-    echo 'wireplumber buffering drop-in does not set api.alsa.headroom to 8192' >&2; exit 1; }
+grep -q '\["api\.alsa\.period-size"\] = 2048' "$WP_BUFFERING_DROPIN" || {
+    echo 'wireplumber buffering drop-in does not raise api.alsa.period-size to 2048' >&2; exit 1; }
+grep -q '\["api\.alsa\.headroom"\] = 16384' "$WP_BUFFERING_DROPIN" || {
+    echo 'wireplumber buffering drop-in does not set api.alsa.headroom to 16384' >&2; exit 1; }
 # 图 quantum 下限 + 实时优先级（同属抗负载断续一线）：随包 pipewire.conf
 # 出厂 min-quantum=16，单个流能把图拉到 0.33ms 一轮，弱虚拟 CPU 上
-# 数据线程被饿死。drop-in 必须钉到 1024；rtkit 必须真实进镜像
+# 数据线程被饿死。drop-in 必须钉到 2048（第七轮用户令加档）；rtkit 必须真实进镜像
 # （Build 57 缺它，module-rt 申请不到 SCHED_FIFO）。
 PW_QUANTUM_DROPIN="$WORK/pw-quantum"
 cat_image_file 'etc/pipewire/pipewire.conf.d/51-xwlightos-quantum.conf' "$PW_QUANTUM_DROPIN"
-grep -q 'default\.clock\.min-quantum = 1024' "$PW_QUANTUM_DROPIN" || {
-    echo 'pipewire drop-in does not floor default.clock.min-quantum at 1024 (a stream could drag the graph to 16-sample quanta and starve on weak virtual CPUs)' >&2; exit 1; }
+grep -q 'default\.clock\.min-quantum = 2048' "$PW_QUANTUM_DROPIN" || {
+    echo 'pipewire drop-in does not floor default.clock.min-quantum at 2048 (a stream could drag the graph to 16-sample quanta and starve on weak virtual CPUs)' >&2; exit 1; }
 require_path 'usr/libexec/rtkit-daemon'
 # 摄像头：cheese（GNOME 拍照应用）。
 require_path 'usr/bin/cheese'
@@ -392,6 +394,16 @@ grep -q '^LOG_FILE="/tmp/xwlightos-touchscreen-fix.log"$' "$TS_FIX_SCRIPT" \
     || { echo 'touchscreen fix log path is not the user-writable /tmp file (live-user rerun would lose the diagnostic log)' >&2; exit 1; }
 if grep -v '^[[:space:]]*#' "$TS_FIX_SCRIPT" | grep -q '/var/log/xwlightos-touchscreen-fix\.log'; then
     echo 'touchscreen fix script still writes its log under /var/log in code (root-owned file blocks the live-user rerun append)' >&2; exit 1; fi
+# 阶段三（2026-11-02 第七轮，用户令“开启怪癖模式”）：已知 ID 设备
+# 已绑 hid-multitouch 时，脚本必须有改绑 MT_CLS_EXPORT_ALL_INPUTS
+# 的逻辑（new_id 带类值 + rebind + 失败回退），否则真机上阶段
+# 一/二 moved 0、怪癖等于没开。
+grep -q 'MT_CLS_EXPORT_ALL_INPUTS' "$TS_FIX_SCRIPT" \
+    || { echo 'touchscreen fix script lost its stage-3 quirk class (MT_CLS_EXPORT_ALL_INPUTS; the already-bound device would never leave MT_CLS_DEFAULT)' >&2; exit 1; }
+grep -q 'QUIRK_MARKER' "$TS_FIX_SCRIPT" \
+    || { echo 'touchscreen fix script lost its stage-3 idempotency marker (diag rerun would rebind the device every time)' >&2; exit 1; }
+grep -q 'restoring plain binding' "$TS_FIX_SCRIPT" \
+    || { echo 'touchscreen fix script lost its stage-3 restore path (a failed rebind could leave the device driverless)' >&2; exit 1; }
 TS_DIAG_SCRIPT="$WORK/xwlightos-touch-diag.sh"
 cat_image_file 'usr/local/sbin/xwlightos-touch-diag.sh' "$TS_DIAG_SCRIPT"
 grep -q '/tmp/xwlightos-touchscreen-fix\.log' "$TS_DIAG_SCRIPT" \
@@ -434,6 +446,17 @@ grep -q 'com.seewo' "$TS_DIAG_SCRIPT" \
     || { echo 'touch diag script lost its vendor-service status line in the conclusion block (Seewo/udi init-service hypothesis check)' >&2; exit 1; }
 grep -q 'hidraw 占用' "$TS_DIAG_SCRIPT" \
     || { echo 'touch diag script lost its in-window hidraw holder scan in the conclusion block' >&2; exit 1; }
+# 第七轮新增两节（用户令：修复诊断程序）：怪癖状态节（阶段三是
+# 否动手、当前绑定）与音频诊断节（默认输出、音量、缓冲档位），
+# 结论区第 8、9 项与之对应；丢了则下一张照片验不了怪癖与加档。
+grep -q '怪癖模式状态' "$TS_DIAG_SCRIPT" \
+    || { echo 'touch diag script lost its quirk-mode status section (round 7: whether stage 3 rebound the device would be unverifiable from the photo)' >&2; exit 1; }
+grep -q '音频诊断' "$TS_DIAG_SCRIPT" \
+    || { echo 'touch diag script lost its audio diagnosis section (round 7: default sink, volume and buffer档位 would be unverifiable from the photo)' >&2; exit 1; }
+grep -q '怪癖模式（第15节）' "$TS_DIAG_SCRIPT" \
+    || { echo 'touch diag script lost conclusion item 8 (quirk-mode status)' >&2; exit 1; }
+grep -q '音频（第16节）' "$TS_DIAG_SCRIPT" \
+    || { echo 'touch diag script lost conclusion item 9 (audio status)' >&2; exit 1; }
 # 实体键盘在场守候已删除（2026-11-01 第六轮，用户裁决）：第五轮
 # 的 xwlightos-keyboard-watch（连着实体键盘就不弹 OSK）在希沃上
 # 必然误判——希沃遥控器的接收器在 evdev 眼里就是一个带完整键位
