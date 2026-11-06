@@ -493,8 +493,41 @@ grep -q 'diag-window-open' "$TS_DIAG_SCRIPT" \
     || { echo 'touch diag script lost its diag-window marker for the root hidraw sampler (root sampling would never sync with the touch window)' >&2; exit 1; }
 grep -q 'xwlightos-touch-evidence' "$TS_DIAG_SCRIPT" \
     || { echo 'touch diag script lost its round-8 evidence directory reads (section 17 would have nothing to show)' >&2; exit 1; }
-grep -q 'MI 接口绑定（第17节' "$TS_DIAG_SCRIPT" \
-    || { echo 'touch diag script lost its MI_01 binding record in the conclusion block (round 8: recorded, never touched)' >&2; exit 1; }
+grep -q 'MI 接口隔离（第17节' "$TS_DIAG_SCRIPT" \
+    || { echo 'touch diag script lost its MI_01 isolation status in the conclusion block (round 9: MI_01 is isolated to mirror the Windows unstarted state; its status must stay visible)' >&2; exit 1; }
+# 第九轮对齐 Windows 打包（用户令先改再测、一次搞定）：五件缺
+# 一不可，且每件都要有运行时证据，否则真机照片分不清是哪件
+# 没落地。逐件钉住：usbhid quirks 出货文件与精确掩码（位值按
+# 出货内核 6.1 的 include/linux/hid.h 核实：NOGET=BIT(3)=0x8、
+# NO_INIT_REPORTS=BIT(29)=0x20000000，合并 0x20000008，写错
+# 一位等于没对齐）；阶段四 MI_01 隔离与接口号双重校验；阶段
+# 六 SET 重试（HIDIOCSFEATURE + ev_setfeature.txt 证据）；阶
+# 段五 autosuspend（power/control）；对齐汇总 align-status；
+# 诊断侧 quirks 运行时回读（只看文件在不在会把没生效误判成
+# 成功）与结论区第 3 项对齐包。
+require_path 'etc/modprobe.d/xwlightos-touch-quirks.conf'
+TS_QUIRKS_FILE="$WORK/xwlightos-touch-quirks.conf"
+cat_image_file 'etc/modprobe.d/xwlightos-touch-quirks.conf' "$TS_QUIRKS_FILE"
+grep -q '^options usbhid quirks=0x1ff7:0x0f26:0x20000008$' "$TS_QUIRKS_FILE" \
+    || { echo 'shipped usbhid quirks file lost the verified mask line (NOGET 0x8 | NO_INIT_REPORTS 0x20000000 = 0x20000008, per kernel 6.1 include/linux/hid.h)' >&2; exit 1; }
+grep -q 'stage4_isolate_mi01' "$TS_FIX_SCRIPT" \
+    || { echo 'touchscreen fix script lost its round-9 stage-4 MI_01 isolation (Windows leaves that interface unstarted; Linux binding it is a structural difference)' >&2; exit 1; }
+grep -q 'bInterfaceNumber' "$TS_FIX_SCRIPT" \
+    || { echo 'touchscreen fix script lost its MI_01 interface-number double check (isolation could hit the wrong interface, e.g. the touch-bearing MI_00)' >&2; exit 1; }
+grep -q 'stage6_set_input_mode' "$TS_FIX_SCRIPT" \
+    || { echo 'touchscreen fix script lost its round-9 stage-6 Input Mode SET retry (Windows guarantees this SET_FEATURE lands, with retries)' >&2; exit 1; }
+grep -q 'HIDIOCSFEATURE' "$TS_FIX_SCRIPT" \
+    || { echo 'touchscreen fix script lost its HIDIOCSFEATURE delivery path for the Input Mode SET' >&2; exit 1; }
+grep -q 'ev_setfeature' "$TS_FIX_SCRIPT" \
+    || { echo 'touchscreen fix script lost its ev_setfeature.txt evidence (SET delivery attempts would be unverifiable from the photo)' >&2; exit 1; }
+grep -q 'power/control' "$TS_FIX_SCRIPT" \
+    || { echo 'touchscreen fix script lost its round-9 autosuspend-off stage (power/control pinned on)' >&2; exit 1; }
+grep -q 'align-status' "$TS_FIX_SCRIPT" \
+    || { echo 'touchscreen fix script lost its round-9 align-status.txt bundle summary' >&2; exit 1; }
+grep -q '/sys/module/usbhid/parameters/quirks' "$TS_DIAG_SCRIPT" \
+    || { echo 'touch diag script lost its round-9 usbhid quirks runtime readback (a modprobe.d file that never took effect would look identical to success)' >&2; exit 1; }
+grep -q '对齐包（第九轮）' "$TS_DIAG_SCRIPT" \
+    || { echo 'touch diag script lost conclusion item 3 (round-9 alignment bundle status: class, MI_01, quirks readback, SET retry, autosuspend)' >&2; exit 1; }
 # 实体键盘在场守候已删除（2026-11-01 第六轮，用户裁决）：第五轮
 # 的 xwlightos-keyboard-watch（连着实体键盘就不弹 OSK）在希沃上
 # 必然误判——希沃遥控器的接收器在 evdev 眼里就是一个带完整键位

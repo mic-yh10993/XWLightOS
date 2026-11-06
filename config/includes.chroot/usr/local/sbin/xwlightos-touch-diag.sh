@@ -26,6 +26,14 @@
 # Mode 与 hidraw 字节排最前，旧项合并压缩。采样窗开始时本
 # 脚本创建 /tmp/xwlightos-touch-evidence/diag-window-open
 # 标记通知 root sampler 同窗采样，窗口结束删除。
+# 2026-11-06 第九轮：对齐 Windows 打包（用户令先改再测、
+# 一次搞定）：修复脚本新增阶段四 MI_01 隔离（复刻 Windows
+# 该接口 Error 未启动的无驱动状态）、阶段五关该设备
+# autosuspend、阶段六 Input Mode 的 SET 重试送达，并出货
+# modprobe.d 给 usbhid 加 NOGET 与 NO_INIT_REPORTS 怪癖；
+# 第 17 节相应加对齐包状态、SET 重试证据、quirks 运行时回
+# 读与 autosuspend 回读，结论区新增第 3 项汇总对齐包，原
+# 第 3~9 项顺延为第 4~10 项，判读文案同步更新。
 OUT="$HOME/xwlightos-touch-diag.txt"
 {
 clear
@@ -287,7 +295,7 @@ else
 echo "    （sampler 结果缺失：服务未跑或未等到窗口）"
 fi
 if test -z "$_HRROOT"; then _HRROOT="未采样（sampler 结果缺失）"; fi
-echo "  USB 接口绑定（1FF7:0F26，普通用户直读，仅记录、第八轮不动它）："
+echo "  USB 接口绑定（1FF7:0F26，普通用户直读；第九轮起 MI_01 由修复脚本隔离，复刻 Windows 该接口 Error 未启动）："
 _MILINE=""
 for _ud in /sys/bus/usb/devices/*; do
 test -f "$_ud/idVendor" || continue
@@ -302,6 +310,45 @@ _MILINE="$_MILINE MI_$_mi=$_idrv"
 done
 done
 if test -z "$_MILINE"; then echo "    （没找到 1FF7:0F26 的 USB 设备目录）"; _MILINE="未找到设备"; fi
+_MI01V="未知"
+case "$_MILINE" in
+*"MI_01=无驱动"*) _MI01V="已隔离（无驱动）" ;;
+*"MI_01="*) _MI01V="仍有驱动（未隔离）" ;;
+esac
+echo "  对齐包状态（第九轮：root 汇总的 align-status 与 SET 重试证据）："
+if test -f "$_EVD/align-status.txt"; then
+sed 's/^/    /' "$_EVD/align-status.txt" 2>/dev/null | head -10
+else
+echo "    （align-status.txt 缺失：fix 服务未以 root 汇总过）"
+fi
+_SETV=""
+if test -f "$_EVD/ev_setfeature.txt"; then
+grep -E '^(目标|PAYLOAD|ATTEMPT|RESULT|OPEN_FAIL|SET重试结果)' "$_EVD/ev_setfeature.txt" 2>/dev/null | sed 's/^/    /' | head -8
+_SETV=$(grep '^SET重试结果' "$_EVD/ev_setfeature.txt" 2>/dev/null | head -1)
+else
+echo "    （ev_setfeature.txt 缺失：SET 重试证据未生成）"
+fi
+if test -z "$_SETV"; then _SETV="SET重试结果：无证据"; fi
+echo "  usbhid quirks 运行时回读（出货 modprobe.d 是否真生效，看模块参数不是看文件）："
+_QKRAW=$(cat /sys/module/usbhid/parameters/quirks 2>/dev/null)
+if test -n "$_QKRAW"; then
+echo "    $_QKRAW" | head -2
+if echo "$_QKRAW" | grep -qi '1ff7' && echo "$_QKRAW" | grep -q '20000008'; then _QKV="quirks 已生效（运行时参数含 1FF7:0F26 掩码 0x20000008）";
+else _QKV="quirks 未见目标项（运行时参数里没有 1FF7:0F26 的 0x20000008，modprobe.d 可能未被 initramfs 纳入）"; fi
+else
+echo "    （读不到 /sys/module/usbhid/parameters/quirks：usbhid 未加载或参数不可读）"
+_QKV="quirks 回读不可用"
+fi
+echo "  autosuspend 回读（第九轮阶段五应把该设备 power/control 钉在 on）："
+_ASV="未知"
+for _ud2 in /sys/bus/usb/devices/*; do
+test -f "$_ud2/idVendor" || continue
+test "$(cat "$_ud2/idVendor" 2>/dev/null)" = "1ff7" || continue
+test "$(cat "$_ud2/idProduct" 2>/dev/null)" = "0f26" || continue
+_ASV=$(cat "$_ud2/power/control" 2>/dev/null)
+echo "    $(basename "$_ud2") power/control=${_ASV:-读不到}"
+done
+if test "$_ASV" = "未知"; then echo "    （没找到 1FF7:0F26 的 USB 设备目录）"; fi
 # 结论区第 8 项的取材：希沃厂商服务与 udi 条目的在跑状态（验证
 # “厂商服务负责触屏初始化/映射、而它没在 Linux 这边跑”这条假设）。
 _SEEWO=$(systemctl list-units --all 'com.seewo.*' --no-legend --no-pager 2>/dev/null | awk '{ gsub(/\.service$/, "", $1); printf "%s=%s ", $1, $3 }')
@@ -312,13 +359,14 @@ echo "--------------------------------------------------"
 echo "===== 结论区（拍这一屏即可） ====="
 echo "1) Input Mode（第17节）：${_IMLINE:-未知}；${_SETLINE:-SET 未知}；${_STLINE:-状态未知}"
 echo "2) hidraw 原始字节（第8节）：root ${_HRROOT:-未采样}；live 用户 ${_HR:-未采样}（大于 0 而 evdev 全 0→映射层；同为 0→设备没发报告）"
-echo "3) 四节点事件字节（第7节）：${_EVSUM:-未采样}"
-echo "4) 怪癖模式（第15节）：${_QUIRK:-未知}"
-echo "5) MI 接口绑定（第17节，仅记录）：${_MILINE:-未知}"
-echo "6) ABS 的 MT 位（第9节）：${_MT:-未读到}；报告描述符（第14节）：${_RDESC:-未取}"
-echo "7) 上层存档（已定无罪）：udev ${_UDEVTS:-未知}；Xorg ${_XTAG:-未知}；xinput ${_XIN:-未知}"
-echo "8) 厂商服务：${_SEEWO}；udi 条目：${_UDI}；hidraw 占用：${_HOLDLINE:-未采样}"
-echo "9) 音频（第16节）：${_DS:-未知默认输出}；${_DV:-未知音量}"
-echo "判读：本版已按对齐 Windows 改绑 WIN_8 类。第 1 项：SET_REPORT 提交=0→内核没把 Input Mode 发出去（描述符解析差异）；提交大于 0 且完成状态有负数→gadget 拒收；提交大于 0、状态为 0 但第 2/3 项仍全 0→gadget 收到仍不报触摸（安卓板转发/固件条件方向）。"
+echo "3) 对齐包（第九轮）：类 ${_QUIRK:-未知}；MI_01 ${_MI01V:-未知}；${_QKV:-quirks 未知}；${_SETV:-SET 无证据}；autosuspend power/control=${_ASV:-未知}"
+echo "4) 四节点事件字节（第7节）：${_EVSUM:-未采样}"
+echo "5) 怪癖模式（第15节）：${_QUIRK:-未知}"
+echo "6) MI 接口隔离（第17节）：${_MILINE:-未知}"
+echo "7) ABS 的 MT 位（第9节）：${_MT:-未读到}；报告描述符（第14节）：${_RDESC:-未取}"
+echo "8) 上层存档（已定无罪）：udev ${_UDEVTS:-未知}；Xorg ${_XTAG:-未知}；xinput ${_XIN:-未知}"
+echo "9) 厂商服务：${_SEEWO}；udi 条目：${_UDI}；hidraw 占用：${_HOLDLINE:-未采样}"
+echo "10) 音频（第16节）：${_DS:-未知默认输出}；${_DV:-未知音量}"
+echo "判读：本版是对齐 Windows 一次到位包（WIN_8 类 + MI_01 隔离 + usbhid 少提问 + SET 重试送达 + 关自动挂起）。第 1 项：SET_REPORT 提交=0→内核没把 Input Mode 发出去（描述符解析差异）；提交大于 0 且完成状态有负数→gadget 拒收。第 3 项 SET 重试显示已送达、完成状态无负数、但第 2/4 项仍全 0→设备收到配置仍不报触摸（安卓板转发/固件条件方向）；若第 3 项显示 quirks 未生效，先修 quirks 落地再下结论。"
 echo "诊断结束。请把结论区拍照发给助手（可分两屏，第 1、2 项必须拍到）。"
 } 2>&1 | tee "$OUT"

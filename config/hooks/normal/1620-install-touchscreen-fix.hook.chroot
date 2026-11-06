@@ -30,7 +30,11 @@
 #   同样带 export_all_inputs，并经 mt_set_modes 发 Input Mode
 #   的 SET_REPORT）。脚本还带第八轮 root 取证：rdesc 摘要、
 #   usbmon 枚举期控制传输统计（本钩子只验类值与 sampler 单元，
-#   取证细节由镜像校验脚本断言）
+#   取证细节由镜像校验脚本断言）。第九轮起另有对齐打包：
+#   阶段四 MI_01 隔离、阶段五关 autosuspend、阶段六 Input
+#   Mode 的 SET 重试送达，及 /etc/modprobe.d 的 usbhid
+#   quirks 出货文件（本钩子验 quirks 文件与掩码、阶段四/六
+#   关键串，细节断言在镜像校验脚本）
 # - /etc/systemd/system/xwlightos-touchscreen-fix.service：oneshot 开机服务
 # - multi-user.target.wants 符号链接：构建期启用（仿 xwlightos-live-session-init）
 set -eu
@@ -110,6 +114,28 @@ grep -q '^ExecStart=/usr/local/sbin/xwlightos-touchscreen-fix.sh sampler$' \
 # 非标设备不会触发该模块自动加载，缺了这行脚本会静默退出、修法等于没跑。
 grep -q 'modprobe hid-multitouch' /usr/local/sbin/xwlightos-touchscreen-fix.sh || {
     echo 'XWLightOS: xwlightos-touchscreen-fix.sh lost modprobe hid-multitouch (fix would silently no-op)' >&2
+    exit 1
+}
+# 6. 第九轮对齐包：usbhid 少提问 quirks 出货文件必须存在且掩码
+# 精确（位值按出货内核 6.1 的 include/linux/hid.h 核实：
+# HID_QUIRK_NOGET=BIT(3)=0x8、HID_QUIRK_NO_INIT_REPORTS=
+# BIT(29)=0x20000000，合并 0x20000008；写错一位等于没对齐）。
+[ -f /etc/modprobe.d/xwlightos-touch-quirks.conf ] || {
+    echo 'XWLightOS: xwlightos-touch-quirks.conf missing (usbhid would keep interrogating the Seewo gadget at enumeration)' >&2
+    exit 1
+}
+grep -q '^options usbhid quirks=0x1ff7:0x0f26:0x20000008$' /etc/modprobe.d/xwlightos-touch-quirks.conf || {
+    echo 'XWLightOS: xwlightos-touch-quirks.conf lost the verified quirks mask 0x20000008' >&2
+    exit 1
+}
+# 7. 第九轮对齐包：修复脚本必须含阶段四 MI_01 隔离与阶段六
+# Input Mode 的 SET 重试送达（HIDIOCSFEATURE）。
+grep -q 'stage4_isolate_mi01' /usr/local/sbin/xwlightos-touchscreen-fix.sh || {
+    echo 'XWLightOS: xwlightos-touchscreen-fix.sh lost stage-4 MI_01 isolation (round 9 alignment bundle)' >&2
+    exit 1
+}
+grep -q 'HIDIOCSFEATURE' /usr/local/sbin/xwlightos-touchscreen-fix.sh || {
+    echo 'XWLightOS: xwlightos-touchscreen-fix.sh lost stage-6 Input Mode SET retry (HIDIOCSFEATURE)' >&2
     exit 1
 }
 

@@ -62,6 +62,28 @@
 #   证据一律落 /tmp/xwlightos-touch-evidence/（0666 体例，同
 #   LOG_FILE），诊断脚本（普通用户）只读展示。非 root 重跑
 #   （诊断触发）时整段跳过，不覆盖开机那次证据。
+#
+# 第九轮（2026-11-06，用户令“先改再测、尽可能一次搞定”）：
+# 对齐 Windows 打包，一次做完五件（接受归因变粗，第八轮取证
+# 全保留使失败仍可分岔）：
+#   1. 阶段三 WIN_8 类保持，不回退。
+#   2. 阶段四 MI_01 隔离：Windows 诊断原文里 0F26 的 MI_01
+#      接口状态是 Error、未启动成功（其下无任何已启动集合，
+#      配置集合与触摸集合都在 MI_00），即 Windows 根本不对
+#      该接口发起会话；Linux 却完整绑定它。本阶段在阶段三
+#      后把 :1.1 接口下的 HID 子设备解绑并保持无驱动，复刻
+#      这个“不启动”状态。双重校验防误伤 MI_00（接口目录名
+#      以 :1.1 结尾且 bInterfaceNumber=01 才动手）。
+#   3. usbhid 少提问：出货 /etc/modprobe.d/xwlightos-touch-
+#      quirks.conf 给 usbhid 加 HID_QUIRK_NOGET（BIT(3)=
+#      0x8）与 HID_QUIRK_NO_INIT_REPORTS（BIT(29)=
+#      0x20000000），合并掩码 0x20000008——位值按出货内核
+#      6.1 同世代源码 include/linux/hid.h 核实；语义是
+#      usbhid_start 不再调 usbhid_init_reports 在枚举期批量
+#      GET_REPORT、内核据 NOGET 跳过对该设备的 GET。
+#   4. 阶段六 Input Mode 的 SET 重试送达：见 stage6 函数头。
+#   5. 阶段五关名单设备的 USB autosuspend（power/control
+#      钉 on 并回读）。
 set -eu
 
 HID_SYS="/sys/bus/hid/devices"
@@ -76,6 +98,13 @@ QUIRK_MARKER="/tmp/xwlightos-touch-quirks-applied"
 # 第八轮 root 取证落点（诊断脚本从这里读，普通用户可读）。
 EVDIR="/tmp/xwlightos-touch-evidence"
 USBMON_NODE="/sys/kernel/debug/usb/usbmon/0u"
+# 第九轮新增路径常量（阶段四/五/六与 quirks 回读用）。
+USB_SYS="/sys/bus/usb/devices"
+HID_DRIVERS="/sys/bus/hid/drivers"
+HIDRAW_SYS="/sys/class/hidraw"
+HIDRAW_DEVDIR="/dev"
+DEBUG_HID_DIR="/sys/kernel/debug/hid"
+USBHID_QUIRKS_PARAM="/sys/module/usbhid/parameters/quirks"
 
 # 日志文件落 /tmp 固定路径（2026-11-01 第五轮附带小修）：本脚本既被
 # systemd 服务以 root 身份开机跑，又被触屏诊断脚本以 live 用户身份
@@ -128,7 +157,10 @@ ev_is_known_dev() { # $1=uevent 文件路径
 # 格、大写），输出应用集合清单、各 Feature 报告的 ID 与 usage
 # 清单，末行 "@IM@ <报告ID|none>" 标记 Input Mode 特征
 # （Digitizer 页 0x0D、usage 0x52，即内核 HID_DG_INPUTMODE）
-# 所在报告。只认短条目；Usage Min/Max 区间覆盖 0x52 时也算。
+# 所在报告，其后 "@IMLEN@ <字节数|none>" 给出该报告的
+# Feature 数据总字节长（不含报告 ID 字节；第九轮阶段六构造
+# SET 载荷补零长度用，位长按 Report Size×Count 逐 Feature
+# 条目累计）。只认短条目；Usage Min/Max 区间覆盖 0x52 时也算。
 ev_parse_rdesc() {
     awk '
         function hv(c) { return index("0123456789ABCDEF", c) - 1 }
@@ -137,6 +169,7 @@ ev_parse_rdesc() {
             line = ""; getline line; n = length(line) / 2
             for (i = 0; i < n; i++) B[i] = hv(substr(line, 2 * i + 1, 1)) * 16 + hv(substr(line, 2 * i + 2, 1))
             page = 0; rid = 0; npend = 0; umin = -1; umax = -1
+            rsz = 0; rcnt = 0
             ncoll = 0; nfeat = 0; imrid = -1
             i = 0
             while (i < n) {
@@ -146,7 +179,9 @@ ev_parse_rdesc() {
                 for (k = 0; k < bs; k++) { val += B[i + 1 + k] * m; m *= 256 }
                 if (bt == 1) {
                     if (tg == 0) page = val
+                    else if (tg == 7) rsz = val
                     else if (tg == 8) rid = val
+                    else if (tg == 9) rcnt = val
                 } else if (bt == 2) {
                     if (tg == 0) { npend++; pend[npend] = page "," val }
                     else if (tg == 1) umin = val
@@ -164,7 +199,8 @@ ev_parse_rdesc() {
                                 if (pv[1] == 13 && pv[2] == 82 && imrid < 0) imrid = rid
                             }
                             if (umin >= 0 && page == 13 && umin <= 82 && umax >= 82 && imrid < 0) imrid = rid
-                            feat[nfeat] = "Feature 报告ID=" rid " usages:" (u == "" ? " (无显式 usage)" : u)
+                            fbits[rid] += rsz * rcnt
+                            feat[nfeat] = "Feature 报告ID=" rid " 位长=" (rsz * rcnt) " usages:" (u == "" ? " (无显式 usage)" : u)
                         }
                         npend = 0; umin = -1; umax = -1
                     } else if (tg == 12) {
@@ -179,6 +215,7 @@ ev_parse_rdesc() {
             if (nfeat == 0) print "Feature 报告: (未解析到)"
             for (j = 1; j <= nfeat; j++) print feat[j]
             if (imrid >= 0) print "@IM@ " imrid; else print "@IM@ none"
+            if (imrid >= 0) print "@IMLEN@ " int((fbits[imrid] + 7) / 8); else print "@IMLEN@ none"
         }'
 }
 
@@ -193,7 +230,7 @@ ev_collect_rdesc() {
         ev_is_known_dev "$_devpath/uevent" || continue
         _any=1
         _name="$(sed -n 's/^HID_NAME=//p' "$_devpath/uevent" 2>/dev/null | head -1)"
-        _rd="/sys/kernel/debug/hid/$_dev/rdesc"
+        _rd="$DEBUG_HID_DIR/$_dev/rdesc"
         {
             echo "设备 $_dev（$_name）："
             if [ -r "$_rd" ]; then
@@ -369,6 +406,303 @@ run_hidraw_sampler() {
         fi
     } | ev_write "$_result"
     rm -rf "$_td"
+}
+
+# ---------- 第九轮对齐包（阶段四/五/六，只在 root 下执行） ----------
+# 阶段四/五/六的结论行经 align_note 汇成 ALIGN_NOTES，收尾时
+# 由 ev_write_align_status 与 quirks 回读一起落 align-status.txt。
+ALIGN_NOTES=""
+align_note() { ALIGN_NOTES="${ALIGN_NOTES}$1
+"; }
+
+# USB 设备目录是否命中已知 ID 名单：idVendor/idProduct 与名单
+# 逐项比对（十六进制、忽略前导零与大小写）。接口目录没有
+# idVendor 文件，天然被排除，不会把接口误当设备。
+usbdev_is_known() { # $1=USB 设备 sysfs 目录
+    [ -f "$KNOWN_IDS_CONF" ] || return 1
+    [ -f "$1/idVendor" ] && [ -f "$1/idProduct" ] || return 1
+    _uv="$(printf '%x' "0x$(cat "$1/idVendor" 2>/dev/null)" 2>/dev/null)"
+    _up="$(printf '%x' "0x$(cat "$1/idProduct" 2>/dev/null)" 2>/dev/null)"
+    [ -n "$_uv" ] && [ -n "$_up" ] || return 1
+    while IFS= read -r _line || [ -n "$_line" ]; do
+        _line="$(echo "$_line" | sed 's/#.*//; s/[[:space:]]//g')"
+        [ -n "$_line" ] || continue
+        _wvid="$(printf '%x' "0x$(echo "$_line" | cut -d: -f1 | tr 'A-F' 'a-f')" 2>/dev/null)"
+        _wpid="$(printf '%x' "0x$(echo "$_line" | cut -d: -f2 | tr 'A-F' 'a-f')" 2>/dev/null)"
+        if [ "$_uv" = "$_wvid" ] && [ "$_up" = "$_wpid" ]; then
+            return 0
+        fi
+    done < "$KNOWN_IDS_CONF"
+    return 1
+}
+
+# 阶段四（第九轮）：MI_01 隔离。识别以 sysfs 实物结构为准：
+# 名单命中的 USB 设备 → 其 :1.1 接口（目录名以 :1.1 结尾且
+# bInterfaceNumber=01，双重校验防误伤触控集合所在的 MI_00）
+# → 接口之下的 HID 子设备（0003:*），从其当前驱动解绑且不
+# 重绑。解绑后本脚本后续流程不会再认领它：阶段一/二只动
+# hid-generic 已绑设备、阶段三只动 hid-multitouch 已绑设
+# 备，无驱动设备两者都不碰。已无驱动 = 已隔离（幂等跳过）。
+stage4_isolate_mi01() {
+    [ "$(id -u)" = "0" ] || return 0
+    _found=0
+    for _usbdev in "$USB_SYS"/*; do
+        usbdev_is_known "$_usbdev" || continue
+        for _iface in "$_usbdev":*; do
+            [ -f "$_iface/bInterfaceNumber" ] || continue
+            [ "$(cat "$_iface/bInterfaceNumber" 2>/dev/null)" = "01" ] || continue
+            case "$(basename "$_iface")" in
+                *:1.1) ;;
+                *) continue ;;
+            esac
+            _found=1
+            _any=0
+            for _hiddev in "$_iface"/0003:*; do
+                [ -e "$_hiddev/uevent" ] || continue
+                _any=1
+                _hname="$(basename "$_hiddev")"
+                if [ -L "$_hiddev/driver" ]; then
+                    _dtarget="$(readlink -f "$_hiddev/driver" 2>/dev/null || true)"
+                    _drv=""
+                    if [ -n "$_dtarget" ]; then
+                        _drv="$(basename "$_dtarget")"
+                    fi
+                    if [ -n "$_drv" ] && echo "$_hname" > "$HID_DRIVERS/$_drv/unbind" 2>/dev/null; then
+                        log "stage4: isolated MI_01 device $_hname (unbound from $_drv, left driverless, matching the Windows unstarted state)"
+                        align_note "MI_01隔离：$_hname 已从 $_drv 解绑并保持无驱动"
+                    else
+                        log "stage4: unbind $_hname from ${_drv:-unknown} FAILED"
+                        align_note "MI_01隔离：$_hname 解绑失败（原驱动 ${_drv:-未知}）"
+                    fi
+                else
+                    log "stage4: MI_01 device $_hname already driverless, isolation already in effect"
+                    align_note "MI_01隔离：$_hname 已无驱动（隔离已生效，跳过）"
+                fi
+            done
+            if [ "$_any" = 0 ]; then
+                align_note "MI_01隔离：接口 $(basename "$_iface") 在位但其下无 HID 子设备"
+            fi
+        done
+    done
+    if [ "$_found" = 0 ]; then
+        align_note "MI_01隔离：未找到名单设备的 :1.1 接口（设备不在位或结构不同）"
+    fi
+}
+
+# 阶段五（第九轮）：关名单设备的 USB autosuspend——把该 USB
+# 设备的 power/control 钉在 on 并回读记录，避免 gadget 在
+# 会话期间被自动挂起打断（桌面电源管理若其后改写，诊断回
+# 读会如实呈现）。
+stage5_autosuspend_off() {
+    [ "$(id -u)" = "0" ] || return 0
+    _any=0
+    for _usbdev in "$USB_SYS"/*; do
+        usbdev_is_known "$_usbdev" || continue
+        _pc="$_usbdev/power/control"
+        [ -f "$_pc" ] || continue
+        _any=1
+        echo on > "$_pc" 2>/dev/null || true
+        _rb="$(cat "$_pc" 2>/dev/null)"
+        log "stage5: autosuspend off for $(basename "$_usbdev"), power/control readback=${_rb:-unknown}"
+        align_note "autosuspend：$(basename "$_usbdev") power/control 回读=${_rb:-读不到}（on=已关自动挂起）"
+    done
+    if [ "$_any" = 0 ]; then
+        align_note "autosuspend：未定位到名单设备的 power/control（设备不在位）"
+    fi
+}
+
+# 在名单设备的 rdesc 里定位 Input Mode 特征：stdout 输出
+# "<HID设备名> <报告ID> <Feature数据字节长>"，找不到输出空。
+# 多个功能都带 Input Mode 时优先 USB interface 0（:1.0，
+# Windows 证据里配置集合 COL05 所在的接口）。
+find_input_mode_target() {
+    _fb_dev=""; _fb_rid=""; _fb_len=""
+    for _devpath in "$HID_SYS"/*; do
+        _dev="$(basename "$_devpath")"
+        ev_is_known_dev "$_devpath/uevent" || continue
+        _rd="$DEBUG_HID_DIR/$_dev/rdesc"
+        [ -r "$_rd" ] || continue
+        _hex="$(tr -d '[:space:]' < "$_rd" 2>/dev/null | tr 'a-f' 'A-F')"
+        [ -n "$_hex" ] || continue
+        _parsed="$(printf '%s' "$_hex" | ev_parse_rdesc)"
+        _rid="$(printf '%s\n' "$_parsed" | sed -n 's/^@IM@ //p' | head -1)"
+        [ -n "$_rid" ] && [ "$_rid" != "none" ] || continue
+        _rlen="$(printf '%s\n' "$_parsed" | sed -n 's/^@IMLEN@ //p' | head -1)"
+        [ -n "$_rlen" ] && [ "$_rlen" != "none" ] || _rlen=0
+        _full="$(readlink -f "$_devpath" 2>/dev/null || true)"
+        case "$_full" in
+            *:1.0/*) echo "$_dev $_rid $_rlen"; return 0 ;;
+        esac
+        if [ -z "$_fb_dev" ]; then
+            _fb_dev="$_dev"; _fb_rid="$_rid"; _fb_len="$_rlen"
+        fi
+    done
+    if [ -n "$_fb_dev" ]; then
+        echo "$_fb_dev $_fb_rid $_fb_len"
+    fi
+    return 0
+}
+
+# 某 HID 功能的 hidraw 节点路径：阶段三改绑后 hidraw 节点会
+# 消失再重建，最多等 10 秒（1 秒一轮）；stdout 输出节点路
+# 径，超时输出空。
+wait_hidraw_node() { # $1=HID 设备名
+    _i=0
+    while [ "$_i" -lt 10 ]; do
+        for _hd in "$HIDRAW_SYS"/hidraw*; do
+            [ -e "$_hd/device" ] || continue
+            _tgt="$(readlink -f "$_hd/device" 2>/dev/null || true)"
+            if [ "$(basename "$_tgt")" = "$1" ]; then
+                echo "$HIDRAW_DEVDIR/$(basename "$_hd")"
+                return 0
+            fi
+        done
+        sleep 1
+        _i=$((_i + 1))
+    done
+    return 0
+}
+
+# 阶段六（第九轮）：Input Mode 的 SET 按 Windows 式重试送达。
+# 内核 mt_set_modes 在 probe 期本应发出同一帧 SET_REPORT，
+# 但前八轮证据始终无法证明它真到了设备；MTConfig.sys 的静
+# 态核查显示 Windows 为这一帧专门做了“拦截留存+重投、失败
+# 重试至共 3 次”的保证送达。本阶段在用户态复刻这个行为：
+# 载荷完全由设备自身报告描述符派生（报告 ID 与报告长来自
+# 本脚本的 rdesc 解析；值 0x02 是内核 HID_DG_INPUTMODE 的
+# 触摸屏模式值，与 mt_set_modes 填的值相同；其余字节补
+# 零），经 hidraw 的 HIDIOCSFEATURE 发往含 Input Mode 特征
+# 的那个 HID 功能，最多 3 次、间隔 300ms，逐次结果与终局
+# 判行记 ev_setfeature.txt。不使用 MTConfig 的任何内部控
+# 制码。python3 为镜像内现成解释器（Build 68 构建日志与桌
+# 面包单 python3-gi 依赖可证），ioctl 请求值按 uapi
+# include/uapi/linux/hidraw.h 的 HIDIOCSFEATURE(len) 定义
+# 在 Python 内构造。安排在 usbmon 抓取窗口内执行（收尾的
+# ev_usbmon_stop 之前），与内核 probe 期的传输可同窗对照。
+stage6_set_input_mode() {
+    _evf="$EVDIR/ev_setfeature.txt"
+    _target="$(find_input_mode_target)"
+    if [ -z "$_target" ]; then
+        {
+            echo "时间：$(date '+%Y-%m-%d %H:%M:%S')"
+            echo "SET重试结果：未执行（rdesc 里定位不到 Input Mode 特征，见 rdesc-summary.txt）"
+        } | ev_write "$_evf"
+        align_note "SET重试：未执行（定位不到 Input Mode 特征）"
+        return 0
+    fi
+    _dev="$(printf '%s' "$_target" | cut -d' ' -f1)"
+    _rid="$(printf '%s' "$_target" | cut -d' ' -f2)"
+    _rlen="$(printf '%s' "$_target" | cut -d' ' -f3)"
+    _lenfix=""
+    if [ "$_rlen" -lt 1 ] 2>/dev/null; then
+        _rlen=1
+        _lenfix="（报告长解析为 0，按 Input Mode 单字节字段的最小长 1 处理）"
+    fi
+    _buflen="$_rlen"
+    if [ "$_rid" -gt 0 ] 2>/dev/null; then
+        _buflen=$((_rlen + 1))
+    fi
+    _node="$(wait_hidraw_node "$_dev")"
+    if [ -z "$_node" ]; then
+        {
+            echo "时间：$(date '+%Y-%m-%d %H:%M:%S')"
+            echo "目标：$_dev 的 Input Mode 报告ID=$_rid"
+            echo "SET重试结果：未执行（等 $_dev 的 hidraw 节点 10 秒未出现）"
+        } | ev_write "$_evf"
+        align_note "SET重试：未执行（$_dev 的 hidraw 节点未出现）"
+        return 0
+    fi
+    if ! command -v python3 >/dev/null 2>&1; then
+        {
+            echo "时间：$(date '+%Y-%m-%d %H:%M:%S')"
+            echo "目标：$_node（$_dev），Input Mode 报告ID=$_rid"
+            echo "SET重试结果：未执行（镜像内无 python3，HIDIOCSFEATURE 通道不可用）"
+        } | ev_write "$_evf"
+        align_note "SET重试：未执行（无 python3）"
+        return 0
+    fi
+    _pytmp="/tmp/.xw-setfeature.$$"
+    python3 - "$_node" "$_rid" "$_buflen" > "$_pytmp" 2>&1 <<'PYEOF' || true
+import fcntl, os, sys, time
+path = sys.argv[1]
+rid = int(sys.argv[2])
+buflen = int(sys.argv[3])
+buf = bytearray(buflen)
+if rid > 0:
+    buf[0] = rid
+    if buflen > 1:
+        buf[1] = 0x02
+else:
+    buf[0] = 0x02
+# HIDIOCSFEATURE(len) = _IOC(_IOC_WRITE|_IOC_READ, 'H', 0x06, len)
+# 出处：include/uapi/linux/hidraw.h（出货内核 6.1 同世代）。
+req = (3 << 30) | (buflen << 16) | (0x48 << 8) | 0x06
+print("PAYLOAD " + bytes(buf).hex())
+if os.environ.get("XW_TOUCH_SETFEATURE_DRYRUN") == "1":
+    print("ATTEMPT 1: DRYRUN ret=%d" % buflen)
+    print("RESULT DELIVERED attempt=1 (dryrun)")
+    sys.exit(0)
+try:
+    fd = os.open(path, os.O_RDWR)
+except OSError as e:
+    print("OPEN_FAIL errno=%d %s" % (e.errno, e.strerror))
+    print("RESULT FAILED open")
+    sys.exit(0)
+delivered = 0
+for att in range(1, 4):
+    try:
+        ret = fcntl.ioctl(fd, req, bytes(buf), False)
+        if ret == buflen:
+            print("ATTEMPT %d: OK ret=%d" % (att, ret))
+            delivered = att
+            break
+        print("ATTEMPT %d: PARTIAL ret=%s expected=%d" % (att, ret, buflen))
+    except OSError as e:
+        print("ATTEMPT %d: FAIL errno=%d %s" % (att, e.errno, e.strerror))
+    if att < 3:
+        time.sleep(0.3)
+os.close(fd)
+if delivered:
+    print("RESULT DELIVERED attempt=%d" % delivered)
+else:
+    print("RESULT FAILED attempts=3")
+PYEOF
+    _pyout="$(cat "$_pytmp" 2>/dev/null || true)"
+    rm -f "$_pytmp"
+    _verdict="$(printf '%s\n' "$_pyout" | sed -n 's/^RESULT //p' | head -1)"
+    case "$_verdict" in
+        DELIVERED*) _vline="SET重试结果：已送达（$_verdict）" ;;
+        FAILED*) _vline="SET重试结果：失败（$_verdict）" ;;
+        *) _vline="SET重试结果：失败（python 无 RESULT 行，详见下方原始输出）" ;;
+    esac
+    {
+        echo "时间：$(date '+%Y-%m-%d %H:%M:%S')"
+        echo "目标：$_dev 的 hidraw 节点 $_node，Input Mode 报告ID=$_rid，Feature 数据长=$_rlen 字节，缓冲长=$_buflen 字节$_lenfix"
+        printf '%s\n' "$_pyout"
+        echo "$_vline"
+    } | ev_write "$_evf"
+    log "stage6: Input Mode SET on $_node (device $_dev, report id $_rid): $_vline"
+    align_note "$_vline"
+}
+
+# 对齐包状态汇总（root 收尾）：阶段三类值 + 阶段四/五/六结
+# 论行 + usbhid quirks 的开机回读，一份文件供诊断第 17 节
+# 与结论区第 3 项引用。quirks 回读是出货 modprobe.d 是否真
+# 生效的第一手判据（文件写了不等于模块参数里有）。
+ev_write_align_status() {
+    # 注意：cat 读不到时必须 || true 兜底——赋值语句的退出码取
+    # 命令替换的退出码，set -e 下裸失败会把整个脚本在这里杀
+    # 掉（干跑实测：收尾的 usbmon 汇总与 done 日志会被连带吃
+    # 掉）。readlink 的几处命令替换同理。
+    _qk="$(cat "$USBHID_QUIRKS_PARAM" 2>/dev/null || true)"
+    [ -n "$_qk" ] || _qk="读不到（usbhid 未加载或参数文件不存在）"
+    {
+        echo "时间：$(date '+%Y-%m-%d %H:%M:%S')（root 在开机修复后汇总）"
+        echo "对齐包（第九轮）：阶段三类值 $QUIRK_CLASS_LABEL，本轮改绑台数=$_quirked（为 0 时可能已由 marker 跳过，详见诊断第 15 节）"
+        printf '%s' "$ALIGN_NOTES"
+        echo "usbhid quirks 开机回读：$_qk"
+    } | ev_write "$EVDIR/align-status.txt"
+    log "evidence: align status written"
 }
 
 # sampler 模式分发：只跑 hidraw 采样，不动修复主流程。
@@ -581,10 +915,20 @@ if [ -f "$KNOWN_IDS_CONF" ]; then
     done < "$KNOWN_IDS_CONF"
 fi
 
-# 第八轮取证收尾（root）：阶段三重绑已完成，此刻的 rdesc 是
-# 改绑后的描述符；usbmon 停抓并汇总。
+# ---- 阶段四/五（第九轮对齐包）：MI_01 隔离 + 关 autosuspend ----
+# 都在阶段三改绑完成后跑；函数内自检 root，普通用户重跑自
+# 动跳过（不重复动设备、不产生权限噪声）。
+stage4_isolate_mi01
+stage5_autosuspend_off
+
+# 第八轮取证收尾 + 第九轮 SET 送达（root）：阶段三重绑已完
+# 成，此刻的 rdesc 是改绑后的描述符；阶段六的 SET 安排在
+# usbmon 停抓之前发出（仍在抓取窗口内，与内核 probe 期的
+# 传输同窗对照）；对齐包状态最后汇总。
 if [ "$(id -u)" = "0" ]; then
     ev_collect_rdesc
+    stage6_set_input_mode
+    ev_write_align_status
     ev_usbmon_stop
 fi
 
