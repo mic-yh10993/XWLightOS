@@ -22,9 +22,15 @@
 # - /usr/local/sbin/xwlightos-touchscreen-fix.sh：开机脚本，三阶段
 #   （通用兜底：hid-generic 占用 + 名字含 touch + 排除 touchpad；
 #   已知 ID 名单：/etc/xwlightos/touchscreen-known-ids.conf，首批 1FF7:0F26；
-#   阶段三：名单设备已绑 hid-multitouch 时改绑 MT_CLS_EXPORT_ALL_INPUTS
-#   （new_id 带类值 + rebind，失败回退 plain 绑定）——真机上阶段一/二
-#   是 moved 0 的 no-op，怪癖必须靠阶段三）
+#   阶段三：名单设备已绑 hid-multitouch 时改绑怪癖类（new_id 带
+#   类值 + rebind，失败回退 plain 绑定）——真机上阶段一/二
+#   是 moved 0 的 no-op，怪癖必须靠阶段三。类值沿革：第七轮
+#   MT_CLS_EXPORT_ALL_INPUTS（0x13），Build 68 真机改绑生效仍
+#   全 0；第八轮按“对齐 Windows”改 MT_CLS_WIN_8（0x12，该类
+#   同样带 export_all_inputs，并经 mt_set_modes 发 Input Mode
+#   的 SET_REPORT）。脚本还带第八轮 root 取证：rdesc 摘要、
+#   usbmon 枚举期控制传输统计（本钩子只验类值与 sampler 单元，
+#   取证细节由镜像校验脚本断言）
 # - /etc/systemd/system/xwlightos-touchscreen-fix.service：oneshot 开机服务
 # - multi-user.target.wants 符号链接：构建期启用（仿 xwlightos-live-session-init）
 set -eu
@@ -48,9 +54,10 @@ grep -q 'touchpad' /usr/local/sbin/xwlightos-touchscreen-fix.sh || {
     echo 'XWLightOS: xwlightos-touchscreen-fix.sh lost touchpad exclusion (would steal touchpads)' >&2
     exit 1
 }
-# 2b. 脚本必须包含阶段三怪癖逻辑（第七轮：真机上阶段一/二 no-op，
-# 怪癖是唯一能动已绑 hid-multitouch 设备的手段）。
-grep -q 'MT_CLS_EXPORT_ALL_INPUTS' /usr/local/sbin/xwlightos-touchscreen-fix.sh || {
+# 2b. 脚本必须包含阶段三怪癖逻辑（第七轮起：真机上阶段一/二
+# no-op，怪癖是唯一能动已绑 hid-multitouch 设备的手段；第八
+# 轮类值为 MT_CLS_WIN_8）。
+grep -q 'MT_CLS_WIN_8' /usr/local/sbin/xwlightos-touchscreen-fix.sh || {
     echo 'XWLightOS: xwlightos-touchscreen-fix.sh lost stage-3 quirk class (already-bound device would never leave MT_CLS_DEFAULT)' >&2
     exit 1
 }
@@ -76,6 +83,27 @@ _WANTS=/etc/systemd/system/multi-user.target.wants/xwlightos-touchscreen-fix.ser
 grep -q '^ExecStart=/usr/local/sbin/xwlightos-touchscreen-fix.sh$' \
     /etc/systemd/system/xwlightos-touchscreen-fix.service || {
     echo 'XWLightOS: xwlightos-touchscreen-fix.service lost its ExecStart' >&2
+    exit 1
+}
+# 4b. 第八轮 hidraw root 采样服务必须在场且启用（Build 68 盲
+# 区：hidraw 普通用户不可读，必须有 root 采样通道，否则诊断
+# 第 17 节永远拿不到触摸窗内的原始字节）。
+[ -f /etc/systemd/system/xwlightos-touch-hidraw-sampler.service ] || {
+    echo 'XWLightOS: xwlightos-touch-hidraw-sampler.service missing' >&2
+    exit 1
+}
+_SWANTS=/etc/systemd/system/multi-user.target.wants/xwlightos-touch-hidraw-sampler.service
+[ -e "$_SWANTS" ] || {
+    echo 'XWLightOS: xwlightos-touch-hidraw-sampler.service wants symlink is dangling (root hidraw sampling would never run)' >&2
+    exit 1
+}
+[ "$(readlink "$_SWANTS")" = '../xwlightos-touch-hidraw-sampler.service' ] || {
+    echo 'XWLightOS: xwlightos-touch-hidraw-sampler.service wants symlink points at the wrong unit' >&2
+    exit 1
+}
+grep -q '^ExecStart=/usr/local/sbin/xwlightos-touchscreen-fix.sh sampler$' \
+    /etc/systemd/system/xwlightos-touch-hidraw-sampler.service || {
+    echo 'XWLightOS: xwlightos-touch-hidraw-sampler.service lost its sampler ExecStart' >&2
     exit 1
 }
 # 5. 修复脚本必须主动加载 hid-multitouch（Build 40 补，见脚本头注释）。

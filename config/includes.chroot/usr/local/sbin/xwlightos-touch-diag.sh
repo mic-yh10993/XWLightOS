@@ -17,6 +17,15 @@
 # MT_CLS_EXPORT_ALL_INPUTS），诊断新增第 15 节怪癖状态与第 16 节
 # 音频诊断，结论区加第 8、9 项；用户只开机拍照即可验收怪癖与
 # 缓冲加档是否生效。
+# 2026-11-06 第八轮：阶段三类值改 MT_CLS_WIN_8（B68 裁决
+# EXPORT_ALL 已改绑但仍全 0；且 MTConfig.sys 静态核查证实
+# Windows 侧靠 SET_FEATURE 送 Input Mode 配置）；诊断新增
+# 第 17 节 root 取证（fix 服务以 root 采的 rdesc 摘要、usbmon
+# 枚举期控制传输统计、sampler 以 root 在同一触摸窗口采的
+# hidraw 字节、MI_00/MI_01 接口绑定），结论区重排：Input
+# Mode 与 hidraw 字节排最前，旧项合并压缩。采样窗开始时本
+# 脚本创建 /tmp/xwlightos-touch-evidence/diag-window-open
+# 标记通知 root sampler 同窗采样，窗口结束删除。
 OUT="$HOME/xwlightos-touch-diag.txt"
 {
 clear
@@ -73,6 +82,13 @@ else
 _TD=/tmp/xwlightos-diag-ev.$$
 rm -rf "$_TD"; mkdir -p "$_TD"
 echo "  采样节点：$(echo "$_EVS" | tr '\n' ' ')"
+# 第八轮：创建窗口标记，通知 root sampler（xwlightos-touch-
+# hidraw-sampler 服务）在同一个 8 秒窗口以 root 并读 hidraw
+# （补 Build 68 时 live 用户不可读 hidraw 的盲区）；第 17 节
+# 据此等待并展示 root 采样结果。窗口结束（第 8 节后）删标记。
+mkdir -p /tmp/xwlightos-touch-evidence 2>/dev/null
+: > /tmp/xwlightos-touch-evidence/diag-window-open 2>/dev/null
+_MARKED=1
 echo "  请现在开始持续触摸屏幕（点、划都行，不要停），8 秒后出结果……"
 for _e in $_EVS; do
 if test -r "/dev/input/$_e"; then
@@ -127,6 +143,7 @@ _HR="/dev/$_HRDEV 存在但不可读"
 fi
 rm -rf "$_TD"
 fi
+rm -f /tmp/xwlightos-touch-evidence/diag-window-open 2>/dev/null
 echo "9. 触屏节点 ABS 能力位图（次要存档：节点在内核里的能力声明）："
 _ABSOUT=$(awk '
 /^N: Name=/ { name=$0; sub(/^N: Name=/, "", name); blk=tolower(name) }
@@ -203,7 +220,7 @@ else
 echo "  读不到报告描述符（debugfs 需 root，live 用户被拒属预期；此路不通则改走 root 通道回传）"
 _RDESC="读不到（debugfs 权限）"
 fi
-echo "15. 怪癖模式状态（第七轮：已知 ID 设备是否已改绑 EXPORT_ALL_INPUTS）："
+echo "15. 怪癖模式状态（第七轮起：已知 ID 设备改绑的怪癖类；第八轮为 MT_CLS_WIN_8）："
 _QLINE=$(grep 'quirks:' /tmp/xwlightos-touchscreen-fix.log 2>/dev/null | tail -3)
 if test -n "$_QLINE"; then echo "$_QLINE" | sed 's/^/  /'; else echo "  （fix 日志里没有 quirks 行：阶段三未对任何设备动手）"; fi
 _QBIND=""
@@ -213,7 +230,8 @@ if _qlink=$(readlink "$_qd/driver" 2>/dev/null); then _qdrv=$(basename "$_qlink"
 _QBIND="$_QBIND $(basename "$_qd")=$_qdrv"
 done
 if test -n "$_QBIND"; then echo "  1FF7:0F26 当前绑定：$_QBIND"; else echo "  （找不到 1FF7:0F26 的 HID 设备目录）"; fi
-if grep -q 'rebound to hid-multitouch with MT_CLS_EXPORT_ALL_INPUTS' /tmp/xwlightos-touchscreen-fix.log 2>/dev/null; then _QUIRK="已改绑 EXPORT_ALL_INPUTS（0x13）";
+if grep -q 'rebound to hid-multitouch with MT_CLS_WIN_8' /tmp/xwlightos-touchscreen-fix.log 2>/dev/null; then _QUIRK="已改绑 MT_CLS_WIN_8（0x12）";
+elif grep -q 'rebound to hid-multitouch with MT_CLS_EXPORT_ALL_INPUTS' /tmp/xwlightos-touchscreen-fix.log 2>/dev/null; then _QUIRK="已改绑 EXPORT_ALL_INPUTS（0x13，旧版日志）";
 elif grep -q 'already quirked' /tmp/xwlightos-touchscreen-fix.log 2>/dev/null; then _QUIRK="本启动已改绑（重跑跳过）";
 else _QUIRK="未应用"; fi
 echo "16. 音频诊断（第七轮新增：默认输出、音量、缓冲档位）："
@@ -226,7 +244,65 @@ if test -n "$_DV"; then echo "  默认输出音量：$_DV"; else echo "  （读�
 echo "  缓冲档位（镜像静态值）："
 grep -h 'min-quantum' /etc/pipewire/pipewire.conf.d/51-xwlightos-quantum.conf 2>/dev/null | head -1 | sed 's/^/    /'
 grep -h 'api.alsa.period-size\|api.alsa.headroom' /etc/wireplumber/main.lua.d/52-xwlightos-alsa-buffering.lua 2>/dev/null | head -2 | sed 's/^/    /'
-# 结论区第 6 项的取材：希沃厂商服务与 udi 条目的在跑状态（验证
+echo "17. root 取证（第八轮：Input Mode、枚举期控制传输、hidraw root 采样、接口绑定）："
+_EVD=/tmp/xwlightos-touch-evidence
+# root sampler 与第 7/8 节同窗并读、结束时间接近；本轮开过窗
+# 口标记且 sampler 还在跑时，最多等 10 秒让它落盘。
+if test -n "${_MARKED:-}"; then
+_SAMPLERSTATE=$(systemctl is-active xwlightos-touch-hidraw-sampler 2>/dev/null)
+case "$_SAMPLERSTATE" in
+active|activating)
+_w=0
+while test ! -f "$_EVD/hidraw-root.txt" && test "$_w" -lt 10; do sleep 1; _w=$((_w + 1)); done
+;;
+esac
+fi
+echo "  Input Mode 与报告描述符摘要（root 解析 rdesc）："
+_IMLINE=""
+if test -f "$_EVD/rdesc-summary.txt"; then
+sed 's/^/    /' "$_EVD/rdesc-summary.txt" 2>/dev/null | head -14
+_IMLINE=$(grep '^InputMode:' "$_EVD/rdesc-summary.txt" 2>/dev/null | head -1)
+else
+echo "    （证据文件缺失：fix 服务未以 root 采集过）"
+fi
+if test -z "$_IMLINE"; then _IMLINE="InputMode: 未知（证据缺失）"; fi
+echo "  枚举期控制传输（root 以 usbmon 抓开机修复全程）："
+_SETLINE=""; _STLINE=""
+if test -f "$_EVD/usbmon-summary.txt"; then
+grep -E '^(方法|SET_REPORT_FEATURE|SET_REPORT_ALL|GET_REPORT|CONTROL_OUT)' "$_EVD/usbmon-summary.txt" 2>/dev/null | sed 's/^/    /'
+_SETLINE=$(grep '^SET_REPORT_FEATURE:' "$_EVD/usbmon-summary.txt" 2>/dev/null | head -1)
+_STLINE=$(grep '^CONTROL_OUT_STATUS:' "$_EVD/usbmon-summary.txt" 2>/dev/null | head -1)
+else
+echo "    （证据文件缺失：usbmon 摘要未生成）"
+fi
+if test -z "$_SETLINE"; then _SETLINE="SET_REPORT_FEATURE: 未知（证据缺失）"; fi
+if test -z "$_STLINE"; then _STLINE="CONTROL_OUT_STATUS: 未知"; fi
+echo "  hidraw 原始字节（root 采样，与第 7/8 节同一个触摸窗口）："
+_HRROOT=""
+if test -f "$_EVD/hidraw-root.txt"; then
+sed 's/^/    /' "$_EVD/hidraw-root.txt" 2>/dev/null | head -6
+_HRROOT=$(grep -E '^hidraw[0-9]+=' "$_EVD/hidraw-root.txt" 2>/dev/null | tr '\n' ' ')
+if test -z "$_HRROOT"; then _HRROOT=$(grep '^状态' "$_EVD/hidraw-root.txt" 2>/dev/null | head -1); fi
+else
+echo "    （sampler 结果缺失：服务未跑或未等到窗口）"
+fi
+if test -z "$_HRROOT"; then _HRROOT="未采样（sampler 结果缺失）"; fi
+echo "  USB 接口绑定（1FF7:0F26，普通用户直读，仅记录、第八轮不动它）："
+_MILINE=""
+for _ud in /sys/bus/usb/devices/*; do
+test -f "$_ud/idVendor" || continue
+test "$(cat "$_ud/idVendor" 2>/dev/null)" = "1ff7" || continue
+test "$(cat "$_ud/idProduct" 2>/dev/null)" = "0f26" || continue
+for _ifd in "$_ud":*; do
+test -f "$_ifd/bInterfaceNumber" || continue
+_mi=$(cat "$_ifd/bInterfaceNumber" 2>/dev/null)
+if _il=$(readlink "$_ifd/driver" 2>/dev/null); then _idrv=$(basename "$_il"); else _idrv="无驱动"; fi
+echo "    MI_$_mi（$(basename "$_ifd")）：$_idrv"
+_MILINE="$_MILINE MI_$_mi=$_idrv"
+done
+done
+if test -z "$_MILINE"; then echo "    （没找到 1FF7:0F26 的 USB 设备目录）"; _MILINE="未找到设备"; fi
+# 结论区第 8 项的取材：希沃厂商服务与 udi 条目的在跑状态（验证
 # “厂商服务负责触屏初始化/映射、而它没在 Linux 这边跑”这条假设）。
 _SEEWO=$(systemctl list-units --all 'com.seewo.*' --no-legend --no-pager 2>/dev/null | awk '{ gsub(/\.service$/, "", $1); printf "%s=%s ", $1, $3 }')
 if test -z "$_SEEWO"; then _SEEWO="无 com.seewo 单元"; fi
@@ -234,15 +310,15 @@ _UDI=$( { systemctl list-units --all --no-legend --no-pager 2>/dev/null | grep -
 if test -z "$_UDI"; then _UDI="无"; fi
 echo "--------------------------------------------------"
 echo "===== 结论区（拍这一屏即可） ====="
-echo "1) 四节点事件字节（第7节）：${_EVSUM:-未采样}（Build 65 已定 event5=0；看其余三节点）"
-echo "2) hidraw 原始字节（第8节）：${_HR:-未采样}（大于 0 而 evdev 全 0→映射/quirks 层；同为 0→设备没发报告）"
-echo "3) ABS 的 MT 位（第9节）：${_MT:-未读到}"
-echo "4) 报告描述符（第14节）：${_RDESC:-未取}"
-echo "5) 上层存档（已定无罪）：udev ${_UDEVTS:-未知}；Xorg ${_XTAG:-未知}；xinput ${_XIN:-未知}"
-echo "6) 厂商服务：${_SEEWO}；udi 条目：${_UDI}"
-echo "7) 触摸窗口内 hidraw 占用：${_HOLDLINE:-未采样}"
-echo "8) 怪癖模式（第15节）：${_QUIRK:-未知}"
+echo "1) Input Mode（第17节）：${_IMLINE:-未知}；${_SETLINE:-SET 未知}；${_STLINE:-状态未知}"
+echo "2) hidraw 原始字节（第8节）：root ${_HRROOT:-未采样}；live 用户 ${_HR:-未采样}（大于 0 而 evdev 全 0→映射层；同为 0→设备没发报告）"
+echo "3) 四节点事件字节（第7节）：${_EVSUM:-未采样}"
+echo "4) 怪癖模式（第15节）：${_QUIRK:-未知}"
+echo "5) MI 接口绑定（第17节，仅记录）：${_MILINE:-未知}"
+echo "6) ABS 的 MT 位（第9节）：${_MT:-未读到}；报告描述符（第14节）：${_RDESC:-未取}"
+echo "7) 上层存档（已定无罪）：udev ${_UDEVTS:-未知}；Xorg ${_XTAG:-未知}；xinput ${_XIN:-未知}"
+echo "8) 厂商服务：${_SEEWO}；udi 条目：${_UDI}；hidraw 占用：${_HOLDLINE:-未采样}"
 echo "9) 音频（第16节）：${_DS:-未知默认输出}；${_DV:-未知音量}"
-echo "判读：断点在 hid-multitouch 到 input 的映射段；本版已开启怪癖模式（EXPORT_ALL_INPUTS），若第 7/8 节仍为 0，说明怪癖未打通，下一岔口是安卓板转发/主机握手。"
-echo "诊断结束。请把本屏拍照发给助手。"
+echo "判读：本版已按对齐 Windows 改绑 WIN_8 类。第 1 项：SET_REPORT 提交=0→内核没把 Input Mode 发出去（描述符解析差异）；提交大于 0 且完成状态有负数→gadget 拒收；提交大于 0、状态为 0 但第 2/3 项仍全 0→gadget 收到仍不报触摸（安卓板转发/固件条件方向）。"
+echo "诊断结束。请把结论区拍照发给助手（可分两屏，第 1、2 项必须拍到）。"
 } 2>&1 | tee "$OUT"

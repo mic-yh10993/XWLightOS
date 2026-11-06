@@ -105,6 +105,9 @@ require_path 'usr/local/sbin/xwlightos-live-session-init'
 require_path 'usr/local/sbin/xwlightos-touchscreen-fix.sh'
 require_path 'etc/systemd/system/xwlightos-touchscreen-fix.service'
 require_path 'etc/xwlightos/touchscreen-known-ids.conf'
+# 第八轮（2026-11-06）：hidraw root 采样服务（诊断触摸窗内以
+# root 并读 hidraw，补普通用户不可读的盲区）必须进镜像。
+require_path 'etc/systemd/system/xwlightos-touch-hidraw-sampler.service'
 # 诊断版（Build 40 触屏诊断，1621 钩子）：开机自动弹窗的诊断脚本、
 # 启动器与桌面自启动入口必须进镜像。正式版确认根因后删除。
 require_path 'usr/local/sbin/xwlightos-touch-diag.sh'
@@ -380,6 +383,16 @@ TS_WANTS_LINK="$SVC_WORK/etc/systemd/system/multi-user.target.wants/xwlightos-to
 [ -e "$TS_WANTS_LINK" ] || { echo 'xwlightos-touchscreen-fix.service wants symlink is dangling (touchscreen fix would never run at boot)' >&2; exit 1; }
 [ "$(readlink "$TS_WANTS_LINK")" = '../xwlightos-touchscreen-fix.service' ] || { echo 'xwlightos-touchscreen-fix.service wants symlink points at the wrong unit' >&2; exit 1; }
 grep -q '^ExecStart=/usr/local/sbin/xwlightos-touchscreen-fix.sh$' "$SVC_WORK/etc/systemd/system/xwlightos-touchscreen-fix.service" || { echo 'xwlightos-touchscreen-fix.service lost its ExecStart' >&2; exit 1; }
+# 第八轮：hidraw root 采样服务同样必须真正启用（wants 链接 +
+# sampler ExecStart），否则诊断第 17 节永远拿不到 root 字节。
+unsquashfs -f -d "$SVC_WORK" "$FS" \
+    etc/systemd/system/xwlightos-touch-hidraw-sampler.service \
+    etc/systemd/system/multi-user.target.wants/xwlightos-touch-hidraw-sampler.service \
+    >/dev/null 2>&1
+TS_SAMPLER_LINK="$SVC_WORK/etc/systemd/system/multi-user.target.wants/xwlightos-touch-hidraw-sampler.service"
+[ -e "$TS_SAMPLER_LINK" ] || { echo 'xwlightos-touch-hidraw-sampler.service wants symlink is dangling (root hidraw sampling would never run)' >&2; exit 1; }
+[ "$(readlink "$TS_SAMPLER_LINK")" = '../xwlightos-touch-hidraw-sampler.service' ] || { echo 'xwlightos-touch-hidraw-sampler.service wants symlink points at the wrong unit' >&2; exit 1; }
+grep -q '^ExecStart=/usr/local/sbin/xwlightos-touchscreen-fix.sh sampler$' "$SVC_WORK/etc/systemd/system/xwlightos-touch-hidraw-sampler.service" || { echo 'xwlightos-touch-hidraw-sampler.service lost its sampler ExecStart' >&2; exit 1; }
 # 触屏修复脚本的日志落点必须是普通用户可写域（2026-11-01 第五轮
 # 附带小修）：该脚本既被 systemd 以 root 跑、又被诊断脚本以 live
 # 用户身份重跑，原先写 /var/log 的 root 属主文件让用户重跑追加被
@@ -394,12 +407,23 @@ grep -q '^LOG_FILE="/tmp/xwlightos-touchscreen-fix.log"$' "$TS_FIX_SCRIPT" \
     || { echo 'touchscreen fix log path is not the user-writable /tmp file (live-user rerun would lose the diagnostic log)' >&2; exit 1; }
 if grep -v '^[[:space:]]*#' "$TS_FIX_SCRIPT" | grep -q '/var/log/xwlightos-touchscreen-fix\.log'; then
     echo 'touchscreen fix script still writes its log under /var/log in code (root-owned file blocks the live-user rerun append)' >&2; exit 1; fi
-# 阶段三（2026-11-02 第七轮，用户令“开启怪癖模式”）：已知 ID 设备
-# 已绑 hid-multitouch 时，脚本必须有改绑 MT_CLS_EXPORT_ALL_INPUTS
-# 的逻辑（new_id 带类值 + rebind + 失败回退），否则真机上阶段
-# 一/二 moved 0、怪癖等于没开。
-grep -q 'MT_CLS_EXPORT_ALL_INPUTS' "$TS_FIX_SCRIPT" \
-    || { echo 'touchscreen fix script lost its stage-3 quirk class (MT_CLS_EXPORT_ALL_INPUTS; the already-bound device would never leave MT_CLS_DEFAULT)' >&2; exit 1; }
+# 阶段三（2026-11-02 第七轮起，用户令“开启怪癖模式”）：已知 ID
+# 设备已绑 hid-multitouch 时，脚本必须有改绑怪癖类的逻辑
+# （new_id 带类值 + rebind + 失败回退），否则真机上阶段一/二
+# moved 0、怪癖等于没开。类值：第七轮 MT_CLS_EXPORT_ALL_INPUTS
+# （0x13）经 Build 68 真机改绑生效仍全 0，第八轮（2026-11-06，
+# 对齐 Windows + MTConfig 证据）改 MT_CLS_WIN_8（0x12）。
+grep -q 'MT_CLS_WIN_8' "$TS_FIX_SCRIPT" \
+    || { echo 'touchscreen fix script lost its stage-3 quirk class (MT_CLS_WIN_8; the already-bound device would never leave MT_CLS_DEFAULT)' >&2; exit 1; }
+# 第八轮 root 取证三件（rdesc 解析、usbmon 汇总、hidraw
+# sampler）必须在脚本里：丢了下一张照片又分不开 Input Mode
+# 的三条岔口（没发/被拒/无效）。
+grep -q 'ev_collect_rdesc' "$TS_FIX_SCRIPT" \
+    || { echo 'touchscreen fix script lost its round-8 rdesc evidence collection (Input Mode report ID would be unknowable)' >&2; exit 1; }
+grep -q 'ev_usbmon_stop' "$TS_FIX_SCRIPT" \
+    || { echo 'touchscreen fix script lost its round-8 usbmon control-transfer evidence (SET_REPORT delivery would be unknowable)' >&2; exit 1; }
+grep -q 'run_hidraw_sampler' "$TS_FIX_SCRIPT" \
+    || { echo 'touchscreen fix script lost its round-8 root hidraw sampler (the diag touch window would have no root-side raw bytes)' >&2; exit 1; }
 grep -q 'QUIRK_MARKER' "$TS_FIX_SCRIPT" \
     || { echo 'touchscreen fix script lost its stage-3 idempotency marker (diag rerun would rebind the device every time)' >&2; exit 1; }
 grep -q 'restoring plain binding' "$TS_FIX_SCRIPT" \
@@ -457,6 +481,20 @@ grep -q '怪癖模式（第15节）' "$TS_DIAG_SCRIPT" \
     || { echo 'touch diag script lost conclusion item 8 (quirk-mode status)' >&2; exit 1; }
 grep -q '音频（第16节）' "$TS_DIAG_SCRIPT" \
     || { echo 'touch diag script lost conclusion item 9 (audio status)' >&2; exit 1; }
+# 第八轮新增（对齐 Windows / Input Mode 取证）：第 17 节 root
+# 取证汇总与结论区前两项（Input Mode、hidraw root 字节）必须在，
+# 且采样窗标记机制（通知 root sampler 同窗采样）不许丢——丢了
+# 下一张照片又回到“hidraw 不可读、SET 发没发不知道”的盲区。
+grep -q 'root 取证' "$TS_DIAG_SCRIPT" \
+    || { echo 'touch diag script lost its round-8 root-evidence section 17 (Input Mode / usbmon / root hidraw)' >&2; exit 1; }
+grep -q 'Input Mode（第17节）' "$TS_DIAG_SCRIPT" \
+    || { echo 'touch diag script lost conclusion item 1 (Input Mode status; must stay first in the conclusion block)' >&2; exit 1; }
+grep -q 'diag-window-open' "$TS_DIAG_SCRIPT" \
+    || { echo 'touch diag script lost its diag-window marker for the root hidraw sampler (root sampling would never sync with the touch window)' >&2; exit 1; }
+grep -q 'xwlightos-touch-evidence' "$TS_DIAG_SCRIPT" \
+    || { echo 'touch diag script lost its round-8 evidence directory reads (section 17 would have nothing to show)' >&2; exit 1; }
+grep -q 'MI 接口绑定（第17节' "$TS_DIAG_SCRIPT" \
+    || { echo 'touch diag script lost its MI_01 binding record in the conclusion block (round 8: recorded, never touched)' >&2; exit 1; }
 # 实体键盘在场守候已删除（2026-11-01 第六轮，用户裁决）：第五轮
 # 的 xwlightos-keyboard-watch（连着实体键盘就不弹 OSK）在希沃上
 # 必然误判——希沃遥控器的接收器在 evdev 眼里就是一个带完整键位

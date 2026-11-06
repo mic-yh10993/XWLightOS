@@ -1,0 +1,20 @@
+[Unit]
+Description=Root-side hidraw sampling for the Seewo touch diag window (round 8 evidence)
+# 第八轮 root 取证之三：Build 68 真机上 /dev/hidraw0 存在但普通
+# 用户不可读，诊断第 8 节的 hidraw 原始字节始终采不到。本服务
+# 以 root 等待诊断脚本的触摸窗口标记（诊断在 8 秒采样窗开始
+# 时创建 /tmp/xwlightos-touch-evidence/diag-window-open），出
+# 现即对触屏设备的 hidraw 节点并读同一个 8 秒窗口，结果写
+# hidraw-root.txt 供诊断结论区引用。只读采样，不改设备状态；
+# 等不到标记 25 分钟后写明状态退出。实现是修复脚本的 sampler
+# 模式（单一脚本、单一写手，避免再散一份代码）。
+After=xwlightos-touchscreen-fix.service
+Wants=xwlightos-touchscreen-fix.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/xwlightos-touchscreen-fix.sh sampler
+TimeoutStartSec=1800
+
+[Install]
+WantedBy=multi-user.target
