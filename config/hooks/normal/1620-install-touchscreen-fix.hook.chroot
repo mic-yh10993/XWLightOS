@@ -138,5 +138,44 @@ grep -q 'HIDIOCSFEATURE' /usr/local/sbin/xwlightos-touchscreen-fix.sh || {
     echo 'XWLightOS: xwlightos-touchscreen-fix.sh lost stage-6 Input Mode SET retry (HIDIOCSFEATURE)' >&2
     exit 1
 }
+# 8. 第十轮绕过服务（Build 71）：守护进程语法 + 服务 + wants 链接 +
+# udev 规则 + modules-load 文件 + uinput 内核模块必须齐全，否则
+# 触屏绕过等于没装。语法检查只内存编译，不写 __pycache__ 进镜像。
+python3 -c "compile(open('/usr/local/sbin/xwlightos-touch-bypass.py').read(), 'xwlightos-touch-bypass.py', 'exec')" || {
+    echo 'XWLightOS: xwlightos-touch-bypass.py failed syntax check' >&2
+    exit 1
+}
+[ -f /etc/systemd/system/xwlightos-touch-bypass.service ] || {
+    echo 'XWLightOS: xwlightos-touch-bypass.service missing' >&2
+    exit 1
+}
+_BWANTS=/etc/systemd/system/multi-user.target.wants/xwlightos-touch-bypass.service
+[ -e "$_BWANTS" ] || {
+    echo 'XWLightOS: xwlightos-touch-bypass.service wants symlink is dangling (bypass would never run at boot)' >&2
+    exit 1
+}
+[ "$(readlink "$_BWANTS")" = '../xwlightos-touch-bypass.service' ] || {
+    echo 'XWLightOS: xwlightos-touch-bypass.service wants symlink points at the wrong unit' >&2
+    exit 1
+}
+grep -q '^ExecStart=/usr/bin/python3 /usr/local/sbin/xwlightos-touch-bypass.py$' \
+    /etc/systemd/system/xwlightos-touch-bypass.service || {
+    echo 'XWLightOS: xwlightos-touch-bypass.service lost its ExecStart' >&2
+    exit 1
+}
+[ -f /etc/udev/rules.d/70-xwlightos-touch-bypass.rules ] || {
+    echo 'XWLightOS: 70-xwlightos-touch-bypass.rules missing' >&2
+    exit 1
+}
+grep -q '^uinput$' /etc/modules-load.d/xwlightos-touch-bypass.conf || {
+    echo 'XWLightOS: xwlightos-touch-bypass.conf lost the uinput line (uinput module would never load)' >&2
+    exit 1
+}
+# uinput 内核模块必须随出货内核提供，否则服务起不来、/dev/uinput 永不出现。
+_UINP=$(ls /lib/modules/*/kernel/drivers/input/misc/uinput.ko* 2>/dev/null | head -1)
+[ -n "$_UINP" ] || {
+    echo 'XWLightOS: uinput kernel module missing from the image (bypass service could never create /dev/uinput)' >&2
+    exit 1
+}
 
 echo 'XWLightOS: touchscreen fix (1620) staged'

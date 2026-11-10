@@ -1,0 +1,21 @@
+[Unit]
+Description=Seewo touch bypass: decode CVTE hidraw reports to uinput (round 10)
+# 第十轮（Build 71）：希沃触屏 1FF7:0F26 的 hid-multitouch 收到报告
+# 却零 evdev 事件（三轮真机全 0），但 hidraw 确实吐标准多点触控
+# 报告。本服务以 root 读 hidraw、按已解格式解码报告 2、经 uinput
+# 注入给系统。叠加、不是取代：只补触摸这一条路，鼠标/笔/键盘/
+# 系统控制仍由内核 hid-multitouch 驱动负责，绝不黑名单它。
+# 无设备机器：守护进程只空转等待 hidraw 节点出现，不影响开机；
+# 设备断开重插自动重连。
+After=local-fs.target systemd-udevd.service systemd-modules-load.service
+Wants=systemd-udevd.service systemd-modules-load.service
+
+[Service]
+Type=simple
+ExecStartPre=-/sbin/modprobe uinput
+ExecStart=/usr/bin/python3 /usr/local/sbin/xwlightos-touch-bypass.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

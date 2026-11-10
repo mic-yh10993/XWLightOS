@@ -108,6 +108,11 @@ require_path 'etc/xwlightos/touchscreen-known-ids.conf'
 # 第八轮（2026-11-06）：hidraw root 采样服务（诊断触摸窗内以
 # root 并读 hidraw，补普通用户不可读的盲区）必须进镜像。
 require_path 'etc/systemd/system/xwlightos-touch-hidraw-sampler.service'
+# 第十轮（2026-11-10）：hidraw->uinput 绕过服务（Build 71）必须进镜像。
+require_path 'usr/local/sbin/xwlightos-touch-bypass.py'
+require_path 'etc/systemd/system/xwlightos-touch-bypass.service'
+require_path 'etc/udev/rules.d/70-xwlightos-touch-bypass.rules'
+require_path 'etc/modules-load.d/xwlightos-touch-bypass.conf'
 # 诊断版（Build 40 触屏诊断，1621 钩子）：开机自动弹窗的诊断脚本、
 # 启动器与桌面自启动入口必须进镜像。正式版确认根因后删除。
 require_path 'usr/local/sbin/xwlightos-touch-diag.sh'
@@ -393,6 +398,20 @@ TS_SAMPLER_LINK="$SVC_WORK/etc/systemd/system/multi-user.target.wants/xwlightos-
 [ -e "$TS_SAMPLER_LINK" ] || { echo 'xwlightos-touch-hidraw-sampler.service wants symlink is dangling (root hidraw sampling would never run)' >&2; exit 1; }
 [ "$(readlink "$TS_SAMPLER_LINK")" = '../xwlightos-touch-hidraw-sampler.service' ] || { echo 'xwlightos-touch-hidraw-sampler.service wants symlink points at the wrong unit' >&2; exit 1; }
 grep -q '^ExecStart=/usr/local/sbin/xwlightos-touchscreen-fix.sh sampler$' "$SVC_WORK/etc/systemd/system/xwlightos-touch-hidraw-sampler.service" || { echo 'xwlightos-touch-hidraw-sampler.service lost its sampler ExecStart' >&2; exit 1; }
+# 第十轮：hidraw->uinput 绕过服务同样必须真正启用（wants 链接 +
+# 守护进程 ExecStart），否则 Build 71 的绕过等于没装。
+unsquashfs -f -d "$SVC_WORK" "$FS" \
+    etc/systemd/system/xwlightos-touch-bypass.service \
+    etc/systemd/system/multi-user.target.wants/xwlightos-touch-bypass.service \
+    >/dev/null 2>&1
+TS_BYPASS_LINK="$SVC_WORK/etc/systemd/system/multi-user.target.wants/xwlightos-touch-bypass.service"
+[ -e "$TS_BYPASS_LINK" ] || { echo 'xwlightos-touch-bypass.service wants symlink is dangling (bypass would never run at boot)' >&2; exit 1; }
+[ "$(readlink "$TS_BYPASS_LINK")" = '../xwlightos-touch-bypass.service' ] || { echo 'xwlightos-touch-bypass.service wants symlink points at the wrong unit' >&2; exit 1; }
+grep -q '^ExecStart=/usr/bin/python3 /usr/local/sbin/xwlightos-touch-bypass.py$' "$SVC_WORK/etc/systemd/system/xwlightos-touch-bypass.service" || { echo 'xwlightos-touch-bypass.service lost its ExecStart' >&2; exit 1; }
+# uinput 内核模块必须随出货内核提供，否则绕过服务起不来。
+# 注意：校验脚本只把指名文件解到 $SVC_WORK，内核模块不在其中，
+# 须查 unsquashfs -l 的全量清单 $LIST（require_path 同款机制）。
+grep -q -E '(^|/)kernel/drivers/input/misc/uinput\.ko(\.(xz|zst|gz))?$' "$LIST" || { echo 'uinput kernel module missing from the image (bypass service could never create /dev/uinput)' >&2; exit 1; }
 # 触屏修复脚本的日志落点必须是普通用户可写域（2026-11-01 第五轮
 # 附带小修）：该脚本既被 systemd 以 root 跑、又被诊断脚本以 live
 # 用户身份重跑，原先写 /var/log 的 root 属主文件让用户重跑追加被
