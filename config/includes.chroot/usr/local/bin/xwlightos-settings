@@ -14,6 +14,14 @@
 # The manager toggle is a system service: state is read with
 # `systemctl is-enabled` and changed with `pkexec systemctl
 # enable/disable --now`, so the toggle is real and persistent.
+#
+# User instruction 2026-11-10 22:14 (mail "补充" item 2): the touch
+# fallback must auto-detect whether it is needed, auto-enable, pop a
+# notification, and be toggleable here. The touch toggle below follows
+# the manager toggle's pattern exactly (system service, pkexec,
+# on_service with the same rebound/re-entry guard): the unit is
+# xwlightos-touch-bypass.service (Build 72), flipping it really starts
+# or stops the CVTE hidraw->uinput bypass.
 import glob
 import os
 import subprocess
@@ -36,6 +44,9 @@ def find_unit(patterns, fallback):
 
 TM_UNIT = find_unit(["com.seewo.terminalmanager.service"],
                     "com.seewo.terminalmanager.service")
+
+TOUCH_UNIT = find_unit(["xwlightos-touch-bypass.service"],
+                       "xwlightos-touch-bypass.service")
 
 # 用户 2026-10-28 邮件第 4 项：桌面清理开关拨的是用户级 path 单元
 #（xwlightos-desktop-cleaner.path），不是系统服务。用户级单元不需要
@@ -157,11 +168,11 @@ class Window(Gtk.Window):
         # 2026-10-24 第 3 项明确要求失败不自动重试，因此回弹必须被
         # 这道标志挡住，不能只依赖 handler_block_by_func。
         self._busy = False
-        self.set_default_size(520, 380)
+        self.set_default_size(520, 430)
         self.set_border_width(8)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         head = Gtk.Label(xalign=0)
-        head.set_markup("希沃管家后端与桌面清理设置（开关同时启停当前运行，"
+        head.set_markup("希沃管家后端、触屏兜底与桌面清理设置（开关同时启停当前运行，"
                         "重启后保持）")
         head.set_margin_start(14)
         box.pack_start(head, False, False, 6)
@@ -174,6 +185,19 @@ class Window(Gtk.Window):
         self.row_tm.switch.connect(
             "notify::active", self.on_service, TM_UNIT, self.row_tm)
         box.pack_start(self.row_tm, False, False, 0)
+
+        # 用户 2026-11-10 22:14 邮件《补充》第 2 项：触屏兜底的开关。
+        # 照希沃管家开关的模式（系统服务、pkexec、on_service）：关掉后
+        # 希沃触屏失效（兜底停了，内核驱动本身不出触摸事件）；打开后
+        # 服务启动，自动判断重新跑。
+        touch_ok = service_present(TOUCH_UNIT)
+        self.row_touch = Row(
+            "触屏兜底服务", "systemd 服务：%s（关掉后希沃触屏失效）" % TOUCH_UNIT,
+            service_enabled(TOUCH_UNIT) if touch_ok else False,
+            sensitive=touch_ok)
+        self.row_touch.switch.connect(
+            "notify::active", self.on_service, TOUCH_UNIT, self.row_touch)
+        box.pack_start(self.row_touch, False, False, 0)
 
         # 用户 2026-10-28 邮件第 4 项：自动清理希沃厂商桌面图标的开关。
         # 打开时桌面目录一变化就清理厂商写进来的 .desktop 启动器

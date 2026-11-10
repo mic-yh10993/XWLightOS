@@ -1,0 +1,34 @@
+#!/bin/sh
+# XWLightOS: 触屏兜底自动开启后弹一次桌面通知。
+#
+# 第 12 轮（Build 73，用户 2026-11-10 22:14 邮件第 2 项）：兜底服务首次
+# 创建 uinput 设备（即自动兜底真正生效）后调本脚本一次，告诉用户已自动
+# 开启、可以在“XWLightOS 设置”里开关。
+#
+# 只弹一次：stamp 文件 /var/lib/xwlightos/touch-bypass-auto-notified，
+# 只在 notify-send 成功后才写。LiveCD 上每次启动是全新系统，首次启动弹
+# 一次；装好的系统上 stamp 落盘，只弹第一次。手动在设置里开关不走本脚本，
+# 不弹通知。
+#
+# 尽力而为：没有会话总线、没有 notify-send、发失败，都安静退出（返回 0），
+# 绝不影响触屏服务本身。
+set -eu
+
+STAMP=/var/lib/xwlightos/touch-bypass-auto-notified
+[ -f "$STAMP" ] && exit 0
+
+USER_NAME=$(cat /etc/xwlightos/session-user 2>/dev/null || echo user)
+USER_UID=$(id -u "$USER_NAME" 2>/dev/null || echo 1000)
+BUS_PATH=/run/user/$USER_UID/bus
+[ -S "$BUS_PATH" ] || exit 0
+command -v notify-send >/dev/null 2>&1 || exit 0
+command -v runuser >/dev/null 2>&1 || exit 0
+
+if runuser -u "$USER_NAME" -- env DISPLAY=:0 \
+        DBUS_SESSION_BUS_ADDRESS="unix:path=$BUS_PATH" \
+        notify-send -a "XWLightOS 设置" "触屏兜底已自动开启" \
+        "已检测到希沃触屏，系统自带驱动无触摸事件，已自动开启触屏兜底。可在“XWLightOS 设置”里开关此功能。"; then
+    mkdir -p /var/lib/xwlightos
+    touch "$STAMP"
+fi
+exit 0

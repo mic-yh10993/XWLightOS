@@ -203,5 +203,32 @@ _UINP=$(ls /lib/modules/*/kernel/drivers/input/misc/uinput.ko* 2>/dev/null | hea
     echo 'XWLightOS: uinput kernel module missing from the image (bypass service could never create /dev/uinput)' >&2
     exit 1
 }
+# 8c. 第十二轮（Build 73）：防抖与内核守卫必须在源码里，否则“所有程序”
+# 闪退修法等于没装；通知脚本与 notify-send 必须齐全，否则自动开启的提示
+# 发不出去；设置里必须有触屏兜底开关，否则用户关不掉自动兜底。
+grep -q 'CVTE_DEBOUNCE_MS' /usr/local/src/xwlightos-touch-cvte/cvte_touch.c || {
+    echo 'XWLightOS: cvte_touch.c lost the debounce (round 12 double-tap fix)' >&2
+    exit 1
+}
+grep -q 'flush_pending_releases' /usr/local/src/xwlightos-touch-cvte/cvte_touch.c || {
+    echo 'XWLightOS: cvte_touch.c lost flush_pending_releases (debounce never fires)' >&2
+    exit 1
+}
+grep -q 'kernel_touch_event_seen' /usr/local/src/xwlightos-touch-cvte/cvte_touch.c || {
+    echo 'XWLightOS: cvte_touch.c lost the kernel guard (bypass would never yield to a working kernel driver)' >&2
+    exit 1
+}
+[ -x /usr/local/bin/xwlightos-touch-bypass-notify ] || {
+    echo 'XWLightOS: xwlightos-touch-bypass-notify missing or not executable (auto-enable notification would never fire)' >&2
+    exit 1
+}
+command -v notify-send >/dev/null 2>&1 || {
+    echo 'XWLightOS: notify-send missing (libnotify-bin not installed; auto-enable notification would never fire)' >&2
+    exit 1
+}
+grep -q 'xwlightos-touch-bypass.service' /usr/local/bin/xwlightos-settings || {
+    echo 'XWLightOS: xwlightos-settings lost the touch fallback switch (user could not turn the bypass off)' >&2
+    exit 1
+}
 
 echo 'XWLightOS: touchscreen fix (1620) staged'
