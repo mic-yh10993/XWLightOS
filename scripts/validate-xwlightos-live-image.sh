@@ -108,11 +108,16 @@ require_path 'etc/xwlightos/touchscreen-known-ids.conf'
 # 第八轮（2026-11-06）：hidraw root 采样服务（诊断触摸窗内以
 # root 并读 hidraw，补普通用户不可读的盲区）必须进镜像。
 require_path 'etc/systemd/system/xwlightos-touch-hidraw-sampler.service'
-# 第十轮（2026-11-10）：hidraw->uinput 绕过服务（Build 71）必须进镜像。
-require_path 'usr/local/sbin/xwlightos-touch-bypass.py'
+# 第十一轮（2026-11-10）：hidraw->uinput 绕过服务（Build 72，C 程序）必须进镜像。
+# Build 71 的 Python 守护进程已删除（未在真机验证过；出货路径是用户在真机
+# 上验证跑通的 C 程序，源码随镜像发货，构建期由 1620 钩子编译）。
+require_path 'usr/local/bin/cvte_touch'
+require_path 'usr/local/src/xwlightos-touch-cvte/cvte_touch.c'
 require_path 'etc/systemd/system/xwlightos-touch-bypass.service'
 require_path 'etc/udev/rules.d/70-xwlightos-touch-bypass.rules'
 require_path 'etc/modules-load.d/xwlightos-touch-bypass.conf'
+# 第十一轮声音修法：snd_hda_intel 电源管理关闭文件必须进镜像。
+require_path 'etc/modprobe.d/snd-hda-no-power-save.conf'
 # 诊断版（Build 40 触屏诊断，1621 钩子）：开机自动弹窗的诊断脚本、
 # 启动器与桌面自启动入口必须进镜像。正式版确认根因后删除。
 require_path 'usr/local/sbin/xwlightos-touch-diag.sh'
@@ -173,6 +178,13 @@ PW_QUANTUM_DROPIN="$WORK/pw-quantum"
 cat_image_file 'etc/pipewire/pipewire.conf.d/51-xwlightos-quantum.conf' "$PW_QUANTUM_DROPIN"
 grep -q 'default\.clock\.min-quantum = 2048' "$PW_QUANTUM_DROPIN" || {
     echo 'pipewire drop-in does not floor default.clock.min-quantum at 2048 (a stream could drag the graph to 16-sample quanta and starve on weak virtual CPUs)' >&2; exit 1; }
+# 第十一轮声音修法：snd_hda_intel 电源管理必须关（诊断实锤 power_save=1，
+# 声卡空闲 1 秒断电，是 HDMI 音频断续的常见根源；用户之前那次同款修复在
+# LiveCD 上根本没生效，写进镜像才能从开机起生效）。
+HDA_PS="$WORK/snd-hda-no-power-save.conf"
+cat_image_file 'etc/modprobe.d/snd-hda-no-power-save.conf' "$HDA_PS"
+grep -q '^options snd_hda_intel power_save=0 power_save_controller=N$' "$HDA_PS" || {
+    echo 'snd-hda-no-power-save.conf does not disable snd_hda_intel power saving' >&2; exit 1; }
 require_path 'usr/libexec/rtkit-daemon'
 # 摄像头：cheese（GNOME 拍照应用）。
 require_path 'usr/bin/cheese'
@@ -293,6 +305,23 @@ SKEL_GTK3="$WORK/skel-gtk3-settings.ini"
 cat_image_file 'etc/skel/.config/gtk-3.0/settings.ini' "$SKEL_GTK3"
 grep -q '^gtk-application-prefer-dark-theme=false$' "$SKEL_GTK3" || {
     echo 'skel gtk-3.0 settings.ini does not pin prefer-dark off' >&2; exit 1; }
+# 第十一轮主题修法（用户 2026-11-10 真机：文件还是白按钮）：skel 与 live
+# 用户家目录的 gtk-4.0/gtk.css 必须是真实样式表（从 gresource 抽出的约
+# 9000 行），不是那行 @import 存根——此前直接 cp 预编译包目录，存根在
+# 用户覆盖层加载时解析失败，libadwaita 应用 stays Adwaita。
+require_path 'etc/skel/.config/gtk-4.0/gtk.css'
+require_path 'etc/skel/.config/gtk-4.0/windows-assets/titlebutton-close.png'
+require_path 'home/user/.config/gtk-4.0/gtk.css'
+SKEL_GTK4="$WORK/skel-gtk4.css"
+cat_image_file 'etc/skel/.config/gtk-4.0/gtk.css' "$SKEL_GTK4"
+grep -q '@import url("resource:///org/gnome/theme/gtk.css");' "$SKEL_GTK4" && {
+    echo 'skel gtk-4.0 gtk.css is still the @import stub (libadwaita apps would stay Adwaita)' >&2; exit 1; }
+grep -q 'headerbar windowcontrols button.close' "$SKEL_GTK4" || {
+    echo 'skel gtk-4.0 gtk.css lost the windowcontrols rules (traffic-light buttons would not render)' >&2; exit 1; }
+LIVE_GTK4="$WORK/live-gtk4.css"
+cat_image_file 'home/user/.config/gtk-4.0/gtk.css' "$LIVE_GTK4"
+grep -q 'headerbar windowcontrols button.close' "$LIVE_GTK4" || {
+    echo 'live user gtk-4.0 gtk.css is not the real WhiteSur stylesheet (Files would stay Adwaita)' >&2; exit 1; }
 # 用户 2026-10-18 邮件：Windows 常用中文字体别名（微软雅黑等 → Noto CJK）。
 require_path 'etc/fonts/conf.d/70-xwlightos-windows-font-aliases.conf'
 # 用户 2026-10-18 邮件「字体问题」：构建期在线安装的微软英文核心字体
@@ -407,7 +436,23 @@ unsquashfs -f -d "$SVC_WORK" "$FS" \
 TS_BYPASS_LINK="$SVC_WORK/etc/systemd/system/multi-user.target.wants/xwlightos-touch-bypass.service"
 [ -e "$TS_BYPASS_LINK" ] || { echo 'xwlightos-touch-bypass.service wants symlink is dangling (bypass would never run at boot)' >&2; exit 1; }
 [ "$(readlink "$TS_BYPASS_LINK")" = '../xwlightos-touch-bypass.service' ] || { echo 'xwlightos-touch-bypass.service wants symlink points at the wrong unit' >&2; exit 1; }
-grep -q '^ExecStart=/usr/bin/python3 /usr/local/sbin/xwlightos-touch-bypass.py$' "$SVC_WORK/etc/systemd/system/xwlightos-touch-bypass.service" || { echo 'xwlightos-touch-bypass.service lost its ExecStart' >&2; exit 1; }
+grep -q '^ExecStart=/usr/local/bin/cvte_touch$' "$SVC_WORK/etc/systemd/system/xwlightos-touch-bypass.service" || { echo 'xwlightos-touch-bypass.service lost its ExecStart (must run /usr/local/bin/cvte_touch)' >&2; exit 1; }
+# Build 71 的 Python 守护进程必须不在镜像里（只留一个触屏服务，避免双份输入）。
+if grep -q -E "(^|/)usr/local/sbin/xwlightos-touch-bypass\\.py$" "$LIST"; then
+    echo 'removed Build 71 Python touch bypass still present in final ISO: usr/local/sbin/xwlightos-touch-bypass.py' >&2
+    exit 1
+fi
+# 第十一轮：全仓不得出现全局 blacklist hid_multitouch（用户 2026-11-10
+# 10:29 硬约束：绕过是叠加、不是取代）。否定式 grep 先剔注释行再查。
+if unsquashfs -l "$FS" 2>/dev/null | grep -q -E "(^|/)etc/modprobe\\.d/.*\\.conf$"; then
+    MODPROBE_WORK="$WORK/modprobe-check"
+    mkdir -p "$MODPROBE_WORK"
+    unsquashfs -f -d "$MODPROBE_WORK" "$FS" etc/modprobe.d >/dev/null 2>&1 || true
+    if grep -r -I -h '^[^#]*blacklist[[:space:]]\+hid_multitouch' "$MODPROBE_WORK" 2>/dev/null | grep -q .; then
+        echo 'global blacklist hid_multitouch present in final ISO modprobe.d (forbidden by user 2026-11-10)' >&2
+        exit 1
+    fi
+fi
 # uinput 内核模块必须随出货内核提供，否则绕过服务起不来。
 # 注意：校验脚本只把指名文件解到 $SVC_WORK，内核模块不在其中，
 # 须查 unsquashfs -l 的全量清单 $LIST（require_path 同款机制）。

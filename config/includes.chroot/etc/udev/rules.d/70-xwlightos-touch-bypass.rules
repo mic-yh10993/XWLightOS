@@ -1,4 +1,4 @@
-# XWLightOS: Build 71 绕过服务诊断用固定名。
+# XWLightOS: Build 72 绕过服务（C 程序）诊断用固定名。
 # CVTE 触屏（1FF7:0F26）的 hidraw 节点固定为 /dev/cvte-touch-hidraw；
-# 守护进程主靠 sysfs 扫描 + 报告描述符筛选，不依赖本链接。
+# C 程序主靠 sysfs 扫描找设备，不依赖本链接。
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1ff7", ATTRS{idProduct}=="0f26", SYMLINK+="cvte-touch-hidraw"

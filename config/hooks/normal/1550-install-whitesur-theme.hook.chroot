@@ -70,12 +70,73 @@ done
 # 主题装进 /etc/skel，live 用户（1700 钩子从 skel 复制家目录）与安装后的
 # 新用户都能继承。没有这一步，GTK4 应用会渲染成原生 Adwaita浅色，
 # 用户观感就是"主题没用上"（用户 2026-10-18 真机反馈）。
-install -d /etc/skel/.config/gtk-4.0
-cp -a /usr/share/themes/WhiteSur-Light/gtk-4.0/. /etc/skel/.config/gtk-4.0/
-[ -s /etc/skel/.config/gtk-4.0/gtk.css ] || {
-    echo "XWLightOS: WhiteSur-Light gtk-4.0 theme did not land in /etc/skel (libadwaita apps would stay Adwaita)" >&2
+# Build 72 根因修正（用户 2026-11-10 真机：文件还是白按钮）：
+# 此前直接 cp 预编译包的 gtk-4.0/ 目录，但该目录的 gtk.css 只有一行
+# @import url("resource:///org/gnome/theme/gtk.css");，真正的样式表
+# （约 9000 行）在同目录的 gtk.gresource 里；该 @import 只有在主题按
+# 名字加载时才能解析（GTK3 靠 dconf 按名字加载，gresource 随之注册，
+# 所以终端有红黄绿），拷到 ~/.config/gtk-4.0/ 当用户覆盖层加载时 GTK
+# 不会为该目录注册 gresource，@import 解析失败，样式等于零，文件
+# 仍是 Adwaita。文件本身是到了 live 用户家目录的，错的是内容。
+# 修正：从 gresource 里抽出真正的 gtk.css / gtk-dark.css 与 assets/、
+# windows-assets/（抽出的 CSS 经核实 0 处 resource:// 引用，全部 url()
+# 均为相对路径，自包含成立），再写进 /etc/skel/.config/gtk-4.0/。
+# 这等价于上游 config_gtk4 的 SCSS 编译产物，只是不引 sassc。
+command -v gresource >/dev/null 2>&1 || {
+    echo 'XWLightOS: gresource missing (cannot extract the WhiteSur gtk-4.0 stylesheet from gtk.gresource)' >&2
     exit 1
 }
+_WS_GTK4=/usr/share/themes/WhiteSur-Light/gtk-4.0
+_WS_SKEL=/etc/skel/.config/gtk-4.0
+install -d "$_WS_SKEL"
+gresource extract "$_WS_GTK4/gtk.gresource" /org/gnome/theme/gtk.css > "$_WS_SKEL/gtk.css" || {
+    echo 'XWLightOS: failed to extract WhiteSur gtk-4.0 gtk.css from gtk.gresource' >&2
+    exit 1
+}
+gresource extract "$_WS_GTK4/gtk.gresource" /org/gnome/theme/gtk-dark.css > "$_WS_SKEL/gtk-dark.css" || {
+    echo 'XWLightOS: failed to extract WhiteSur gtk-4.0 gtk-dark.css from gtk.gresource' >&2
+    exit 1
+}
+# 注意：不用管道接 while（管道会让循环跑在子 shell，里面的 exit 1
+# 杀不死钩子）；先把清单落盘，再重定向读入，失败即整钩子红灯。
+gresource list "$_WS_GTK4/gtk.gresource" > "$WORKDIR/gtk4-resources.txt" || {
+    echo 'XWLightOS: cannot list WhiteSur gtk-4.0 gresource contents' >&2
+    exit 1
+}
+grep '^/org/gnome/theme/\(assets\|windows-assets\)/' "$WORKDIR/gtk4-resources.txt" > "$WORKDIR/gtk4-assets.txt" || {
+    echo 'XWLightOS: no assets/windows-assets in WhiteSur gtk-4.0 gresource' >&2
+    exit 1
+}
+while IFS= read -r _res; do
+    _rel=${_res#/org/gnome/theme/}
+    install -d "$_WS_SKEL/$(dirname "$_rel")"
+    gresource extract "$_WS_GTK4/gtk.gresource" "$_res" > "$_WS_SKEL/$_rel" || {
+        echo "XWLightOS: failed to extract WhiteSur gtk-4.0 asset $_rel from gtk.gresource" >&2
+        exit 1
+    }
+done < "$WORKDIR/gtk4-assets.txt"
+# 门禁：skel 里的必须是真实样式表（不是那行 @import 存根），且按钮图片资产齐全。
+grep -q '@import url("resource:///org/gnome/theme/gtk.css");' "$_WS_SKEL/gtk.css" && {
+    echo 'XWLightOS: skel gtk-4.0 gtk.css is still the @import stub (libadwaita apps would stay Adwaita)' >&2
+    exit 1
+}
+grep -q 'headerbar windowcontrols button.close' "$_WS_SKEL/gtk.css" || {
+    echo 'XWLightOS: skel gtk-4.0 gtk.css lost the windowcontrols rules (traffic-light buttons would not render)' >&2
+    exit 1
+}
+[ -s "$_WS_SKEL/gtk-dark.css" ] || {
+    echo 'XWLightOS: skel gtk-4.0 gtk-dark.css missing after extraction' >&2
+    exit 1
+}
+[ -s "$_WS_SKEL/windows-assets/titlebutton-close.png" ] || {
+    echo 'XWLightOS: skel gtk-4.0 windows-assets missing after extraction (traffic-light buttons would have no images)' >&2
+    exit 1
+}
+[ -s "$_WS_SKEL/assets/combobox-arrow.png" ] || {
+    echo 'XWLightOS: skel gtk-4.0 assets missing after extraction' >&2
+    exit 1
+}
+unset _WS_GTK4 _WS_SKEL _res _rel
 
 echo "XWLightOS: installing WhiteSur icon theme $ICON_VER"
 curl -fsSL "https://github.com/vinceliuice/WhiteSur-icon-theme/archive/refs/tags/${ICON_VER}.tar.gz" -o whitesur-icons.tar.gz

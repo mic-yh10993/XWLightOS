@@ -1,11 +1,14 @@
 [Unit]
-Description=Seewo touch bypass: decode CVTE hidraw reports to uinput (round 10)
-# 第十轮（Build 71）：希沃触屏 1FF7:0F26 的 hid-multitouch 收到报告
-# 却零 evdev 事件（三轮真机全 0），但 hidraw 确实吐标准多点触控
-# 报告。本服务以 root 读 hidraw、按已解格式解码报告 2、经 uinput
-# 注入给系统。叠加、不是取代：只补触摸这一条路，鼠标/笔/键盘/
-# 系统控制仍由内核 hid-multitouch 驱动负责，绝不黑名单它。
-# 无设备机器：守护进程只空转等待 hidraw 节点出现，不影响开机；
+Description=Seewo touch bypass: decode CVTE hidraw reports to uinput (round 11)
+# 第十一轮（Build 72）：希沃触屏 1FF7:0F26 的 hid-multitouch 收到报告
+# 却零 evdev 事件（三轮真机全 0），但 hidraw 确实吐标准多点触控报告。
+# 本服务跑用户在真机上验证跑通的 C 程序（源码见
+# /usr/local/src/xwlightos-touch-cvte/cvte_touch.c），以 root 读 hidraw、
+# 按已解格式解码报告 2、经 uinput 注入给系统。叠加、不是取代：只补触摸
+# 这一条路，鼠标/笔/键盘/系统控制仍由内核 hid-multitouch 驱动负责，
+# 绝不黑名单它（用户 2026-11-10 10:29 硬约束）。
+# Build 71 的 Python 守护进程已删除（未在真机验证过；只留一个触屏服务）。
+# 无设备机器：程序只空转等待 hidraw 节点出现，不影响开机；
 # 设备断开重插自动重连。
 After=local-fs.target systemd-udevd.service systemd-modules-load.service
 Wants=systemd-udevd.service systemd-modules-load.service
@@ -13,7 +16,7 @@ Wants=systemd-udevd.service systemd-modules-load.service
 [Service]
 Type=simple
 ExecStartPre=-/sbin/modprobe uinput
-ExecStart=/usr/bin/python3 /usr/local/sbin/xwlightos-touch-bypass.py
+ExecStart=/usr/local/bin/cvte_touch
 Restart=on-failure
 RestartSec=3
 

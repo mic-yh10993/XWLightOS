@@ -138,11 +138,29 @@ grep -q 'HIDIOCSFEATURE' /usr/local/sbin/xwlightos-touchscreen-fix.sh || {
     echo 'XWLightOS: xwlightos-touchscreen-fix.sh lost stage-6 Input Mode SET retry (HIDIOCSFEATURE)' >&2
     exit 1
 }
-# 8. 第十轮绕过服务（Build 71）：守护进程语法 + 服务 + wants 链接 +
+# 8. 第十一轮绕过服务（Build 72）：C 程序编译 + 服务 + wants 链接 +
 # udev 规则 + modules-load 文件 + uinput 内核模块必须齐全，否则
-# 触屏绕过等于没装。语法检查只内存编译，不写 __pycache__ 进镜像。
-python3 -c "compile(open('/usr/local/sbin/xwlightos-touch-bypass.py').read(), 'xwlightos-touch-bypass.py', 'exec')" || {
-    echo 'XWLightOS: xwlightos-touch-bypass.py failed syntax check' >&2
+# 触屏绕过等于没装。Build 71 的 Python 守护进程已删除（未在真机验证
+# 过；用户在真机上验证跑通的是 C 程序，只留一个触屏服务）。
+# 编译：源码随镜像发货（/usr/local/src/xwlightos-touch-cvte/），
+# 构建期用镜像自带的 gcc（devel 清单含 build-essential）编成
+# /usr/local/bin/cvte_touch；-Wall -Wextra -Werror，警告即构建红灯。
+command -v gcc >/dev/null 2>&1 || {
+    echo 'XWLightOS: gcc missing (cannot build the CVTE touch bypass)' >&2
+    exit 1
+}
+[ -f /usr/local/src/xwlightos-touch-cvte/cvte_touch.c ] || {
+    echo 'XWLightOS: cvte_touch.c source missing' >&2
+    exit 1
+}
+gcc -O2 -Wall -Wextra -Werror -o /usr/local/bin/cvte_touch \
+    /usr/local/src/xwlightos-touch-cvte/cvte_touch.c || {
+    echo 'XWLightOS: cvte_touch.c failed to compile' >&2
+    exit 1
+}
+chmod 0755 /usr/local/bin/cvte_touch
+[ -x /usr/local/bin/cvte_touch ] || {
+    echo 'XWLightOS: /usr/local/bin/cvte_touch is not executable after build' >&2
     exit 1
 }
 [ -f /etc/systemd/system/xwlightos-touch-bypass.service ] || {
@@ -158,11 +176,19 @@ _BWANTS=/etc/systemd/system/multi-user.target.wants/xwlightos-touch-bypass.servi
     echo 'XWLightOS: xwlightos-touch-bypass.service wants symlink points at the wrong unit' >&2
     exit 1
 }
-grep -q '^ExecStart=/usr/bin/python3 /usr/local/sbin/xwlightos-touch-bypass.py$' \
+grep -q '^ExecStart=/usr/local/bin/cvte_touch$' \
     /etc/systemd/system/xwlightos-touch-bypass.service || {
-    echo 'XWLightOS: xwlightos-touch-bypass.service lost its ExecStart' >&2
+    echo 'XWLightOS: xwlightos-touch-bypass.service lost its ExecStart (must run /usr/local/bin/cvte_touch)' >&2
     exit 1
 }
+# 8b. 用户 2026-11-10 10:29 硬约束：全仓不得出现全局 blacklist
+# hid_multitouch（会禁掉所有设备的内核驱动，也停掉这台设备的笔/
+# 鼠标）。绕过是叠加、不是取代。否定式 grep 先剔注释行再查。
+if grep -r -I --include='*' -h '^[^#]*blacklist[[:space:]]\+hid_multitouch' \
+        /etc/modprobe.d /usr/local/sbin /usr/local/bin /etc/udev 2>/dev/null | grep -q .; then
+    echo 'XWLightOS: global blacklist hid_multitouch found (forbidden by user 2026-11-10: overlay, not a driver replacement)' >&2
+    exit 1
+fi
 [ -f /etc/udev/rules.d/70-xwlightos-touch-bypass.rules ] || {
     echo 'XWLightOS: 70-xwlightos-touch-bypass.rules missing' >&2
     exit 1
