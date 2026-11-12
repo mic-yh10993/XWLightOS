@@ -1,0 +1,95 @@
+#!/bin/sh
+# 第 13 轮（2026-11-12，用户 2026-11-11 邮件第 3 项）：无需授权访问
+# 硬盘驱动器开关。本钩子只做构建期门禁，文件本体在 includes.chroot
+# 里版本管理：
+# - /usr/share/xwlightos/noauth-drives.rules：polkit 规则模板（只放
+#   udisks2 的四个挂载/解锁动作，本地活动会话免授权）。
+# - /usr/local/libexec/xwlightos-toggle-noauth-drives：开关的唯一落盘
+#   入口（on 装规则、off 移规则），设置程序经 pkexec 调它。
+# - /usr/local/sbin/xwlightos-noauth-drives-autosetup.sh + 一次性服务：
+#   安装时勾了免密码登录，首次开机自动装上规则（只跑一次）。
+# - /usr/local/bin/xwlightos-settings：开关行（状态 = 规则文件是否存在）。
+set -eu
+
+# 1. 规则模板必须存在，且四个动作 ID 必须在镜像内 udisks2 的 policy
+# 文件里真实存在（动作名写错等于规则永不命中、开关成摆设）。
+[ -f /usr/share/xwlightos/noauth-drives.rules ] || {
+    echo 'XWLightOS: noauth-drives.rules template missing' >&2
+    exit 1
+}
+[ -f /usr/share/polkit-1/actions/org.freedesktop.UDisks2.policy ] || {
+    echo 'XWLightOS: org.freedesktop.UDisks2.policy missing (udisks2 not installed; the no-auth rule would have nothing to match)' >&2
+    exit 1
+}
+for _action in org.freedesktop.udisks2.filesystem-mount-system \
+               org.freedesktop.udisks2.encrypted-unlock-system \
+               org.freedesktop.udisks2.filesystem-mount \
+               org.freedesktop.udisks2.encrypted-unlock; do
+    grep -q "action id=\"$_action\"" /usr/share/polkit-1/actions/org.freedesktop.UDisks2.policy || {
+        echo "XWLightOS: noauth-drives.rules references unknown udisks2 action $_action" >&2
+        exit 1
+    }
+    grep -q "$_action" /usr/share/xwlightos/noauth-drives.rules || {
+        echo "XWLightOS: noauth-drives.rules lost the $_action entry" >&2
+        exit 1
+    }
+done
+unset _action
+# 模板只准含这四个 udisks2 动作，不得顺手放进 open-device/modify-device
+# 等危险动作（否定式检查：模板里出现的动作 ID 必须全在这四个里）。
+if grep -o 'org\.freedesktop\.udisks2\.[a-z-]*' /usr/share/xwlightos/noauth-drives.rules | sort -u | grep -qv -e '^org\.freedesktop\.udisks2\.filesystem-mount$' -e '^org\.freedesktop\.udisks2\.filesystem-mount-system$' -e '^org\.freedesktop\.udisks2\.encrypted-unlock$' -e '^org\.freedesktop\.udisks2\.encrypted-unlock-system$'; then
+    echo 'XWLightOS: noauth-drives.rules contains an unexpected udisks2 action (only the four mount/unlock actions are allowed)' >&2
+    exit 1
+fi
+# 2. 助手脚本必须存在、可执行、语法通过，且必须同时处理 on 与 off。
+[ -x /usr/local/libexec/xwlightos-toggle-noauth-drives ] || {
+    echo 'XWLightOS: xwlightos-toggle-noauth-drives missing or not executable' >&2
+    exit 1
+}
+bash -n /usr/local/libexec/xwlightos-toggle-noauth-drives || {
+    echo 'XWLightOS: xwlightos-toggle-noauth-drives syntax check failed' >&2
+    exit 1
+}
+grep -q '49-xwlightos-noauth-drives.rules' /usr/local/libexec/xwlightos-toggle-noauth-drives || {
+    echo 'XWLightOS: xwlightos-toggle-noauth-drives lost the rule file path' >&2
+    exit 1
+}
+# 3. 一次性自动开启服务必须在场且启用（安装时勾免密码登录才自动开）。
+[ -x /usr/local/sbin/xwlightos-noauth-drives-autosetup.sh ] || {
+    echo 'XWLightOS: xwlightos-noauth-drives-autosetup.sh missing or not executable' >&2
+    exit 1
+}
+bash -n /usr/local/sbin/xwlightos-noauth-drives-autosetup.sh || {
+    echo 'XWLightOS: xwlightos-noauth-drives-autosetup.sh syntax check failed' >&2
+    exit 1
+}
+[ -f /etc/systemd/system/xwlightos-noauth-drives-autosetup.service ] || {
+    echo 'XWLightOS: xwlightos-noauth-drives-autosetup.service missing' >&2
+    exit 1
+}
+_NWANTS=/etc/systemd/system/multi-user.target.wants/xwlightos-noauth-drives-autosetup.service
+[ -e "$_NWANTS" ] || {
+    echo 'XWLightOS: xwlightos-noauth-drives-autosetup.service wants symlink is dangling (auto-enable would never run at first boot)' >&2
+    exit 1
+}
+[ "$(readlink "$_NWANTS")" = '../xwlightos-noauth-drives-autosetup.service' ] || {
+    echo 'XWLightOS: xwlightos-noauth-drives-autosetup.service wants symlink points at the wrong unit' >&2
+    exit 1
+}
+grep -q '^ExecStart=/usr/local/sbin/xwlightos-noauth-drives-autosetup.sh$' \
+    /etc/systemd/system/xwlightos-noauth-drives-autosetup.service || {
+    echo 'XWLightOS: xwlightos-noauth-drives-autosetup.service lost its ExecStart' >&2
+    exit 1
+}
+# 4. 设置里必须有开关行（状态读规则文件、拨动调助手脚本），否则用户
+# 在设置里找不到开关、也关不掉自动开启。
+grep -q 'NOAUTH_RULE' /usr/local/bin/xwlightos-settings || {
+    echo 'XWLightOS: xwlightos-settings lost the no-auth drives switch (state would never reflect the rule file)' >&2
+    exit 1
+}
+grep -q 'xwlightos-toggle-noauth-drives' /usr/local/bin/xwlightos-settings || {
+    echo 'XWLightOS: xwlightos-settings lost the no-auth drives toggle helper call' >&2
+    exit 1
+}
+
+echo 'XWLightOS: no-auth drives switch (1622) staged'

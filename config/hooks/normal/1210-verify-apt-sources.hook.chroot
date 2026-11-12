@@ -1,0 +1,36 @@
+#!/bin/sh
+# 第 13 轮（2026-11-12，用户 2026-11-11 邮件第 7 项）：apt 源被多次配置。
+#
+# 根因：config/archives/mirrors.binary.chroot 与
+# mirrors.binary.chroot.chroot 内容完全相同（各 4 行：阿里云 main、
+# 阿里云 security、清华 main、清华 security），两者都是 chroot 阶段
+# 文件，live-build 把同内容追加两次，apt 报“源被多次配置”。修法是
+# 删冗余的 mirrors.binary.chroot.chroot（只留 mirrors.binary.chroot）。
+# 本钩子是兜底门禁：在构建期查 chroot 内已落盘的 apt 源，任何一条
+# deb 行不得重复出现——以后再有人加重复源也会被拦住。
+# 只查 deb 行（忽略注释与空行）；重复即构建失败。
+# 注意：构建用的 bootstrap/chroot 镜像是 deb.debian.org（见
+# .github/workflows/build.yml 的 --mirror-*），与 archives 里的
+# 阿里云/清华 URL 不同，不会误报。
+set -eu
+
+_TMP=$(mktemp)
+trap 'rm -f "$_TMP"' EXIT INT TERM
+{
+    if [ -f /etc/apt/sources.list ]; then
+        cat /etc/apt/sources.list
+    fi
+    for _f in /etc/apt/sources.list.d/*.list; do
+        if [ -f "$_f" ]; then
+            cat "$_f"
+        fi
+    done
+} 2>/dev/null | grep -v '^[[:space:]]*#' | grep -v '^[[:space:]]*$' | sort > "$_TMP" || true
+_DUP=$(uniq -d "$_TMP" || true)
+if [ -n "$_DUP" ]; then
+    echo 'XWLightOS: duplicate apt source lines (each deb line must appear once):' >&2
+    printf '%s\n' "$_DUP" >&2
+    exit 1
+fi
+
+echo 'XWLightOS: apt sources have no duplicate deb lines (1210) staged'

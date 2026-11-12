@@ -1,0 +1,49 @@
+#!/bin/sh
+# 第 13 轮（2026-11-12，用户 2026-11-11 邮件第 8 项）：开机声音检查。
+# 本钩子只做构建期门禁，文件本体在 includes.chroot 里版本管理：
+# - /usr/local/sbin/xwlightos-sound-check.sh：开机后把声音配置的实际
+#   生效值（snd_hda_intel power_save、PipeWire 量子、实时线程、CPU
+#   调速器、默认输出）写进 journal 与 /var/lib/xwlightos/sound-check.log。
+# - /etc/systemd/system/xwlightos-sound-check.service：一次性服务。
+# 只记录、不改任何配置；查不到的项脚本如实记“未就绪/不可用”。
+set -eu
+
+# 1. 脚本必须存在、可执行、语法通过。
+[ -x /usr/local/sbin/xwlightos-sound-check.sh ] || {
+    echo 'XWLightOS: xwlightos-sound-check.sh missing or not executable' >&2
+    exit 1
+}
+bash -n /usr/local/sbin/xwlightos-sound-check.sh || {
+    echo 'XWLightOS: xwlightos-sound-check.sh syntax check failed' >&2
+    exit 1
+}
+# 脚本必须读 power_save 实测值（sysfs），否则“配置是否真的生效”无从验证。
+grep -q 'snd_hda_intel/parameters/power_save' /usr/local/sbin/xwlightos-sound-check.sh || {
+    echo 'XWLightOS: xwlightos-sound-check.sh lost the power_save sysfs read (the point of the check)' >&2
+    exit 1
+}
+grep -q 'sound-check.log' /usr/local/sbin/xwlightos-sound-check.sh || {
+    echo 'XWLightOS: xwlightos-sound-check.sh lost the log file path (user would have nowhere to read the result)' >&2
+    exit 1
+}
+# 2. 服务文件必须存在，wants 链接必须有效且指向正确。
+[ -f /etc/systemd/system/xwlightos-sound-check.service ] || {
+    echo 'XWLightOS: xwlightos-sound-check.service missing' >&2
+    exit 1
+}
+_SWANTS=/etc/systemd/system/multi-user.target.wants/xwlightos-sound-check.service
+[ -e "$_SWANTS" ] || {
+    echo 'XWLightOS: xwlightos-sound-check.service wants symlink is dangling (sound check would never run at boot)' >&2
+    exit 1
+}
+[ "$(readlink "$_SWANTS")" = '../xwlightos-sound-check.service' ] || {
+    echo 'XWLightOS: xwlightos-sound-check.service wants symlink points at the wrong unit' >&2
+    exit 1
+}
+grep -q '^ExecStart=/usr/local/sbin/xwlightos-sound-check.sh$' \
+    /etc/systemd/system/xwlightos-sound-check.service || {
+    echo 'XWLightOS: xwlightos-sound-check.service lost its ExecStart' >&2
+    exit 1
+}
+
+echo 'XWLightOS: sound check (1623) staged'

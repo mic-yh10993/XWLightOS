@@ -1,0 +1,16 @@
+# XWLightOS auto-enable no-auth drives when autologin is on (one-shot).
+#
+# 第 13 轮（2026-11-12，用户 2026-11-11 邮件第 3 项）：安装时勾了
+# 免密码登录，自动开启“无需授权访问硬盘驱动器”。只跑一次（脚本内
+# stamp 文件），不阻塞启动、不拖慢引导。
+[Unit]
+Description=XWLightOS auto-enable no-auth drives when autologin is on
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/xwlightos-noauth-drives-autosetup.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

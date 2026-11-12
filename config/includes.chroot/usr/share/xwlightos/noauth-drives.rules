@@ -1,0 +1,29 @@
+// XWLightOS: no-auth access to internal hard drive partitions.
+//
+// 第 13 轮（2026-11-12，用户 2026-11-11 邮件第 3 项）：在“XWLightOS
+// 设置”里加“无需授权访问硬盘驱动器”开关，开启后访问文件中的硬盘
+// 分区等不需要输入密码。本文件是该开关装上的 polkit 规则模板，
+// 由 /usr/local/libexec/xwlightos-toggle-noauth-drives 拷到
+// /etc/polkit-1/rules.d/49-xwlightos-noauth-drives.rules；关掉开关即
+// 移走该文件，恢复默认的弹密码行为。polkitd 会 inotify 重载规则目录，
+// 无需重启服务。
+//
+// 只放这四个动作（均经 Bookworm 实包 udisks2 2.9.4 的
+// org.freedesktop.UDisks2.policy 核实）：
+// - filesystem-mount-system：挂载内部/系统设备——默认 allow_active
+//   是 auth_admin_keep，正是文件里点硬盘分区弹密码的根源。
+// - encrypted-unlock-system：解锁内部加密设备，同为 auth_admin_keep。
+// - filesystem-mount / encrypted-unlock：可移动介质与外部加密设备，
+//   默认已是 allow_active=yes，列在这里是防将来默认值变，不放宽
+//   任何当前已要密码的动作。
+// 不放 open-device/modify-device 等危险动作。只对本地活动会话
+// （subject.local && subject.active）免授权，远程/非活动会话不受影响。
+polkit.addRule(function(action, subject) {
+    if ((action.id == "org.freedesktop.udisks2.filesystem-mount-system" ||
+         action.id == "org.freedesktop.udisks2.encrypted-unlock-system" ||
+         action.id == "org.freedesktop.udisks2.filesystem-mount" ||
+         action.id == "org.freedesktop.udisks2.encrypted-unlock") &&
+        subject.local && subject.active) {
+        return polkit.Result.YES;
+    }
+});

@@ -118,13 +118,14 @@ grep -q '^enable-hot-corners=false$' /usr/share/glib-2.0/schemas/90-xwlightos-in
 # 输入源覆盖（2026-10-25 原为清空多余的英语（美国）源；2026-10-31 第三轮
 # 引进 IBus 双栈后改为播种对；2026-11-01 第四轮全量换 IBus 后 current
 # 改为 1；第五轮同日改为单源）：与 dock 覆盖同款构建期文本检查，
-# override 必须是 [('ibus','libpinyin')] 单源且 current=0，与 dconf
-# 默认、校验脚本同值；文件丢了或漂回空表/xkb 源/current=1 时构建
-# 即红灯。单源的理由见 90 号覆盖头注：gnome-shell 43.9 根本不读
-# current 选初始源，开机当前源是 sources 名单第一项——双源时 xkb
-# cn 永远抢位（Build 64 实测），故按用户裁决整个去掉“汉语”。
-grep -q "^sources=\[('ibus', 'libpinyin')\]$" /usr/share/glib-2.0/schemas/90-xwlightos-input-sources.gschema.override || {
-    echo 'XWLightOS: input-sources schema override is not the single seeded source (ibus libpinyin only)' >&2
+# override 必须是 [('ibus','libpinyin'), ('xkb','us')] 双源且 current=0，
+# 与 dconf 默认、校验脚本同值；文件丢了或漂回空表/单源/current=1 时构建
+# 即红灯。双源的理由见 90 号覆盖头注：首位仍是 libpinyin（开机当前源
+# 仍是拼音引擎、默认不变），xkb us 只作英文硬回退（Super+Space 切换）；
+# 单源时英文全靠 libpinyin 内 Shift 切换，一旦 Shift 切换在现场失效即
+# 被锁中文、无回退（第 13 轮，用户 2026-11-11 邮件第 5 项）。
+grep -q "^sources=\[('ibus', 'libpinyin'), ('xkb', 'us')\]$" /usr/share/glib-2.0/schemas/90-xwlightos-input-sources.gschema.override || {
+    echo 'XWLightOS: input-sources schema override is not the dual seeded sources (ibus libpinyin first, xkb us fallback)' >&2
     exit 1
 }
 grep -q '^current=0$' /usr/share/glib-2.0/schemas/90-xwlightos-input-sources.gschema.override || {
@@ -147,6 +148,66 @@ grep -q "^main-switch='<Shift>'$" /usr/share/glib-2.0/schemas/91-xwlightos-libpi
 }
 grep -q '^init-chinese=true$' /usr/share/glib-2.0/schemas/91-xwlightos-libpinyin.gschema.override || {
     echo 'XWLightOS: libpinyin preference override does not pin init-chinese to true' >&2
+    exit 1
+}
+# 电源与屏保覆盖（第 13 轮，用户 2026-11-11 邮件第 6、10 项）：同款
+# 构建期文本检查。90-xwlightos-power-screensaver.gschema.override
+# 必须把 idle-delay 钉为 0、两路 sleep-inactive-*-type 钉为 'nothing'、
+# idle-dim 钉为 false、lock-enabled 钉为 false；缺一项构建即红灯。
+# 键名与类型由 glib-compile-schemas 在编译时再验一道（写错键名编译失败）。
+grep -q '^idle-delay=0$' /usr/share/glib-2.0/schemas/90-xwlightos-power-screensaver.gschema.override || {
+    echo 'XWLightOS: power/screensaver schema override does not pin idle-delay to 0' >&2
+    exit 1
+}
+grep -q "^sleep-inactive-ac-type='nothing'$" /usr/share/glib-2.0/schemas/90-xwlightos-power-screensaver.gschema.override || {
+    echo 'XWLightOS: power/screensaver schema override does not pin sleep-inactive-ac-type to nothing' >&2
+    exit 1
+}
+grep -q "^sleep-inactive-battery-type='nothing'$" /usr/share/glib-2.0/schemas/90-xwlightos-power-screensaver.gschema.override || {
+    echo 'XWLightOS: power/screensaver schema override does not pin sleep-inactive-battery-type to nothing' >&2
+    exit 1
+}
+grep -q '^idle-dim=false$' /usr/share/glib-2.0/schemas/90-xwlightos-power-screensaver.gschema.override || {
+    echo 'XWLightOS: power/screensaver schema override does not pin idle-dim to false' >&2
+    exit 1
+}
+grep -q '^lock-enabled=false$' /usr/share/glib-2.0/schemas/90-xwlightos-power-screensaver.gschema.override || {
+    echo 'XWLightOS: power/screensaver schema override does not pin lock-enabled to false' >&2
+    exit 1
+}
+grep -q '^lock-delay=0$' /usr/share/glib-2.0/schemas/90-xwlightos-power-screensaver.gschema.override || {
+    echo 'XWLightOS: power/screensaver schema override does not pin lock-delay to 0' >&2
+    exit 1
+}
+# dconf 默认层同款检查（第 13 轮）：电源四键与锁屏两键必须在
+# 00-xwlightos-gnome 里与覆盖层同值，缺一项构建即红灯。
+grep -q '^idle-delay=uint32 0$' /etc/dconf/db/local.d/00-xwlightos-gnome || {
+    echo 'XWLightOS: dconf default does not pin idle-delay to 0' >&2
+    exit 1
+}
+grep -q "^sleep-inactive-ac-type='nothing'$" /etc/dconf/db/local.d/00-xwlightos-gnome || {
+    echo 'XWLightOS: dconf default does not pin sleep-inactive-ac-type to nothing' >&2
+    exit 1
+}
+grep -q "^sleep-inactive-battery-type='nothing'$" /etc/dconf/db/local.d/00-xwlightos-gnome || {
+    echo 'XWLightOS: dconf default does not pin sleep-inactive-battery-type to nothing' >&2
+    exit 1
+}
+grep -q '^idle-dim=false$' /etc/dconf/db/local.d/00-xwlightos-gnome || {
+    echo 'XWLightOS: dconf default does not pin idle-dim to false' >&2
+    exit 1
+}
+grep -q '^lock-enabled=false$' /etc/dconf/db/local.d/00-xwlightos-gnome || {
+    echo 'XWLightOS: dconf default does not pin lock-enabled to false' >&2
+    exit 1
+}
+grep -q '^lock-delay=uint32 0$' /etc/dconf/db/local.d/00-xwlightos-gnome || {
+    echo 'XWLightOS: dconf default does not pin lock-delay to 0' >&2
+    exit 1
+}
+# 输入源双源覆盖（第 13 轮）：dconf 默认层同款检查，必须与覆盖层同值。
+grep -q "^sources=\[('ibus', 'libpinyin'), ('xkb', 'us')\]$" /etc/dconf/db/local.d/00-xwlightos-gnome || {
+    echo 'XWLightOS: dconf default input-sources is not the dual seeded sources (ibus libpinyin first, xkb us fallback)' >&2
     exit 1
 }
 

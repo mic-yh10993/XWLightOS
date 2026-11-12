@@ -24,6 +24,20 @@
 # （如设置面板）的登记，Shell 不用它选初始源。1700 钩子编译本
 # 文件（glib-compile-schemas），编译失败构建即红灯；校验脚本另
 # 查编译后的 schema 默认生效值。
+#
+# 第 13 轮（2026-11-12，用户 2026-11-11 邮件第 5 项“键盘输入不了
+# 英文”）：单源的代价暴露了——英文全靠 libpinyin 内 Shift 切换，
+# 一旦 Shift 切换在现场失效，用户即被锁在中文模式、没有任何回退。
+# 而 libpinyin 的 Shift 切换配置本身经核实没有错（Bookworm 实包
+# ibus-libpinyin 1.12.0-3 的 schema：main-switch 类型 s、默认值
+# '<Shift>'；init-chinese 类型 b、默认值 true；仓库 91 号覆盖与之
+# 一致），所以“修”覆盖层是修错地方。本轮把 xkb 'us' 加回为第二
+# 输入源：[('ibus','libpinyin'), ('xkb','us')]，首位仍是 libpinyin
+# ——按上面同一取证，开机当前源仍是名单第一项拼音引擎，默认不变；
+# Super+Space 可切到英文作硬回退。注意：这次加回的是 'us' 不是
+# 'cn'，'us' 不会抢中文默认（Build 64 的教训是 'cn' 排第一）。
+# libpinyin 的 Shift 切换本身不动。Shift 切换失效的真根因仍需用户
+# 回现象（按 Shift 后出什么）才能定位，见评估卡 §4。
 [org.gnome.desktop.input-sources]
 current=0
-sources=[('ibus', 'libpinyin')]
+sources=[('ibus', 'libpinyin'), ('xkb', 'us')]

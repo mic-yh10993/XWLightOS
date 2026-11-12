@@ -1,0 +1,21 @@
+# XWLightOS boot-time sound configuration check (one-shot).
+#
+# 第 13 轮（2026-11-12，用户 2026-11-11 邮件第 8 项）：开机后把声音
+# 配置的实际生效值（snd_hda_intel power_save、PipeWire 量子、实时线程、
+# CPU 调速器、默认输出）写进 journal 与 /var/lib/xwlightos/sound-check.log，
+# 用户可直接看到配置生没生效。只记录、不改任何配置。
+# 等 30 秒再跑，给 GDM 自动登录留出时间把用户会话（PipeWire）带起来；
+# 会话未就绪时脚本如实记“未就绪”，不拖垮开机。睡 30 秒只拖本服务的
+# 自身执行，不阻塞引导（无任何单元依赖它）。
+[Unit]
+Description=XWLightOS boot-time sound configuration check
+After=graphical.target
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sleep 30
+ExecStart=/usr/local/sbin/xwlightos-sound-check.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

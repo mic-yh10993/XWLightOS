@@ -82,6 +82,28 @@ picture-uri-dark='file:///usr/share/backgrounds/xwlightos-aurora-wallpaper.png'
 
 [org/gnome/desktop/screensaver]
 picture-uri='file:///usr/share/backgrounds/xwlightos-aurora-wallpaper.png'
+# 第 13 轮（2026-11-12，用户 2026-11-11 邮件第 10 项“免密码登录后
+# 挂起恢复为什么还要密码”）：登录免密码管的是 GDM 进会话，挂起恢复
+# 管的是屏保锁屏，是两回事。把锁屏关掉，挂起恢复不再要密码。
+# 代价：屏幕永不锁，任何人经过都能直接用——用户已选免密码登录，
+# 接受该取舍。与 gschema 覆盖层（90-xwlightos-power-screensaver）
+# 同步写死。idle-delay=0（下节）已保证屏幕不会因闲置而空白进而
+# 触发锁屏，两者配合。
+lock-enabled=false
+lock-delay=uint32 0
+
+# 第 13 轮（2026-11-12，用户 2026-11-11 邮件第 6 项“默认永不熄屏、
+# 永不自动挂起”）：dconf 默认 + gschema 覆盖双层写死（照 dash-to-dock
+# 的教训，只写 dconf 默认不够硬）。idle-delay=0 即屏幕永不空白；
+# sleep-inactive-ac-type/battery-type='nothing' 即交流电与电池下都
+# 不自动挂起；idle-dim=false 即闲置不自动调暗。
+[org/gnome/desktop/session]
+idle-delay=uint32 0
+
+[org/gnome/settings-daemon/plugins/power]
+sleep-inactive-ac-type='nothing'
+sleep-inactive-battery-type='nothing'
+idle-dim=false
 
 [org/gnome/shell/extensions/dash-to-dock]
 dock-position='BOTTOM'
@@ -207,6 +229,14 @@ overrides={'Gtk/IMModule':<'ibus'>}
 # （如设置面板）的登记，Shell 不用它选初始源。
 # 第二层在 90-xwlightos-input-sources.gschema.override，写同一
 # 播种（防 dconf 库被绕过时 schema 默认漂移回上游 xkb us）。
+# 第 13 轮（2026-11-12，用户 2026-11-11 邮件第 5 项“键盘输入不了
+# 英文”）：单源的代价是英文全靠 libpinyin 内 Shift 切换，一旦
+# Shift 切换在现场失效即被锁在中文、无回退；而 Shift 切换配置本身
+# 经核实没有错（Bookworm 实包 ibus-libpinyin 1.12.0-3 的 schema：
+# main-switch 类型 s、默认值 '<Shift>'）。本轮把 xkb 'us' 加回为
+# 第二输入源，首位仍是 libpinyin（开机默认不变，见上取证），
+# Super+Space 可切英文作硬回退。加回的是 'us' 不是 'cn'，不会抢
+# 中文默认。libpinyin 的 Shift 切换本身不动。
 [org/gnome/desktop/input-sources]
 current=0
-sources=[('ibus', 'libpinyin')]
+sources=[('ibus', 'libpinyin'), ('xkb', 'us')]

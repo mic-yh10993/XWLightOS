@@ -142,6 +142,24 @@ grep -q 'HIDIOCSFEATURE' /usr/local/sbin/xwlightos-touchscreen-fix.sh || {
 # udev 规则 + modules-load 文件 + uinput 内核模块必须齐全，否则
 # 触屏绕过等于没装。Build 71 的 Python 守护进程已删除（未在真机验证
 # 过；用户在真机上验证跑通的是 C 程序，只留一个触屏服务）。
+# 8a. 第 13 轮（用户 2026-11-11 邮件第 2 项）：DeepSeek 的 .sh 被 Windows
+# 换行符 CRLF 搞坏、服务卡死无输出。镜像里不用那个 .sh，但同类问题
+# 必须有门禁——触屏相关的全部文本文件必须是 Unix 换行符（LF），带一个
+# 回车即构建失败。/bin/sh 是 dash，不支持 bash 的 $'\r'，用 printf 取回车。
+_CR=$(printf '\r')
+for _crlf_file in /etc/systemd/system/xwlightos-touch-bypass.service \
+        /etc/systemd/system/xwlightos-touchscreen-fix.service \
+        /usr/local/src/xwlightos-touch-cvte/cvte_touch.c \
+        /usr/local/bin/xwlightos-touch-bypass-notify \
+        /usr/local/bin/xwlightos-settings \
+        /usr/local/sbin/xwlightos-touchscreen-fix.sh \
+        /etc/udev/rules.d/70-xwlightos-touch-bypass.rules; do
+    if [ -f "$_crlf_file" ] && grep -q "$_CR" "$_crlf_file"; then
+        echo "XWLightOS: $_crlf_file contains CR (Windows line endings) - use Unix LF only" >&2
+        exit 1
+    fi
+done
+unset _crlf_file _CR
 # 编译：源码随镜像发货（/usr/local/src/xwlightos-touch-cvte/），
 # 构建期用镜像自带的 gcc（devel 清单含 build-essential）编成
 # /usr/local/bin/cvte_touch；-Wall -Wextra -Werror，警告即构建红灯。
@@ -163,6 +181,22 @@ chmod 0755 /usr/local/bin/cvte_touch
     echo 'XWLightOS: /usr/local/bin/cvte_touch is not executable after build' >&2
     exit 1
 }
+# 8b. 第 13 轮冒烟检查（用户 2026-11-11 邮件第 2 项“服务卡死无任何输出”）：
+# 无设备时跑几秒，启动行“等待 CVTE Touch Device 插入...”必须立刻出现——
+# 它证明两件事：二进制能启动、stdout 行缓冲已生效（Build 72 补的
+# setvbuf _IOLBF；若缓冲又退回全缓冲，4 秒内攒不够 4KB、输出为空、
+# 本检查即失败）。timeout 124（被掐停）是预期结果，不算失败。
+if command -v timeout >/dev/null 2>&1; then
+    timeout 4 /usr/local/bin/cvte_touch > /tmp/cvte_smoke.log 2>&1 || true
+    grep -q '等待 CVTE Touch Device' /tmp/cvte_smoke.log || {
+        echo 'XWLightOS: cvte_touch smoke test produced no startup line (service would look dead with no output)' >&2
+        exit 1
+    }
+    rm -f /tmp/cvte_smoke.log
+else
+    echo 'XWLightOS: timeout missing (cannot smoke-test cvte_touch startup output)' >&2
+    exit 1
+fi
 [ -f /etc/systemd/system/xwlightos-touch-bypass.service ] || {
     echo 'XWLightOS: xwlightos-touch-bypass.service missing' >&2
     exit 1

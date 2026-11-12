@@ -51,6 +51,17 @@ rm -f /etc/xwlightos/session-user
 if [ -f /etc/gdm3/daemon.conf ]; then
     sed -i '/^AutomaticLoginEnable=/d; /^AutomaticLogin=/d' /etc/gdm3/daemon.conf
 fi
+# 时区锁定 UTC+8、硬件时钟按 Windows 方式存本地时间（第 13 轮，用户
+# 2026-11-11 邮件第 4 项；与 1200 钩子同款三行，安装后的系统也要钉
+# 死，否则 live 与安装后行为不一致、双系统切时间仍错 8 小时）。
+# 不动 Windows 那边。
+if [ -f /usr/share/zoneinfo/Asia/Shanghai ]; then
+    printf '%s\n' 'Asia/Shanghai' > /etc/timezone
+    ln -sfn /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+    printf '%s\n' '0.0 0 0.0' '0' 'LOCAL' > /etc/adjtime
+else
+    echo 'XWLightOS: tzdata is missing /usr/share/zoneinfo/Asia/Shanghai in the target (timezone left as-is)' >&2
+fi
 # The Live `user` account is baked into the image so GDM can autologin on the
 # LiveCD. It must never survive into the installed system: remove the account
 # (and its home) here in the target, before the installed session is used.

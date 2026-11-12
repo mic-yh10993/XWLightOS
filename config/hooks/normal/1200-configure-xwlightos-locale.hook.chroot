@@ -11,3 +11,33 @@ fi
 locale-gen zh_CN.UTF-8
 update-locale LANG=zh_CN.UTF-8 LC_CTYPE=zh_CN.UTF-8 LANGUAGE=zh_CN:zh
 fc-cache -f >/dev/null 2>&1 || true
+
+# 时区锁定 UTC+8、硬件时钟按 Windows 方式存本地时间（第 13 轮，用户
+# 2026-11-11 邮件第 4 项）：双系统来回切时间不再错 8 小时。
+# Debian 默认硬件时钟按 UTC 存，Windows 按本地时间存——只改一边就
+# 会让另一边读错。本轮把镜像（live）与安装后的系统（postinstall
+# 同款三行）都钉死：时区 Asia/Shanghai、硬件时钟 LOCAL（即
+# `timedatectl set-local-rtc 1` 的等效配置）。不动 Windows 那边。
+# 注意：Calamares 的 hwclock 模块若在 shellprocess 之后跑可能覆盖
+# postinstall 的写法——settings.conf 不在仓库无法确认；postinstall
+# 是能做的最靠后位置，残留风险记在评估卡 §13。
+[ -f /usr/share/zoneinfo/Asia/Shanghai ] || {
+    echo 'XWLightOS: tzdata is missing /usr/share/zoneinfo/Asia/Shanghai (timezone cannot be pinned to UTC+8)' >&2
+    exit 1
+}
+printf '%s\n' 'Asia/Shanghai' > /etc/timezone
+ln -sfn /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+printf '%s\n' '0.0 0 0.0' '0' 'LOCAL' > /etc/adjtime
+# 门禁：三件必须齐全且值正确，缺一件构建即红灯。
+grep -qx 'Asia/Shanghai' /etc/timezone || {
+    echo 'XWLightOS: /etc/timezone is not Asia/Shanghai' >&2
+    exit 1
+}
+[ "$(readlink /etc/localtime)" = '/usr/share/zoneinfo/Asia/Shanghai' ] || {
+    echo 'XWLightOS: /etc/localtime does not point at Asia/Shanghai' >&2
+    exit 1
+}
+[ "$(sed -n '3p' /etc/adjtime)" = 'LOCAL' ] || {
+    echo 'XWLightOS: /etc/adjtime line 3 is not LOCAL (hardware clock would be read as UTC, dual-boot time would drift 8h)' >&2
+    exit 1
+}

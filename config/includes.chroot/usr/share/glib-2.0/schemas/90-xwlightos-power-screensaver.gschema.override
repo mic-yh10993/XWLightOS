@@ -1,0 +1,25 @@
+# XWLightOS: force power and screensaver defaults at the schema level.
+#
+# 第 13 轮（2026-11-12，用户 2026-11-11 邮件第 6 项“默认永不熄屏、
+# 永不自动挂起”与第 10 项“挂起恢复为什么还要密码”）：与 dconf 默认
+# （00-xwlightos-gnome）同值、双层写死，照 dash-to-dock 的教训——只写
+# dconf 默认不够硬，schema 默认本身也要改。1700 钩子编译本文件
+# （glib-compile-schemas），键名或类型写错编译即红灯。
+# - idle-delay=0：屏幕永不空白（org.gnome.desktop.session，类型 u）。
+# - sleep-inactive-ac-type/battery-type='nothing'：交流电与电池下都
+#   不自动挂起（org.gnome.settings-daemon.plugins.power，枚举串）。
+# - idle-dim=false：闲置不自动调暗。
+# - lock-enabled=false：挂起恢复不再锁屏（org.gnome.desktop.screensaver）。
+#   代价是屏幕永不锁，用户已选免密码登录、接受该取舍。
+# - lock-delay=0：锁屏延迟 0（与 lock-enabled=false 配合）。
+[org.gnome.desktop.session]
+idle-delay=0
+
+[org.gnome.settings-daemon.plugins.power]
+sleep-inactive-ac-type='nothing'
+sleep-inactive-battery-type='nothing'
+idle-dim=false
+
+[org.gnome.desktop.screensaver]
+lock-enabled=false
+lock-delay=0

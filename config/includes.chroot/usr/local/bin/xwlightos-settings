@@ -48,6 +48,14 @@ TM_UNIT = find_unit(["com.seewo.terminalmanager.service"],
 TOUCH_UNIT = find_unit(["xwlightos-touch-bypass.service"],
                        "xwlightos-touch-bypass.service")
 
+# 用户 2026-11-11 邮件《补充》第 3 项（第 13 轮）：无需授权访问硬盘
+# 驱动器开关。状态 = polkit 规则文件是否存在；拨动 = 经 pkexec 调
+# 助手脚本装上/移走规则（照希沃管家开关的 pkexec 模式）。安装时勾了
+# 免密码登录时，一次性服务 xwlightos-noauth-drives-autosetup.service
+# 会在首次开机自动装上规则，开关打开；之后手动拨动不再被顶回。
+NOAUTH_RULE = "/etc/polkit-1/rules.d/49-xwlightos-noauth-drives.rules"
+NOAUTH_HELPER = "/usr/local/libexec/xwlightos-toggle-noauth-drives"
+
 # 用户 2026-10-28 邮件第 4 项：桌面清理开关拨的是用户级 path 单元
 #（xwlightos-desktop-cleaner.path），不是系统服务。用户级单元不需要
 # pkexec：开关 = mask/unmask + enable/disable（--user），mask 能盖住
@@ -137,6 +145,31 @@ def set_service(unit, on, parent):
     return True
 
 
+def noauth_drives_enabled():
+    return os.path.exists(NOAUTH_RULE)
+
+
+def set_noauth_drives(on, parent):
+    # 与 set_service 同款：一次拨动只请求一次授权，失败明确提示一次、
+    # 绝不再次弹出授权框（回弹拨动开关时必须被 _busy 守卫挡住）。
+    cmd = ["pkexec", NOAUTH_HELPER, "on" if on else "off"]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode != 0:
+        if res.returncode == 126:
+            msg = "已取消授权，未作任何更改。"
+        else:
+            msg = "设置失败：%s" % (res.stderr.strip() or NOAUTH_HELPER)
+        dlg = Gtk.MessageDialog(
+            transient_for=parent, modal=True,
+            message_type=Gtk.MessageType.ERROR,
+            buttons=Gtk.ButtonsType.OK,
+            text=msg)
+        dlg.run()
+        dlg.destroy()
+        return False
+    return True
+
+
 class Row(Gtk.Box):
     def __init__(self, title, subtitle, initial, sensitive=True):
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL,
@@ -172,7 +205,7 @@ class Window(Gtk.Window):
         self.set_border_width(8)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         head = Gtk.Label(xalign=0)
-        head.set_markup("希沃管家后端、触屏兜底与桌面清理设置（开关同时启停当前运行，"
+        head.set_markup("希沃管家后端、触屏兜底、硬盘免授权与桌面清理设置（开关同时启停当前运行，"
                         "重启后保持）")
         head.set_margin_start(14)
         box.pack_start(head, False, False, 6)
@@ -198,6 +231,20 @@ class Window(Gtk.Window):
         self.row_touch.switch.connect(
             "notify::active", self.on_service, TOUCH_UNIT, self.row_touch)
         box.pack_start(self.row_touch, False, False, 0)
+
+        # 用户 2026-11-11 邮件《补充》第 3 项（第 13 轮）：无需授权访问
+        # 硬盘驱动器开关。打开后，文件里访问硬盘分区不需要输入密码；
+        # 安装时勾了免密码登录会自动打开。状态是 polkit 规则文件是否
+        # 存在，拨动即经 pkexec 装上/移走规则（照希沃管家开关模式）。
+        noauth_ok = os.path.exists(NOAUTH_HELPER)
+        self.row_noauth = Row(
+            "无需授权访问硬盘驱动器",
+            "开启后，文件中的硬盘分区不需要输入密码（安装时勾选免密码登录会自动开启）",
+            noauth_drives_enabled() if noauth_ok else False,
+            sensitive=noauth_ok)
+        self.row_noauth.switch.connect(
+            "notify::active", self.on_noauth_drives, self.row_noauth)
+        box.pack_start(self.row_noauth, False, False, 0)
 
         # 用户 2026-10-28 邮件第 4 项：自动清理希沃厂商桌面图标的开关。
         # 打开时桌面目录一变化就清理厂商写进来的 .desktop 启动器
@@ -252,6 +299,23 @@ class Window(Gtk.Window):
                     switch.set_active(not want)
                 finally:
                     switch.handler_unblock_by_func(self.on_user_service)
+        finally:
+            self._busy = False
+
+    def on_noauth_drives(self, switch, _param, row):
+        # 与 on_service 同款回弹/重入守卫，走 pkexec 助手脚本流程。
+        if self._busy:
+            return
+        want = switch.get_active()
+        self._busy = True
+        try:
+            ok = set_noauth_drives(want, self)
+            if not ok:
+                switch.handler_block_by_func(self.on_noauth_drives)
+                try:
+                    switch.set_active(not want)
+                finally:
+                    switch.handler_unblock_by_func(self.on_noauth_drives)
         finally:
             self._busy = False
 

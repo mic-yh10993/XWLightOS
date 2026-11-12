@@ -1,0 +1,31 @@
+#!/bin/sh
+# XWLightOS: toggle the no-auth drives polkit rule.
+#
+# 第 13 轮（2026-11-12，用户 2026-11-11 邮件第 3 项）：在“XWLightOS
+# 设置”里加“无需授权访问硬盘驱动器”开关。本脚本是开关的唯一落盘
+# 入口：由设置程序经 pkexec 调（on/off），也被一次性自动开启服务
+# （xwlightos-noauth-drives-autosetup.service，以 root 跑）调。
+# on：把模板拷到 /etc/polkit-1/rules.d/49-xwlightos-noauth-drives.rules；
+# off：移走该文件，恢复默认的弹密码行为。polkitd 会 inotify 重载规则
+# 目录，无需重启服务。幂等：重复 on 不报错。
+set -eu
+
+RULE=/etc/polkit-1/rules.d/49-xwlightos-noauth-drives.rules
+TEMPLATE=/usr/share/xwlightos/noauth-drives.rules
+
+case "${1:-}" in
+    on)
+        [ -f "$TEMPLATE" ] || {
+            echo 'XWLightOS: noauth-drives template missing' >&2
+            exit 1
+        }
+        install -Dm644 "$TEMPLATE" "$RULE"
+        ;;
+    off)
+        rm -f "$RULE"
+        ;;
+    *)
+        echo "usage: $0 on|off" >&2
+        exit 1
+        ;;
+esac
