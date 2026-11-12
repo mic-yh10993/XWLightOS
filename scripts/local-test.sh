@@ -86,11 +86,15 @@ sudo lb config \
 sudo bash scripts/prepare-xwlightos-live-build-compression.sh
 
 sudo mkdir -p config/archives
-cat <<'EOF' | sudo tee config/archives/xwlightos.list.chroot >/dev/null
-deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
-deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
-deb http://deb.debian.org/debian bookworm-updates main contrib non-free non-free-firmware
-EOF
+# 注意（第 13 轮，用户 2026-11-11 邮件第 7 项“apt 提示源被多次配置”）：
+# 此处曾经还生成 config/archives/xwlightos.list.chroot，内容与上面
+# lb config 的 --mirror-chroot / --mirror-chroot-security 是同一批
+# deb.debian.org 行——live-build 会把 lb config 的镜像写进 chroot 的
+# /etc/apt/sources.list，再把 archives 文件写进
+# /etc/apt/sources.list.d/xwlightos.list，同一行出现两次，apt 报
+# “configured multiple times”（run 74 实锤）。该文件是纯重复，已删；
+# chroot 的 Debian 源只走 lb config 的 sources.list。
+# mirrors.binary.chroot（阿里云/清华）是另一批 URL，不重复，保留。
 cat <<'EOF' | sudo tee config/archives/xwlightos.list.binary >/dev/null
 deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
 deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
