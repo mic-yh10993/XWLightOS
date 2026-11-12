@@ -958,36 +958,47 @@ if grep -q -E '(^|/)usr/share/gnome-shell/extensions/kimpanel@kde\.org' "$LIST";
 # 用户裁决去掉“汉语”：两层（dconf 键文件 + gschema 覆盖）精确
 # 断言播种值 [('ibus','libpinyin')] 单源且 current=0；任何 xkb
 # 源（cn/us）回潮，精确等值断言同样会红。
+# 第 13 轮（2026-11-12，用户 2026-11-11 邮件第 5 项“键盘输入不了
+# 英文”）：单源的代价是英文全靠 libpinyin 内 Shift 切换，一旦 Shift
+# 切换在现场失效即被锁中文、无回退；Shift 切换配置本身经核实没有错
+# （Bookworm 实包 ibus-libpinyin 1.12.0-3 的 schema：main-switch 类型
+# s、默认值 '<Shift>'）。本轮把 xkb 'us' 加回为第二输入源：
+# [('ibus','libpinyin'), ('xkb','us')]，首位仍是 libpinyin——按上面
+# 同一取证，开机当前源仍是名单第一项拼音引擎，默认不变；Super+Space
+# 可切英文作硬回退。加回的是 'us' 不是 'cn'，不会抢中文默认。
+# 本节三处精确等值断言同步改为双源；“任何 xkb 源回潮即红”的旧规则
+# 改为“xkb 源只能在第二位作回退、首位必须是 libpinyin”。
 grep -q '^\[org/gnome/desktop/input-sources\]$' "$GNOME_DEFAULTS" \
     || { echo 'dconf defaults lack input-sources section (seeded input sources missing)' >&2; exit 1; }
-grep -q "^sources=\[('ibus', 'libpinyin')\]$" "$GNOME_DEFAULTS" \
-    || { echo "dconf input-sources is not the single seeded source [('ibus','libpinyin')] (an xkb source would win the boot-time first slot and leave no composed Chinese at boot)" >&2; exit 1; }
+grep -q "^sources=\[('ibus', 'libpinyin'), ('xkb', 'us')\]$" "$GNOME_DEFAULTS" \
+    || { echo "dconf input-sources is not the dual seeded sources [('ibus','libpinyin'), ('xkb','us')] (first slot must stay libpinyin or boot would land on the wrong source; xkb us is only the English fallback)" >&2; exit 1; }
 INPUT_SOURCES_SECTION="$WORK/gnome-input-sources-section"
 awk '/^\[org\/gnome\/desktop\/input-sources\]/{in_section=1; next} /^\[/{in_section=0} in_section' "$GNOME_DEFAULTS" > "$INPUT_SOURCES_SECTION"
 grep -q '^current=0$' "$INPUT_SOURCES_SECTION" \
-    || { echo 'dconf input-sources current is not 0 (single-source seed must keep current at the only slot)' >&2; exit 1; }
+    || { echo 'dconf input-sources current is not 0 (seed must keep current at the first slot, libpinyin)' >&2; exit 1; }
 INPUT_OVERRIDE="$WORK/90-xwlightos-input-sources.gschema.override"
 cat_image_file 'usr/share/glib-2.0/schemas/90-xwlightos-input-sources.gschema.override' "$INPUT_OVERRIDE"
 grep -q '^\[org.gnome.desktop.input-sources\]$' "$INPUT_OVERRIDE" \
     || { echo 'input-sources schema override section missing' >&2; exit 1; }
-grep -q "^sources=\[('ibus', 'libpinyin')\]$" "$INPUT_OVERRIDE" \
-    || { echo 'input-sources schema override does not seed the single libpinyin source' >&2; exit 1; }
+grep -q "^sources=\[('ibus', 'libpinyin'), ('xkb', 'us')\]$" "$INPUT_OVERRIDE" \
+    || { echo 'input-sources schema override does not seed the dual sources (libpinyin first, xkb us fallback)' >&2; exit 1; }
 grep -q '^current=0$' "$INPUT_OVERRIDE" \
     || { echo 'input-sources schema override current is not 0' >&2; exit 1; }
 # 编译后的 schema 默认生效值（与 dock 三开关同款查法）：gschemas.compiled
 # 已在前面断言存在；有 gsettings 时再读一次，播种值读出来应为
-# [('ibus', 'libpinyin')] 且 current 应为 uint32 0（2026-10-25
-# 断言空表、第三轮断言两项+current=0、第四轮断言两项+current=1，
-# 均已随修法反转；本轮含 current 的编译后读回断言）。
+# [('ibus', 'libpinyin'), ('xkb', 'us')] 且 current 应为 uint32 0
+# （2026-10-25 断言空表、第三轮断言两项+current=0、第四轮断言两项
+# +current=1，均已随修法反转；第五轮断言单源+current=0；第 13 轮
+# 断言双源+current=0，首位仍是 libpinyin）。
 if command -v gsettings >/dev/null 2>&1; then
     _input_src="$(GSETTINGS_SCHEMA_DIR="$FULL_ROOT/usr/share/glib-2.0/schemas" GSETTINGS_BACKEND=memory gsettings get org.gnome.desktop.input-sources sources 2>/dev/null)" || {
         echo 'compiled input-sources schema default is unreadable (gschemas.compiled stale or broken)' >&2; exit 1; }
-    [ "$_input_src" = "[('ibus', 'libpinyin')]" ] || {
-        echo "compiled input-sources schema default is not the single seeded source (got $_input_src)" >&2; exit 1; }
+    [ "$_input_src" = "[('ibus', 'libpinyin'), ('xkb', 'us')]" ] || {
+        echo "compiled input-sources schema default is not the dual seeded sources (got $_input_src)" >&2; exit 1; }
     _input_cur="$(GSETTINGS_SCHEMA_DIR="$FULL_ROOT/usr/share/glib-2.0/schemas" GSETTINGS_BACKEND=memory gsettings get org.gnome.desktop.input-sources current 2>/dev/null)" || {
         echo 'compiled input-sources current is unreadable (gschemas.compiled stale or broken)' >&2; exit 1; }
     [ "$_input_cur" = "uint32 0" ] || {
-        echo "compiled input-sources current is not 0 (got $_input_cur; single-source seed must keep current at the only slot)" >&2; exit 1; }
+        echo "compiled input-sources current is not 0 (got $_input_cur; seed must keep current at the first slot, libpinyin)" >&2; exit 1; }
 else
     echo 'note: gsettings unavailable, skipping compiled input-sources effective-value check' >&2
 fi

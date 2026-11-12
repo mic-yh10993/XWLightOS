@@ -208,10 +208,15 @@ libgdk-pixbuf-2.0-0
 #   钉 preload-engines/engines-order=['libpinyin']，守护启动即
 #   装好引擎，绝不依赖运行时手工命令（2026-10-31 活体实验的
 #   竞态事故正是缺了这层成套交付）。
-# - 输入源播种仍是 [('xkb','cn'), ('ibus','libpinyin')]，但
-#   current 改为 1：登录即落在 libpinyin 引擎上、开机直接中文
-#   （用户自 fcitx 时代定死的要求）；xkb cn 源保留为纯布局
-#   回落位。
+# - 输入源播种（第 13 轮，2026-11-12）：[('ibus','libpinyin'),
+#   ('xkb','us')] 且 current=0。首位仍是 libpinyin，登录即落在拼音
+#   引擎上、开机直接中文（用户自 fcitx 时代定死的要求）；xkb us 源
+#   是英文硬回退（Super+Space 切换），只因单源时英文全靠 libpinyin
+#   内 Shift 切换、一旦失效即被锁中文而加回。加回的是 'us' 不是
+#   'cn'：Build 64 的 [('xkb','cn'), ('ibus','libpinyin')] 且
+#   current=1 曾被 live 实测证伪（开机默认落在“汉语”xkb cn），
+#   gnome-shell 43.9 根本不读 current、开机当前源是名单第一项，
+#   故 'cn' 绝不能再排第一。
 # - Shift 切中英走引擎自身：ibus-libpinyin 1.15.1-1 的 deb 实证
 #   其偏好走真 GSettings schema com.github.libpinyin.ibus-
 #   libpinyin.libpinyin（设置程序 setup/main2.py 用 Gio.Settings
