@@ -40,12 +40,14 @@ button-layout=':minimize,maximize,close'
 # 顶栏托盘图标，关掉它这些应用的托盘图标就没了。扩展应用里显示的
 # “Ubuntu AppIndicators”就是它，可在扩展应用里开关，但不建议删。
 # 用户 2026-10-24 邮件第 6 项：要 Debian 13 Netinst 自带的那种状态栏
-# 监控（顶栏显示 CPU/内存/网络等），不要独立的系统监控程序——重新启用
-# Debian 官方打包的 paradoxxxzero 顶栏 system-monitor 扩展（bookworm 版
-# 40-5，Shell 43 兼容），并把固定栏里那个系统监视器程序去掉钉住。
+# 监控（顶栏显示 CPU/内存/网络等），不要独立的系统监控程序。第 14 轮
+# （Trixie）：Debian 13 自带的正是 GNOME 官方 system-monitor 扩展
+# （gnome-shell-extensions 源码，UUID system-monitor@gnome-shell-extensions.gcampax.github.com，
+# Trixie 版 48.2，Shell 48），Bookworm 的 paradoxxxzero 版已被它取代；
+# 固定栏里那个系统监视器程序仍不钉住（见 favorite-apps）。
 # 用户 2026-10-24 23:31 邮件：输入法面板扩展也要（此前 22:53 撤回，
 # 现按最新要求重新加回启用；Shift 切换配置本身的修法保留）。
-enabled-extensions=['apps-menu@gnome-shell-extensions.gcampax.github.com', 'dash-to-dock@micxgx.gmail.com', 'ding@rastersoft.com', 'native-window-placement@gnome-shell-extensions.gcampax.github.com', 'places-menu@gnome-shell-extensions.gcampax.github.com', 'drive-menu@gnome-shell-extensions.gcampax.github.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'ubuntu-appindicators@ubuntu.com', 'system-monitor@paradoxxx.zero.gmail.com']
+enabled-extensions=['apps-menu@gnome-shell-extensions.gcampax.github.com', 'dash-to-dock@micxgx.gmail.com', 'ding@rastersoft.com', 'native-window-placement@gnome-shell-extensions.gcampax.github.com', 'places-menu@gnome-shell-extensions.gcampax.github.com', 'drive-menu@gnome-shell-extensions.gcampax.github.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'ubuntu-appindicators@ubuntu.com', 'system-monitor@gnome-shell-extensions.gcampax.github.com']
 # 用户 2026-10-20 邮件指令：固定栏固定 7 个应用——希沃白板、希沃视频展台、
 # 班级优化大师、ONLYOFFICE、钉钉、微信、QQ（按此顺序）。
 # 用户 2026-10-20 邮件指令：dock 栏把"文件"和 Firefox 加回去，放最前面。
@@ -64,17 +66,12 @@ favorite-apps=['org.gnome.Nautilus.desktop', 'firefox-esr.desktop', 'com.seewo.e
 name='WhiteSur-Light'
 
 # 用户 2026-10-28 邮件第 5 项：顶栏系统监视器扩展默认显示数字，不要图形。
-# 上游 schema（org.gnome.shell.extensions.system-monitor）的 *-style 三档：
-# digit（数字）/ graph（图形）/ both（两者），上游默认全是 graph。
-# 此处把默认显示的 CPU/内存/网络连同 swap/磁盘一并钉为 digit；
-# 只改全新登录/未改过该项的用户默认值，用户自己在扩展设置里改过的
-# 值仍优先于系统默认（不会把用户手动选回的图形再强行改掉）。
-[org/gnome/shell/extensions/system-monitor]
-cpu-style='digit'
-memory-style='digit'
-swap-style='digit'
-net-style='digit'
-disk-style='digit'
+# 第 14 轮（Trixie）：该扩展已换上游——Bookworm 的 paradoxxxzero 版被
+# Trixie 的 GNOME 官方版取代（UUID 见上 enabled-extensions），官方版
+# schema 只有 show-* 五个开关、没有 *-style 三档键；它只显示数字文本
+# （St.Label + 数字格式化，无图形模式），用户的要求默认即满足。
+# 旧的 cpu-style/memory-style/swap-style/net-style/disk-style 五键已删除
+# （留着是死配置），不要加回。
 
 [org/gnome/desktop/background]
 picture-uri='file:///usr/share/backgrounds/xwlightos-aurora-wallpaper.png'
@@ -173,8 +170,8 @@ show-volumes=false
 screen-keyboard-enabled=true
 
 # 输入反馈音默认打开（用户 2026-10-31：调音量时的提示音等基本没声）。
-# org.gnome.desktop.sound 的上游默认（gsettings-desktop-schemas 43.0
-# 的 schema 原文）：event-sounds=true（用户事件音，总开关本来就是开的）、
+# org.gnome.desktop.sound 的上游默认（gsettings-desktop-schemas 48
+# 的 schema 原文，第 14 轮已重核，与 43.0 同值）：event-sounds=true（用户事件音，总开关本来就是开的）、
 # input-feedback-sounds=false（"Whether to play sounds on input
 # events"——输入事件反馈音，出厂关）。音量调节反馈音属输入反馈类，
 # 总开关开着也轮不到它响。用户明确要这个提示音，故出厂钉为 true；
@@ -226,7 +223,9 @@ overrides={'Gtk/IMModule':<'ibus'>}
 # 一就绪即重建落在拼音源上，不写设置、不会固化；守护若始终
 # 不起，会话停在内存 us 布局只能打英文——与 fcitx 时代同级的
 # 单点故障，接受并在此明说。current 保留播种是给其它消费方
-# （如设置面板）的登记，Shell 不用它选初始源。
+# （如设置面板）的登记，Shell 不用它选初始源。第 14 轮（Trixie，
+# Shell 48）：无论 48 读 current 还是读 mru[0]，本播种两项一致
+# （current=0 且 mru 首位均为 libpinyin），开机当前源必是拼音引擎。
 # 第二层在 90-xwlightos-input-sources.gschema.override，写同一
 # 播种（防 dconf 库被绕过时 schema 默认漂移回上游 xkb us）。
 # 第 13 轮（2026-11-12，用户 2026-11-11 邮件第 5 项“键盘输入不了

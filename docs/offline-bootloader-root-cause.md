@@ -71,6 +71,15 @@ chroot $CHROOT /usr/sbin/update-grub
   只在已存在 core.img（升级场景）或 EFI 已挂载时才 grub-install，
   live-build 全新 chroot 里全部跳过，不会写构建机磁盘。
 
+## 第 14 轮（Trixie）更新（2026-11-13）
+
+calamares-settings-debian 13.0.13 把该脚本从 `/usr/sbin/bootloader-config`
+搬到了 `/usr/share/calamares/helpers/calamares-bootloader-config`
+（module.desc 的 `command:` 行实查即此路径，`/usr/sbin` 下已无此文件）。
+脚本正文除 UEFI 分支的元包名（原版改装 `grub-efi`，补丁仍装
+`grub-efi-amd64`）外与 bookworm 版逐行相同。1565 钩子与校验脚本已
+同步改到新路径；旧路径不存在时钩子会直接失败构建（防静默失效）。
+
 ## 仍需真机验证
 
 - 拔网线在 UEFI 机器上完整安装一次，确认 bootloader 步骤通过。

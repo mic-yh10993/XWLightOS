@@ -49,13 +49,21 @@ sudo ROOT="$ROOT" PKGS="$ROOT/artifacts/packages" bash scripts/stage-xwlightos-l
 # Remove only generated live-build output; source configuration remains intact.
 sudo rm -rf lb .build stage cache auto chroot binary binary.tmp *.iso build.log 2>/dev/null || true
 
-echo "==> Configuring Bookworm Live ISO"
+echo "==> Configuring Trixie Live ISO"
+# 第 14 轮（Trixie）：宿主机的 debian-archive-keyring 必须含 trixie
+# 签名密钥，否则 debootstrap 校验 trixie Release 失败（Ubuntu noble
+# 自带的 2023.4ubuntu1 只到 bookworm；CI 工作流里已下载 Trixie 的
+# 2025.1 密钥环包覆盖，本地构建需自行装好，见工作流注释）。
+if ! gpg --show-keys /usr/share/keyrings/debian-archive-keyring.gpg 2>/dev/null | grep -q '13/trixie'; then
+    echo 'FATAL: host debian-archive-keyring has no trixie key (debootstrap would fail GPG verification); install debian-archive-keyring 2025.1+ first' >&2
+    exit 1
+fi
 sudo lb config \
     --ignore-system-defaults \
     --mode debian \
     --initramfs live-boot \
     --initsystem systemd \
-    --distribution bookworm \
+    --distribution trixie \
     --architectures amd64 \
     --linux-packages linux-image \
     --archive-areas "main contrib non-free non-free-firmware" \
@@ -96,8 +104,8 @@ sudo mkdir -p config/archives
 # chroot 的 Debian 源只走 lb config 的 sources.list。
 # mirrors.binary.chroot（阿里云/清华）是另一批 URL，不重复，保留。
 cat <<'EOF' | sudo tee config/archives/xwlightos.list.binary >/dev/null
-deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
-deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
+deb http://deb.debian.org/debian trixie main contrib non-free non-free-firmware
+deb http://security.debian.org/debian-security trixie-security main contrib non-free non-free-firmware
 EOF
 
 sudo chmod 755 config/hooks/*.chroot \

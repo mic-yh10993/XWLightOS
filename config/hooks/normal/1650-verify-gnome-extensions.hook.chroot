@@ -1,6 +1,6 @@
 #!/bin/sh
 # Verify the GNOME Shell extensions that dconf claims to enable really
-# exist in the image and support Shell 43, and that an "Extensions"
+# exist in the image and support Shell 48, and that an "Extensions"
 # entry point is present.
 #
 # Root cause of the 2026-10-24 user report ("no Extensions entry,
@@ -10,7 +10,7 @@
 # or version-incompatible extension therefore shipped silently and
 # GNOME dropped it at login. Also, gnome-shell-extension-prefs (the
 # org.gnome.Extensions app) was not in the package list at all, and
-# GNOME 43's Tweaks no longer has an extensions page, so the system
+# GNOME 48's Tweaks no longer has an extensions page, so the system
 # genuinely had no Extensions entry point.
 set -eu
 
@@ -35,14 +35,14 @@ for uuid in $UUIDS; do
         fail=1
         continue
     fi
-    if ! grep -Eq '"43(\.[0-9]+)?"' "$dir/metadata.json"; then
-        echo "XWLightOS: extension metadata does not list Shell 43: $uuid" >&2
+    if ! grep -Eq '"48(\.[0-9]+)?"' "$dir/metadata.json"; then
+        echo "XWLightOS: extension metadata does not list Shell 48: $uuid" >&2
         grep -A3 'shell-version' "$dir/metadata.json" >&2 || true
         fail=1
     fi
 done
 [ "$fail" -eq 0 ] || { echo "XWLightOS: GNOME extension verification failed" >&2; exit 1; }
-echo "XWLightOS: all dconf-enabled extensions present and Shell-43 compatible: $UUIDS"
+echo "XWLightOS: all dconf-enabled extensions present and Shell-48 compatible: $UUIDS"
 
 # The Extensions entry point (user report: no entry existed at all).
 [ -f /usr/share/applications/org.gnome.Extensions.desktop ] || {

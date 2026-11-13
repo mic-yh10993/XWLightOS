@@ -16,6 +16,32 @@ cd "$PKG_DIR"
 sha256sum -c SHA256SUMS
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
+# Trixie rebase (round 14): the pinned OnlyOffice DEB was built against
+# Bookworm-era library names. Trixie renamed them in the 64-bit time_t
+# transition (same SONAMEs, new package names), so apt would refuse the
+# install as unsatisfiable. Rewrite the Depends before handing it to apt
+# (same repack precedent as the Seewo Terminal Manager fix in the
+# 1550-edu hook). The SHA256 check above already verified the download;
+# repacking after verification is safe.
+for deb in ./*.deb; do
+    [ -f "$deb" ] || continue
+    if dpkg-deb -f "$deb" Depends 2>/dev/null | grep -Eq '\blibgtk-3-0\b|\blibatk1\.0-0\b|\blibasound2\b'; then
+        repack_dir="$(mktemp -d)"
+        dpkg-deb -R "$deb" "$repack_dir"
+        sed -i \
+            -e 's/\blibgtk-3-0\b/libgtk-3-0t64/g' \
+            -e 's/\blibatk1\.0-0\b/libatk1.0-0t64/g' \
+            -e 's/\blibasound2\b/libasound2t64/g' \
+            "$repack_dir/DEBIAN/control"
+        dpkg-deb -b -Zgzip -z1 "$repack_dir" "$deb"
+        rm -rf "$repack_dir"
+        if dpkg-deb -f "$deb" Depends 2>/dev/null | grep -Eq '\blibgtk-3-0\b|\blibatk1\.0-0\b|\blibasound2\b'; then
+            echo "XWLightOS: failed to rewrite Trixie-renamed dependencies in $deb" >&2
+            exit 1
+        fi
+        echo "XWLightOS: rewrote Trixie-renamed dependencies in $(basename "$deb")"
+    fi
+done
 apt-get install -y --no-install-recommends ./*.deb
 
 install -d /usr/local/share/applications

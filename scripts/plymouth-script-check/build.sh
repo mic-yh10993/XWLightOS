@@ -2,7 +2,7 @@
 # Build the Plymouth theme-script parser checker into the directory given
 # as $1 (default: ./ply-script-check next to this script).
 #
-# The checker is Plymouth 22.02.122's OWN script parser (the exact code
+# The checker is Plymouth 24.004.60's OWN script parser (the exact code
 # plymouthd runs at boot to parse a script theme), wrapped by a 15-line
 # main() that calls script_parse_file() and reports NULL/non-NULL.
 # It exists because this product shipped a theme script for months that

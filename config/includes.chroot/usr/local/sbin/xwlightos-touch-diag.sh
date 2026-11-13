@@ -251,7 +251,7 @@ _DV=$(pactl get-sink-volume @DEFAULT_SINK@ 2>/dev/null)
 if test -n "$_DV"; then echo "  默认输出音量：$_DV"; else echo "  （读不到默认输出音量）"; fi
 echo "  缓冲档位（镜像静态值）："
 grep -h 'min-quantum' /etc/pipewire/pipewire.conf.d/51-xwlightos-quantum.conf 2>/dev/null | head -1 | sed 's/^/    /'
-grep -h 'api.alsa.period-size\|api.alsa.headroom' /etc/wireplumber/main.lua.d/52-xwlightos-alsa-buffering.lua 2>/dev/null | head -2 | sed 's/^/    /'
+grep -h 'api.alsa.period-size\|api.alsa.headroom' /etc/wireplumber/wireplumber.conf.d/52-xwlightos-alsa-buffering.conf 2>/dev/null | head -2 | sed 's/^/    /'
 echo "17. root 取证（第八轮：Input Mode、枚举期控制传输、hidraw root 采样、接口绑定）："
 _EVD=/tmp/xwlightos-touch-evidence
 # root sampler 与第 7/8 节同窗并读、结束时间接近；本轮开过窗

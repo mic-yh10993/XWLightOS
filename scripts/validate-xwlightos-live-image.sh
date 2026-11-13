@@ -149,26 +149,31 @@ require_path 'usr/share/sounds/freedesktop/stereo/audio-volume-change.oga'
 # 新设备默认音量（用户 2026-10-31 定案）：WirePlumber 对无存档新设备
 # 的内置默认是线性 0.064（wpctl 显示 0.40、实际增益约 6%，应用音频
 # 等于没声；用户实测拉到 1.0 立刻清楚）。镜像 drop-in 必须把
-# device_defaults 的 default-volume 钉到线性 0.614（显示约 0.85）。
+# device.routes.default-sink-volume 钉到线性 0.614（显示约 0.85）。
+# 第 14 轮（Trixie）：WirePlumber 0.5 删掉了 Lua 配置，drop-in 改走
+# wireplumber.conf.d/*.conf（wireplumber.settings 键）。
 WP_DEFAULTS_DROPIN="$WORK/wp-device-defaults"
-cat_image_file 'etc/wireplumber/main.lua.d/51-xwlightos-device-defaults.lua' "$WP_DEFAULTS_DROPIN"
-grep -q '^\s*device_defaults\.properties\["default-volume"\] = 0\.614' "$WP_DEFAULTS_DROPIN" || {
+cat_image_file 'etc/wireplumber/wireplumber.conf.d/51-xwlightos-device-defaults.conf' "$WP_DEFAULTS_DROPIN"
+grep -q 'device\.routes\.default-sink-volume = 0\.614' "$WP_DEFAULTS_DROPIN" || {
     echo 'wireplumber drop-in does not raise the new-device default volume to 0.614 linear (~0.85 shown; fresh/live sessions would start at ~6% gain)' >&2; exit 1; }
 # 播放缓冲门禁（用户 2026-10-31 实测：VM 里看视频声音持续断续，
 # speaker-test 大缓冲却干净——小 quantum 实时投递喂不及模拟 HDA）。
-# drop-in 必须把 vm.node.defaults 的 period 提到 2048 并给全部 ALSA
-# 输出节点追加同组规则（属性名以随包 50-alsa-config.lua 为准）。
+# drop-in 必须把 VM 声卡的 period 提到 2048 并给全部 ALSA
+# 输出节点追加同组规则（matches/update-props 写法以随包
+# alsa-vm.conf 为准，WirePlumber 0.5 .conf 格式）。
 # 2026-11-02 第七轮（用户令“调高缓存”）：真机嘟嘟卡顿、选错设备
 # 已排除，period 1024→2048、headroom 8192→16384。
 WP_BUFFERING_DROPIN="$WORK/wp-alsa-buffering"
-cat_image_file 'etc/wireplumber/main.lua.d/52-xwlightos-alsa-buffering.lua' "$WP_BUFFERING_DROPIN"
-grep -q 'alsa_monitor\.properties\["vm\.node\.defaults"\]' "$WP_BUFFERING_DROPIN" || {
-    echo 'wireplumber buffering drop-in does not override vm.node.defaults' >&2; exit 1; }
-grep -q 'table\.insert(alsa_monitor\.rules' "$WP_BUFFERING_DROPIN" || {
-    echo 'wireplumber buffering drop-in adds no alsa_monitor rule for output nodes' >&2; exit 1; }
-grep -q '\["api\.alsa\.period-size"\] = 2048' "$WP_BUFFERING_DROPIN" || {
+cat_image_file 'etc/wireplumber/wireplumber.conf.d/52-xwlightos-alsa-buffering.conf' "$WP_BUFFERING_DROPIN"
+grep -q 'monitor\.alsa\.rules' "$WP_BUFFERING_DROPIN" || {
+    echo 'wireplumber buffering drop-in has no monitor.alsa.rules array' >&2; exit 1; }
+grep -q 'cpu\.vm\.name = "~.\*"' "$WP_BUFFERING_DROPIN" || {
+    echo 'wireplumber buffering drop-in has no rule for VM sound cards' >&2; exit 1; }
+grep -q 'node\.name = "~alsa_output\.\*"' "$WP_BUFFERING_DROPIN" || {
+    echo 'wireplumber buffering drop-in adds no rule for all ALSA output nodes' >&2; exit 1; }
+grep -q 'api\.alsa\.period-size[[:space:]]*= 2048' "$WP_BUFFERING_DROPIN" || {
     echo 'wireplumber buffering drop-in does not raise api.alsa.period-size to 2048' >&2; exit 1; }
-grep -q '\["api\.alsa\.headroom"\] = 16384' "$WP_BUFFERING_DROPIN" || {
+grep -q 'api\.alsa\.headroom[[:space:]]*= 16384' "$WP_BUFFERING_DROPIN" || {
     echo 'wireplumber buffering drop-in does not set api.alsa.headroom to 16384' >&2; exit 1; }
 # 图 quantum 下限 + 实时优先级（同属抗负载断续一线）：随包 pipewire.conf
 # 出厂 min-quantum=16，单个流能把图拉到 0.33ms 一轮，弱虚拟 CPU 上
@@ -262,7 +267,10 @@ require_path 'usr/sbin/grub-install'
 require_path 'usr/lib/grub/x86_64-efi/modinfo.sh'
 require_path 'usr/lib/grub/i386-pc/modinfo.sh'
 BOOTLOADER_CONFIG="$WORK/bootloader-config"
-cat_image_file 'usr/sbin/bootloader-config' "$BOOTLOADER_CONFIG"
+# 第 14 轮（Trixie）：calamares-settings-debian 13.0.13 把该脚本从
+# /usr/sbin/bootloader-config 搬到 /usr/share/calamares/helpers/ 下
+# （module.desc 的 command 行实查即此路径）。
+cat_image_file 'usr/share/calamares/helpers/calamares-bootloader-config' "$BOOTLOADER_CONFIG"
 grep -q 'skipping apt (offline install)' "$BOOTLOADER_CONFIG" || {
     echo 'bootloader-config offline patch is missing (offline install would fail)' >&2
     exit 1
@@ -673,7 +681,7 @@ grep -q '^user:x:[0-9][0-9]*:[0-9][0-9]*:.*:/home/user:/bin/bash$' "$USER_WORK/e
 # GDM 自动登录的 account 栈拒绝会话。
 grep -q '^user::' "$USER_WORK/etc/shadow" \
     || { echo 'live user "user" password is not empty in the image shadow (must be unlocked for GDM autologin)' >&2; exit 1; }
-grep -q '^XSession=gnome-xorg$' "$USER_WORK/var/lib/AccountsService/users/user" \
+grep -q '^XSession=gnome$' "$USER_WORK/var/lib/AccountsService/users/user" \
     || { echo 'AccountsService session seed for the live user is missing (autologin session would be ambiguous)' >&2; exit 1; }
 # 用户 2026-10-25 08:29 邮件第 8 项：live 用户的账户图标必须指向品牌头像，
 # 头像文件本身必须进镜像，否则设置“用户”页与登录页仍显示通用头像/回落标识。
@@ -968,6 +976,10 @@ if grep -q -E '(^|/)usr/share/gnome-shell/extensions/kimpanel@kde\.org' "$LIST";
 # 可切英文作硬回退。加回的是 'us' 不是 'cn'，不会抢中文默认。
 # 本节三处精确等值断言同步改为双源；“任何 xkb 源回潮即红”的旧规则
 # 改为“xkb 源只能在第二位作回退、首位必须是 libpinyin”。
+# 第 14 轮（Trixie）：ibus-libpinyin 1.15.8 的 schema 已重核，
+# main-switch（'<Shift>'）与 init-chinese（true）两键仍在且同义；
+# Shell 48 下无论读 current 还是读 mru[0]，本播种两项一致
+# （current=0 且 mru 首位均为 libpinyin），开机当前源必是拼音引擎。
 grep -q '^\[org/gnome/desktop/input-sources\]$' "$GNOME_DEFAULTS" \
     || { echo 'dconf defaults lack input-sources section (seeded input sources missing)' >&2; exit 1; }
 grep -q "^sources=\[('ibus', 'libpinyin'), ('xkb', 'us')\]$" "$GNOME_DEFAULTS" \
@@ -1222,18 +1234,22 @@ if command -v desktop-file-validate >/dev/null 2>&1; then
 fi
 
 # The final image must ship GNOME as its only desktop session.  GDM autologs
-# into the GNOME X11 session, so the GNOME session entry must exist and no
-# non-GNOME X11/Wayland session entry may be installed at all.  A resurrected
-# legacy desktop session would fail here even though the keyword scan is gone.
-require_path 'usr/share/xsessions/gnome-xorg.desktop'
+# into the GNOME Wayland session (Trixie's GNOME 48 ships no Xorg session),
+# so the GNOME session entry must exist and no non-GNOME X11/Wayland session
+# entry may be installed at all.  A resurrected legacy desktop session
+# would fail here even though the keyword scan is gone.
+require_path 'usr/share/wayland-sessions/gnome.desktop'
 SESSION_ENTRIES="$WORK/session-entries.list"
 grep -E '(^|/)usr/share/(xsessions|wayland-sessions)/[^/]+\.desktop$' "$LIST" \
     > "$SESSION_ENTRIES" || true
 NON_GNOME_SESSIONS="$WORK/non-gnome-sessions.list"
-# GNOME ships several official session variants alongside the main X11
+# GNOME ships several official session variants alongside the main
 # entry (e.g. gnome-wayland.desktop, gnome-classic.desktop,
 # gnome-classic-xorg.desktop, gnome-classic-wayland.desktop); all of them
 # are GNOME's own and must not be treated as legacy contamination.
+# (Trixie ships only gnome.desktop + gnome-wayland.desktop; the
+# -xorg/-classic alternatives are allowed here so the gate does not
+# break if a future GNOME re-adds them.)
 grep -vE '(^|/)gnome(-classic)?(-xorg|-wayland)?\.desktop$' "$SESSION_ENTRIES" \
     > "$NON_GNOME_SESSIONS" || true
 if [ -s "$NON_GNOME_SESSIONS" ]; then
@@ -1935,11 +1951,12 @@ grep -q 'generated target grub.cfg lacks the splash kernel flags' "$TARGET_POSTI
 grep -q 'ln -sfn "$_vunit" "/etc/systemd/system/multi-user.target.wants/$_vname"' "$TARGET_POSTINSTALL" || {
     echo 'target postinstall vendor re-enable does not link directly into multi-user wants like the 1660 live layer' >&2; exit 1; }
 # Deep-chain fix (user mail 2026-10-24 22:40): the installed account
-# must be forced onto the X11 session like the live user, otherwise
-# every session-level fix validated on live X11 silently stops
-# applying on the installed system (Wayland default on bookworm).
-grep -q 'XSession=gnome-xorg' "$TARGET_POSTINSTALL" || {
-    echo 'target postinstall does not force X11 session for installed account' >&2; exit 1; }
+# must be pinned to the same session as the live user, otherwise
+# every session-level fix validated on live silently stops
+# applying on the installed system. Trixie's GNOME 48 ships no Xorg
+# session, so both live and installed run the Wayland session.
+grep -q 'XSession=gnome' "$TARGET_POSTINSTALL" || {
+    echo 'target postinstall does not pin the Wayland session for installed account' >&2; exit 1; }
 grep -q 'var/lib/AccountsService/users' "$TARGET_POSTINSTALL" || {
     echo 'target postinstall writes no AccountsService session file' >&2; exit 1; }
 # 输入法补种缺席断言（2026-11-01 第四轮反转 2026-10-25 的在场

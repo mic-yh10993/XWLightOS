@@ -75,8 +75,8 @@ if [ -f /etc/pipewire/pipewire.conf.d/51-xwlightos-quantum.conf ]; then
 else
     echo "  （量子配置文件缺失）"
 fi
-if [ -f /etc/wireplumber/main.lua.d/52-xwlightos-alsa-buffering.lua ]; then
-    grep -h 'api.alsa.period-size\|api.alsa.headroom' /etc/wireplumber/main.lua.d/52-xwlightos-alsa-buffering.lua 2>/dev/null | head -2 | sed 's/^/  /'
+if [ -f /etc/wireplumber/wireplumber.conf.d/52-xwlightos-alsa-buffering.conf ]; then
+    grep -h 'api.alsa.period-size\|api.alsa.headroom' /etc/wireplumber/wireplumber.conf.d/52-xwlightos-alsa-buffering.conf 2>/dev/null | head -2 | sed 's/^/  /'
 else
     echo "  （ALSA 缓冲配置文件缺失）"
 fi

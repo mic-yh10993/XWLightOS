@@ -64,7 +64,7 @@ done
     echo "XWLightOS: WhiteSur-Light gtk-4.0 theme missing after install" >&2
     exit 1
 }
-# libadwaita/GTK4 应用（GNOME 43 的"文件"/Nautilus 等）不读 dconf 的 gtk-theme，
+# libadwaita/GTK4 应用（GNOME 48 的"文件"/Nautilus 等）不读 dconf 的 gtk-theme，
 # 只加载 ~/.config/gtk-4.0/gtk.css。这是上游 install.sh -l/--libadwaita 的
 # chroot 等效做法：把 WhiteSur-Light（配合用户"默认白色"指令）的 gtk-4.0
 # 主题装进 /etc/skel，live 用户（1700 钩子从 skel 复制家目录）与安装后的
@@ -196,7 +196,8 @@ fi
 
 # --- 程序栏黑底黑字修复（用户 2026-10-24 真机反馈第 9 项）---
 # WhiteSur 的 gnome-shell.css 在 GNOME 43 上 app-grid/文件夹弹窗的背景与
-# 图目标签颜色对比不足（深色背景叠深色标签 = 看不见）。在主题 CSS 末尾
+# 图目标签颜色对比不足（深色背景叠深色标签 = 看不见；第 14 轮：48 下
+# 继续保留该覆盖，视觉效果待真机验证）。在主题 CSS 末尾
 # 追加 XWLightOS 对比度覆盖（标记 XWLightOS-APPGRID-CONTRAST），后加载者
 # 优先，保证程序栏与文件夹弹窗内文字与背景强对比。
 for _variant in Light Dark; do

@@ -19,7 +19,10 @@ from gi.repository import GLib, GObject, Gtk, Nautilus
 OTHER_LOCATIONS_URI = "other-locations:///"
 _HOME_TITLE = GLib.dgettext("nautilus", "Home")
 _LOADING_TITLE = GLib.dgettext("nautilus", "Loading…")
-# bookworm = Nautilus 43（<= 46 走 legacy 布局）：先试 win 再试 slot。
+# 第 14 轮（Trixie）：Nautilus 48 实包二进制 strings 核实——
+# "slot.open-location" 仍在，"win.open-location" 已不存在（只剩复数
+# 形的 open-locations）。保留双试顺序：win.* 失败静默落到 slot.*，
+# 两个都试、异常内部吞掉，Nautilus 升级后仍能跳转。
 _ACTION_NAMES = ("win.open-location", "slot.open-location")
 _RETRY_MS = 60
 _MAX_ATTEMPTS = 50  # 约 3 秒等标题稳定，超时则放弃（窗口停在默认位置即可）

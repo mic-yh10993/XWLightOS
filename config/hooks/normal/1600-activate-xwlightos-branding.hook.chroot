@@ -49,9 +49,10 @@ chmod 0755 /usr/local/libexec/xwlightos-target-postinstall.sh
 # target, so no apt operations are needed or permitted during installation.
 # The `packages` module is the only apt-capable *upstream* Calamares module
 # (verified against calamares 3.2.61 sources), but Debian inserts its own
-# `bootloader-config` process module BEFORE `bootloader`: /usr/sbin/
-# bootloader-config chroots into the target and runs
-# `apt-get -y install grub-efi-amd64` (UEFI) or `grub-pc` (BIOS). That script
+# `bootloader-config` process module BEFORE `bootloader`:
+# /usr/share/calamares/helpers/calamares-bootloader-config chroots into
+# the target and runs `apt-get -y install grub-efi` (UEFI) or `grub-pc`
+# (BIOS). That script
 # has no `set -e`: when apt fails offline, the trailing
 # `chroot $CHROOT /usr/sbin/update-grub` dies with command-not-found because
 # grub2-common never got installed — that is the exit 127 from the
@@ -79,6 +80,17 @@ EOF
 # user. This must not follow `packages`, because the Live temporary `user`
 # account is present then while the account selected in Calamares is created
 # by the later `users` module.
+# Round 14 (Trixie) insertion point: AFTER `hwclock`, not after `users`.
+# Root cause (verified against the Trixie calamares-settings-debian
+# settings.conf and the Calamares 3.3.14 hwclock module source): the exec
+# sequence is users -> displaymanager -> networkcfg -> hwclock ->
+# services-systemd -> ... -> packages, and the hwclock module hardcodes
+# `hwclock --systohc --utc`, which rewrites /etc/adjtime's third line to
+# UTC. Inserting postinstall right after `users` (the round-13 position)
+# lets hwclock run after it and silently undo the postinstall's LOCAL
+# hardware-clock setting on the installed system. After `hwclock` the
+# postinstall still runs after `users` and before `packages`, so both
+# original constraints hold and the LOCAL setting survives.
 SETTINGS=/etc/calamares/settings.conf
 if ! grep -q '^-[[:space:]]*id:[[:space:]]*xwlightos-postinstall' "$SETTINGS" 2>/dev/null; then
     cat >> "$SETTINGS" <<'EOF'
@@ -92,7 +104,7 @@ fi
 if ! grep -q '^[[:space:]]*-[[:space:]]*shellprocess@xwlightos-postinstall[[:space:]]*$' "$SETTINGS"; then
     awk '
         /^[[:space:]]*-[[:space:]]*exec:[[:space:]]*$/ { in_exec=1 }
-        !done && in_exec && /^[[:space:]]*-[[:space:]]*users[[:space:]]*$/ {
+        !done && in_exec && /^[[:space:]]*-[[:space:]]*hwclock[[:space:]]*$/ {
             indent=$0; sub(/[^[:space:]].*/, "", indent)
             print $0
             print indent "- shellprocess@xwlightos-postinstall"
@@ -157,7 +169,8 @@ printf 'XWLightOS 1.0\n' > /etc/issue.net
 # Offline-install guarantee (user 2026-10-18: installer must not download
 # GRUB; user 2026-10-23: bootloader-config exit 127 root-caused to an apt
 # call in Debian's bootloader-config wrapper): the patched
-# /usr/sbin/bootloader-config (1565 hook) skips apt only when the target
+# /usr/share/calamares/helpers/calamares-bootloader-config (1565 hook)
+# skips apt only when the target
 # already carries grub2-common (grub-install/update-grub) plus the
 # firmware-specific platform modules.  They ride to the target via unpackfs,
 # so fail the build if a package-list change ever drops them, instead of

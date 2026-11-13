@@ -30,7 +30,7 @@ Presentation {
     }
 
     Slide {
-        centeredText: qsTr("XWLightOS\n基于 Debian Bookworm 构建\n由 SYSTEM-Intel-MIC 维护")
+        centeredText: qsTr("XWLightOS\n基于 Debian Trixie 构建\n由 SYSTEM-Intel-MIC 维护")
     }
 
     Slide {

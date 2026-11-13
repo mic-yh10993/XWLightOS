@@ -6,7 +6,7 @@ sudo rm -rf config/archives lb/ .build/ stage/ cache/ 2>/dev/null || true
 
 # 1. 生成 live-build 配置
 sudo lb config \
-  --distribution bookworm \
+  --distribution trixie \
   --architectures amd64 \
   --linux-flavours amd64 \
   --bootappend-live "boot=live components quiet splash" \
@@ -38,7 +38,7 @@ grep -q "^LB_FIRMWARE_CHROOT=" config/chroot || echo 'LB_FIRMWARE_CHROOT="false"
 # 3. 写入 archive override 文件（lb_chroot_archives 只识别 *.list* 文件）
 sudo mkdir -p config/archives
 cat > config/archives/mirrors.list.chroot << 'EOF'
-deb http://mirrors.aliyun.com/debian bookworm main contrib non-free non-free-firmware
+deb http://mirrors.aliyun.com/debian trixie main contrib non-free non-free-firmware
 EOF
 
 echo "=== 验证 ==="

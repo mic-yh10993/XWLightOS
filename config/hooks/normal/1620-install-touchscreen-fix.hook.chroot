@@ -11,9 +11,10 @@
 # 一手实证（2026-10-19）：
 # - VID 1FF7 = CJTouch（深圳红外触屏框大厂）产品页标称 VID，用户这台
 #   希沃 T86EA 同属这一家族——国内一体机/白板红外框大量是这一系。
-# - kernel 6.1（Debian bookworm 同款）Kconfig 的 HID_MULTITOUCH 帮助文本
-#   明确列出 "CJTouch panels" 和 "IrTouch Infrared USB panels"——驱动
-#   本来就是为这类设备设计的，只是非标描述符未被分入 multitouch 组。
+# - kernel 6.12（Debian trixie 同款）hid-multitouch.c 源码仍保留
+#   "CJTouch panels" 条目（USB_VENDOR_ID_CVTOUCH + 0x0013，与 6.1
+#   逐行一致；第 14 轮已对照 6.1/6.12 两版源码）——驱动本来就是为
+#   这类设备设计的，只是非标描述符未被分入 multitouch 组。
 # - hid-core.c 的 new_id_store 用 sscanf(buf, "%x %x %x") 解析
 #   "bus vendor product" 十六进制；hid-multitouch 的 id_table 有
 #   HID_GROUP_MULTITOUCH + HID_ANY_ID 通配条目。

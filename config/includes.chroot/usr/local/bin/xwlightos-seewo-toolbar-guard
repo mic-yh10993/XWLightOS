@@ -17,6 +17,11 @@
 # /usr/local/bin/xwlightos-easinote5-launcher together with the whiteboard
 # main program, killed when the whiteboard exits. No longer a session-wide
 # autostart daemon, so it never spins idly while the whiteboard is closed.
+#
+# 第 14 轮（Trixie，Wayland 会话）：本守护走 X11 工具（wmctrl/xdotool/
+# xprop），在 Wayland 下只能看到 XWayland 窗口。希沃应用是 X11 程序，
+# 默认走 XWayland，应仍可见；若会话无 XWayland，xrandr 探测失败即干净
+# 退出（不死循环、不报错刷屏）。Wayland 下的实际表现待真机验证。
 set -u
 
 log() { echo "xwlightos-seewo-toolbar: $*"; }

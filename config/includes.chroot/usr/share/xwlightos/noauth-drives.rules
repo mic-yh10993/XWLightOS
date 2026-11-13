@@ -8,8 +8,9 @@
 // 移走该文件，恢复默认的弹密码行为。polkitd 会 inotify 重载规则目录，
 // 无需重启服务。
 //
-// 只放这四个动作（均经 Bookworm 实包 udisks2 2.9.4 的
-// org.freedesktop.UDisks2.policy 核实）：
+// 只放这四个动作（均经 Trixie 实包 udisks2 2.10.1 的
+// org.freedesktop.UDisks2.policy 重核，动作 ID 与默认值与
+// Bookworm 的 2.9.4 一致）：
 // - filesystem-mount-system：挂载内部/系统设备——默认 allow_active
 //   是 auth_admin_keep，正是文件里点硬盘分区弹密码的根源。
 // - encrypted-unlock-system：解锁内部加密设备，同为 auth_admin_keep。

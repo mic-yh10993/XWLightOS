@@ -69,7 +69,7 @@ SRC="WhiteSur-gtk-theme-${GTK_VER}"
 #
 # XWLightOS-owned gresource XML: it is upstream's
 # other/gdm/gnome-shell-theme.gresource.xml PLUS one alias that upstream omits
-# and Debian's GNOME 43 cannot live without:
+# and Debian's GNOME 48 cannot live without:
 #   <file alias="gnome-shell.css">gnome-shell-dark.css</file>
 # 根因（Build 56，Run 39043461212，QEMU BIOS 烟测失败）：上游的 GDM XML 里
 # 根本没有 gnome-shell.css。任何加载不到 user theme 的 gnome-shell 实例

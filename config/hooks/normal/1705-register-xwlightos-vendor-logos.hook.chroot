@@ -2,9 +2,10 @@
 set -eu
 
 # XWLightOS About-panel vendor logo (user mail 2026-10-28 item 3, root cause
-# nailed 2026-10-29 from the Debian source package): Debian Bookworm's
-# gnome-control-center 43.6-2~deb12u1 is built with DISTRIBUTOR_LOGO hard
-# coded to /usr/share/icons/vendor/scalable/emblems/emblem-vendor.svg, so
+# nailed 2026-10-29 from the Debian source package): Debian Trixie's
+# gnome-control-center 48.4 is built with DISTRIBUTOR_LOGO hard coded to
+# /usr/share/icons/vendor/scalable/emblems/emblem-vendor.svg (binary
+# strings re-verified in round 14, same as bookworm's 43.6), so
 # the Settings About panel loads that absolute path directly and never
 # consults os-release LOGO or the icon theme. Copying brand icons into
 # WhiteSur/hicolor and refreshing icon caches (1700 hook, postinstall)

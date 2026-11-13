@@ -1,11 +1,11 @@
 # XWLightOS 系统软件清单
 
-> 基于构建 #8（xwlightos-1.0-preview-8，待构建）汇总。最后更新：2026-10-20
+> 基于构建 #8（xwlightos-1.0-preview-8，待构建）汇总。最后更新：2026-11-13（第 14 轮 trixie 分支：底座版本已同步，软件清单其余条目未逐项重核）
 
 ## 桌面环境
 
-- **GNOME 43**（Debian bookworm）+ WhiteSur macOS 风格主题
-- GDM 自动登录，X11 会话
+- **GNOME 48**（Debian trixie）+ WhiteSur macOS 风格主题
+- GDM 自动登录，Wayland 会话
 - GNOME Shell 扩展：Apps Menu、dash-to-dock、Desktop Icons NG (ding)、Native Window Placement、Places Status Indicator、Removable Drive Menu、System Monitor、User Themes、AppIndicator
 - **Dock 固定栏（7 个）**：希沃白板、希沃视频展台、班级优化大师、ONLYOFFICE、钉钉、微信、QQ（2026-10-20 用户邮件指令）
 
@@ -14,7 +14,7 @@
 | 软件 | 版本 | 来源 |
 |------|------|------|
 | ONLYOFFICE DesktopEditors | 9.4.0 | GitHub 官方 release（SHA256 锁定） |
-| GNOME File Roller | Debian bookworm | Debian 官方源（2026-10-25 起替代 PeaZip，PeaZip 语言设置里没中文） |
+| GNOME File Roller | Debian trixie | Debian 官方源（2026-10-25 起替代 PeaZip，PeaZip 语言设置里没中文） |
 
 ## 教育软件（来自 WinduxEdu，版本锁定）
 

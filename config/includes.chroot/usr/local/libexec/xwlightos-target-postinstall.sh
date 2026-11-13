@@ -79,15 +79,16 @@ install -Dm644 /dev/stdin /etc/xwlightos/session-user <<EOF
 $installed_account
 EOF
 # Deep-chain fix (user mail 2026-10-24 22:40: why do boot-animation and
-# font-color fixes keep not landing): the live session forces X11 via
-# AccountsService (the 1700 hook writes XSession=gnome-xorg for the
+# font-color fixes keep not landing): the live session pins its session via
+# AccountsService (the 1700 hook writes XSession=gnome for the
 # live 'user'), but the installed account never got such a file --
 # this script deletes the live one above and writes nothing for the
 # new account. GDM then starts the installed user on its default
-# session, which on bookworm is Wayland when available. Every
-# session-level fix validated on the live X11 session then silently
-# stops applying on the installed system: /etc/X11/Xsession.d and
-# /etc/profile.d are never sourced (IM variables, Qt theme),
+# session. Pin the installed account to the same session explicitly
+# (XSession=gnome, Wayland -- Trixie's GNOME 48 ships no Xorg session
+# at all) so every session-level fix validated on live applies on the
+# installed system too. /etc/X11/Xsession.d and /etc/profile.d are
+# never sourced on a Wayland session (IM variables, Qt theme),
 # and X11-oriented components run under a session they were never
 # tested in. Force X11 for the installed account exactly like the
 # live user, so installed == live.
@@ -107,7 +108,7 @@ else
 fi
 cat > "/var/lib/AccountsService/users/$installed_account" <<ACCEOF
 [User]
-XSession=gnome-xorg
+XSession=gnome
 $ICON_LINE
 ACCEOF
 # 用户 2026-10-25 09:01 指令：希沃侧边栏暂时删除，上面那段

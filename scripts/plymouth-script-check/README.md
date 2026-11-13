@@ -14,11 +14,13 @@
 
 ## 组成与来源
 
-- `script*.c/h`、`ply-*.c/h`：逐字取自 Plymouth **22.02.122** 源码
-  （Debian bookworm 里 plymouth 包的版本，也是镜像内 plymouthd 的版本）：
-  - 上游压缩包：`plymouth_22.02.122.orig.tar.xz`
+- `script*.c/h`、`ply-*.c/h`：逐字取自 Plymouth **24.004.60** 源码
+  （Debian trixie 里 plymouth 包的版本，也是镜像内 plymouthd 的版本；
+  第 14 轮从 bookworm 的 22.02.122 换版：解析器/工具函数均有实质改动，
+  换版后已重编并对真实主题脚本正向通过、对含 `and` 的坏脚本反向拦截）：
+  - 上游压缩包：`plymouth_24.004.60.orig.tar.xz`
     （deb.debian.org/debian/pool/main/p/plymouth/）
-  - SHA256：`100551442221033ce868c447ad6c74d831d209c18ae232b98ae0207e34eadaeb`
+  - SHA256：`f3f7841358c98f5e7b06a9eedbdd5e6882fd9f38bbd14a767fb083e3b55b1c34`
   - 取用文件：`src/plugins/splash/script/` 的解析器/扫描器/对象/执行器
     源码（解析入口 `script_parse_file()` 在 script-parse.c），加上
     `src/libply/` 中它们依赖的 list/hashtable/bitarray/logger/utils/

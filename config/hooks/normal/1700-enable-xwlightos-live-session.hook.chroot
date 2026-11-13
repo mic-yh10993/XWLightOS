@@ -39,7 +39,8 @@ if [ -f /etc/sudoers.d/xwlightos-live ]; then
     }
 fi
 # Tell GDM/AccountsService exactly which session to start for the autologin
-# (X11 is forced for VM/guest compatibility, matching custom.conf).
+# (XSession=gnome, the Wayland session -- Trixie's GNOME 48 ships no Xorg
+# session at all; the old X11-forcing comment died with bookworm).
 install -d -m 0755 /var/lib/AccountsService/users
 # 账户图标（2026-10-25 08:29 用户反馈第 8 项）：此前 AccountsService 用户
 # 文件里根本没有 Icon 项，用户无头像时 GNOME/ GDM 只能显示通用头像或
@@ -57,7 +58,7 @@ install -Dm644 /usr/share/xwlightos/branding/xwlightos-avatar.png \
 cat > /var/lib/AccountsService/users/user <<'EOF'
 [User]
 Language=
-XSession=gnome-xorg
+XSession=gnome
 SystemAccount=false
 Icon=/var/lib/AccountsService/icons/user
 EOF

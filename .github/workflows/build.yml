@@ -3,7 +3,7 @@ name: Build XWLightOS Live ISO
 
 on:
   push:
-    branches: [main, xwlightos-1.0-integration]
+    branches: [main, xwlightos-1.0-integration, trixie]
   workflow_dispatch:
 
 permissions:
@@ -98,6 +98,18 @@ jobs:
           sudo timeout 12m apt-get install -y --no-install-recommends \
             live-build debootstrap debian-archive-keyring squashfs-tools xorriso grub-pc-bin \
             grub-efi-amd64-bin isolinux syslinux syslinux-common syslinux-utils mtools dosfstools gpg cpio jq initramfs-tools-core socat qemu-system-x86 ovmf desktop-file-utils libglib2.0-bin
+          # Trixie rebase (round 14): the runner's debian-archive-keyring
+          # (noble's 2023.4ubuntu1) only goes up to bookworm -- it has no
+          # trixie signing keys, so debootstrap would fail GPG verification
+          # of the trixie Release file. Install the Trixie keyring package
+          # (2025.1, SHA256 from the trixie Packages index) over it; it is
+          # a data-only package with no dependencies, and it is cumulative
+          # (it still contains the older release keys).
+          curl -fsSL -o /tmp/debian-archive-keyring_2025.1_all.deb \
+            http://deb.debian.org/debian/pool/main/d/debian-archive-keyring/debian-archive-keyring_2025.1_all.deb
+          echo '9ea7778e443144ca490668737a8ab22dd3e748bb99e805e22ec055abeb3c7fac  /tmp/debian-archive-keyring_2025.1_all.deb' | sha256sum -c -
+          sudo dpkg -i /tmp/debian-archive-keyring_2025.1_all.deb
+          gpg --show-keys /usr/share/keyrings/debian-archive-keyring.gpg 2>/dev/null | grep -q '13/trixie' || { echo 'FATAL: trixie archive key missing after keyring upgrade' >&2; exit 1; }
           lb --version
           docker --version
 
@@ -173,7 +185,7 @@ jobs:
             --mode debian \
             --initramfs live-boot \
             --initsystem systemd \
-            --distribution bookworm \
+            --distribution trixie \
             --architectures amd64 \
             --linux-packages linux-image \
             --archive-areas "main contrib non-free non-free-firmware" \
@@ -215,8 +227,8 @@ jobs:
           # 已删；chroot 的 Debian 源只走 lb config 的 sources.list。
           # mirrors.binary.chroot（阿里云/清华）是另一批 URL，不重复，保留。
           cat <<'EOF' | sudo tee config/archives/xwlightos.list.binary
-          deb http://deb.debian.org/debian bookworm main contrib non-free non-free-firmware
-          deb http://security.debian.org/debian-security bookworm-security main contrib non-free non-free-firmware
+          deb http://deb.debian.org/debian trixie main contrib non-free non-free-firmware
+          deb http://security.debian.org/debian-security trixie-security main contrib non-free non-free-firmware
           EOF
           sudo chmod 755 config/hooks/*.chroot \
             config/includes.chroot/usr/local/bin/xwlightos-installer \
@@ -369,7 +381,7 @@ jobs:
         # the parts plus per-part checksums; the whole-ISO sha256 still
         # verifies the merge.
         id: splitpkg
-        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/xwlightos-1.0-integration') && success()
+        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/xwlightos-1.0-integration' || github.ref == 'refs/heads/trixie') && success()
         run: |
           set -euxo pipefail
           ISO="${{ steps.iso.outputs.iso_path }}"
@@ -410,9 +422,9 @@ jobs:
 
       - name: Publish XWLightOS 1.0 Preview Release
         # Preview releases are published automatically after the ISO verifier
-        # and both BIOS/UEFI QEMU smoke checks succeed on main or the
-        # integration branch.
-        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/xwlightos-1.0-integration') && success()
+        # and both BIOS/UEFI QEMU smoke checks succeed on main, the
+        # integration branch, or the trixie branch.
+        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/xwlightos-1.0-integration' || github.ref == 'refs/heads/trixie') && success()
         uses: softprops/action-gh-release@v2
         with:
           tag_name: xwlightos-1.0-preview-${{ github.run_number }}
