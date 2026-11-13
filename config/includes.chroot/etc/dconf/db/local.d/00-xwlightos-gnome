@@ -28,8 +28,9 @@ button-layout=':minimize,maximize,close'
 # chroot 构建无显示、无重启：扩展启用走系统级 dconf 默认（dconf update 编译
 # 进 db），首次登录即生效，无需运行时 gnome-extensions enable。
 # 用户 2026-10-24 邮件《很大问题》第 6 项：状态栏监控要 Debian 自带的那种
-# 顶栏扩展（gnome-shell-extension-system-monitor，即 paradoxxxzero 顶栏扩展），
-# 不是独立的系统监控程序。2026-10-23 曾移除它的旧决定已被用户新要求推翻，
+# 顶栏扩展（gnome-shell-extension-system-monitor；第 14 轮 Trixie 起是
+# GNOME 官方版，bookworm 时是 paradoxxxzero 版），不是独立的系统监控程序。
+# 2026-10-23 曾移除它的旧决定已被用户新要求推翻，
 # 此处重新启用；固定栏里系统监控程序的钉住同步取消（见 favorite-apps）。
 # 注意：Debian 的 gnome-shell-extension-appindicator 装出来的 UUID 是
 # ubuntu-appindicators@ubuntu.com，不是上游的 appindicatorsupport@rgcjonas.gmail.com，

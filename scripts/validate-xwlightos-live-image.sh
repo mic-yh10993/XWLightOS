@@ -383,8 +383,9 @@ if grep -qE '(^|/)usr/sbin/lightdm$|(^|/)etc/lightdm/' "$LIST"; then
     echo 'final ISO still contains LightDM files' >&2
     exit 1
 fi
-# GNOME/GDM owns the graphical session. GDM autologins the Live user and
-# forces the X11 session for VM compatibility.
+# GNOME/GDM owns the graphical session. GDM autologins the Live user into
+# the Wayland session (Trixie's GNOME 48 ships no Xorg session, so
+# WaylandEnable must be True -- False would leave GDM with no session).
 # 根因回归断言（2026-10-17）：Debian 的 gdm3 打包时 -Dcustom-conf 指向
 # /etc/gdm3/daemon.conf，GDM 从不读 /etc/gdm3/custom.conf。自动登录配置曾误放
 # custom.conf 导致 10-11 后自动登录从未生效。此处断言 GDM 真正会读的文件。
@@ -392,7 +393,7 @@ GDM_CONF="$WORK/gdm-daemon.conf"
 cat_image_file 'etc/gdm3/daemon.conf' "$GDM_CONF"
 grep -q '^AutomaticLoginEnable=True$' "$GDM_CONF"
 grep -q '^AutomaticLogin=user$' "$GDM_CONF"
-grep -q '^WaylandEnable=False$' "$GDM_CONF"
+grep -q '^WaylandEnable=True$' "$GDM_CONF"
 # 若有人又把 [daemon] 自动登录写进 custom.conf（GDM 不读），在这里直接失败，
 # 而不是等 QEMU 门禁在 260 秒后才暴露。
 if cat_image_file 'etc/gdm3/custom.conf' "$WORK/gdm-custom-stray.conf" 2>/dev/null; then
@@ -935,17 +936,21 @@ fi
 # 用户 2026-10-24 邮件第 6 项：状态栏监控扩展必须启用。
 # （2026-10-23 曾移除顶栏 system-monitor 扩展的旧注释已作废：用户
 # 2026-10-24 明确要求恢复 Debian 官方打包的顶栏监控扩展。）
-grep -q 'system-monitor@paradoxxx.zero.gmail.com' "$GNOME_DEFAULTS" \
+# 第 14 轮（Trixie）：扩展已换上游——Bookworm 的 paradoxxxzero 版被
+# GNOME 官方版取代，UUID 是 system-monitor@gnome-shell-extensions.gcampax.github.com。
+grep -q 'system-monitor@gnome-shell-extensions.gcampax.github.com' "$GNOME_DEFAULTS" \
     || { echo 'enabled-extensions missing top-bar system-monitor' >&2; exit 1; }
 # 用户 2026-10-28 邮件第 5 项：顶栏系统监视器扩展默认显示数字，不要图形。
-# 上游 *-style 三档 digit/graph/both，默认全是 graph；此处五项一并钉 digit。
-grep -q '^\[org/gnome/shell/extensions/system-monitor\]$' "$GNOME_DEFAULTS" \
-    || { echo 'dconf defaults lack system-monitor section (top-bar monitor would default to graphs)' >&2; exit 1; }
+# 第 14 轮（Trixie）：官方版 schema 只有 show-* 五个开关、没有 *-style
+# 三档键，且只显示数字文本（无图形模式），要求默认即满足；旧的
+# cpu-style/memory-style/swap-style/net-style/disk-style 五键是死配置，
+# 必须已从 dconf 默认里删掉（留着会被 dconf 当作未知键忽略，但属于
+# 误导性残留）。
 for _mon_key in cpu-style memory-style swap-style net-style disk-style; do
-    grep -q "^$_mon_key='digit'$" "$GNOME_DEFAULTS" || {
-        echo "dconf system-monitor $_mon_key is not digit (top-bar monitor would show graphs)" >&2
+    if grep -q "^$_mon_key=" "$GNOME_DEFAULTS"; then
+        echo "dconf system-monitor $_mon_key is still present (the official Trixie extension has no such key; stale bookworm config)" >&2
         exit 1
-    }
+    fi
 done
 # 输入法面板扩展 kimpanel 已随 fcitx5 移除（2026-11-01 第四轮）：它
 # 只是 fcitx5 的面板协议前端（2026-10-24 曾按用户要求加回启用），
