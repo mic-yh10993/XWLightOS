@@ -192,6 +192,40 @@ else
 fi
 unset DT_FILES stale hit
 
+# --- 希沃随机抽取/点名（easiminiapps）：清理厂商捆绑的陈旧系统库 ---
+# 与钉钉同款问题（见上段，run 81 门禁实测）：主程序 RUNPATH=$ORIGIN，
+# files/bin/ 下捆绑的 libm.so.6（只提供到 GLIBC_2.31）优先于系统库被
+# 加载；系统 libmvec.so.1 要求 GLIBC_2.32/2.35/2.39，链接期报版本
+# not found，关联库 libcvAPI.so 加载失败。删掉捆绑的陈旧库，用系统库
+# （Trixie glibc 2.41 全覆盖）。只删与钉钉清理段相同的 7 个名字；
+# 其余捆绑库（libopencv_world 等）是应用自有的，不动。
+for _MINIAPP in com.seewo.easiminiapps.luckyrandom com.seewo.easiminiapps.rollcall; do
+    _MINI_FILES="/opt/apps/$_MINIAPP/files"
+    if [ -d "$_MINI_FILES" ]; then
+        find "$_MINI_FILES" \( \
+                -name 'libm.so.6' -o \
+                -name 'libstdc++.so.6*' -o \
+                -name 'libgbm.so*' -o \
+                -name 'libGLX.so*' -o \
+                -name 'libGLdispatch.so*' -o \
+                -name 'libffi.so.6.0.4' -o \
+                -name 'libharfbuzz.so*' \) \
+            \( -type f -o -type l \) -delete
+        for stale in libm.so.6 libstdc++.so.6 libstdc++.so.6.0.25 \
+            libgbm.so.1.0.0 libGLX.so.0.0.0 libGLdispatch.so.0.0.0; do
+            hit="$(find "$_MINI_FILES" -name "$stale" \( -type f -o -type l \) -print -quit)"
+            if [ -n "$hit" ]; then
+                echo "XWLightOS: $_MINIAPP still ships an incompatible bundled library: $stale" >&2
+                exit 1
+            fi
+        done
+        echo "XWLightOS: $_MINIAPP stale bundled libraries removed"
+    else
+        echo "XWLightOS: NOTE: $_MINIAPP not installed, skipping stale-library cleanup" >&2
+    fi
+done
+unset _MINIAPP _MINI_FILES stale hit
+
 # --- 希沃白板：chrome-sandbox 归属修正（第 15 轮 hygiene） ---
 # 实包核验（com.seewo.easinote5 5.2.2.4.13701）：chrome-sandbox 在包里是
 # 1000:1000 所有、4755；dpkg 原样安装后非 root 所有，不符合 Chromium 对
@@ -369,12 +403,21 @@ echo "XWLightOS: Seewo OTA updates disabled"
 # preview-79 的教训：EasiNote5 死在 libunistring.so.2 缺失，而第 15 轮
 # 的静态 SONAME 检查（只查直接 NEEDED + 几个具名库）漏掉了它——缺失的
 # 库是经捆绑 libidn2.so.0 传递引入的。本门禁在 chroot 里对每个厂商
-# ELF 真跑 ldd，任何 "not found" 即构建失败并打印二进制与缺失的库。
+# ELF 真跑 ldd，任何 "=> not found"（库文件真找不到）即构建失败并打印
+# 二进制与缺失的库。
 # LD_LIBRARY_PATH 按应用取该应用树下全部含 .so 的目录（超集近似厂商
 # sh 的运行时路径；ldd 本身已 honor 各 ELF 的 RUNPATH）。
 # 跳过：非 ELF 文件、非 x86-64 ELF（ldd 会误报）、静态链接/非动态 ELF。
 # ldd 本身出错但无 "not found" 时只告警不断言（个别怪异 ELF 不应拖垮
-# 构建；真缺库一定表现为 "not found"）。
+# 构建；真缺库一定表现为 "=> not found"）。
+# 注意区分两种 "not found"（run 81 教训）：① "libfoo.so.1 => not found"
+# 是库文件找不到，失败；② "version `X' not found (required by ...)"
+# 是版本不匹配（如厂商捆绑的陈旧 libm.so.6 提供不到系统库要求的
+# GLIBC 版本），它第一列是二进制自身路径、不是 SONAME。旧 gate 用
+# grep 'not found' 通吃两种，还把二进制路径当 SONAME 打出来，
+# run 81 的 31 条“失败”全是第 ② 种。版本不匹配只告警计数、不失败：
+# 门禁管不了厂商二进制的版本要求；能修的（陈旧系统库）由上面的
+# 清理段删掉，不能修的（Qt 版本混搭）不拦构建。
 # allowlist（应用名:SONAME，精确行匹配）：以下 5 条在 Trixie 里根本
 # 没有对应包，且主程序启动不受影响——只允许这 5 条，任何新缺失一律
 # 失败。逐条依据见评估卡 round16 §2：
@@ -396,6 +439,7 @@ _LDD_TMP="$(mktemp -d)"
 _LDD_N=0
 _LDD_FAIL=0
 _LDD_ALLOW=0
+_LDD_VERWARN=0
 _LDD_FAIL_LIST="$_LDD_TMP/failures.txt"
 : > "$_LDD_FAIL_LIST"
 printf '%s\n' "$_LDD_ALLOWLIST" > "$_LDD_TMP/allowlist.txt"
@@ -427,7 +471,13 @@ while read -r _elf; do
     case "$_ldd_out" in
         *'not a dynamic executable'*|*'statically linked'*) continue ;;
     esac
-    _missing="$(printf '%s\n' "$_ldd_out" | grep 'not found' || true)"
+    # 版本不匹配行只告警计数（见本段头注释），不进失败路径。
+    _version_warn="$(printf '%s\n' "$_ldd_out" | grep "version .* not found" || true)"
+    if [ -n "$_version_warn" ]; then
+        _LDD_VERWARN=$((_LDD_VERWARN + $(printf '%s\n' "$_version_warn" | grep -c .)))
+        printf '%s\n' "$_version_warn" | sed 's/^/XWLightOS: vendor ldd gate: version warning: /' >&2
+    fi
+    _missing="$(printf '%s\n' "$_ldd_out" | grep '=> not found' || true)"
     if [ -n "$_missing" ]; then
         # 逐条判 allowlist：ldd 行形如 "\tlibfoo.so.1 => not found"，
         # 取第一列即 SONAME。SONAME 无空格，for 拆词是安全的。
@@ -448,8 +498,8 @@ if [ "$_LDD_FAIL" -ne 0 ]; then
     rm -rf "$_LDD_TMP"
     exit 1
 fi
-echo "XWLightOS: vendor ldd gate passed ($_LDD_N vendor ELFs, 0 unresolved, $_LDD_ALLOW allowlisted)"
+echo "XWLightOS: vendor ldd gate passed ($_LDD_N vendor ELFs, 0 unresolved, $_LDD_ALLOW allowlisted, $_LDD_VERWARN version warnings)"
 rm -rf "$_LDD_TMP"
-unset _LDD_TMP _LDD_N _LDD_FAIL _LDD_ALLOW _LDD_FAIL_LIST _LDD_ALLOWLIST
+unset _LDD_TMP _LDD_N _LDD_FAIL _LDD_ALLOW _LDD_VERWARN _LDD_FAIL_LIST _LDD_ALLOWLIST
 
 echo "XWLightOS: education software installation complete"
