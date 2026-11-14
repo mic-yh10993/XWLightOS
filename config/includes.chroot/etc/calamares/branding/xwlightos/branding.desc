@@ -28,7 +28,13 @@ images:
     productWelcome: "xwlightos-logo.svg"
 
 style:
-    sidebarBackground: "#082353"
-    sidebarText: "#EAF6FF"
-    sidebarTextSelect: "#07162F"
-    sidebarTextHighlight: "#75D6FF"
+    # 第 15 轮（用户 2026-11-14：左侧栏黑字深底看不清）：Calamares 3.3.14
+    # Branding::styleString() 用 QMetaEnum 键名查表，只认下面四个大写首字母键；
+    # 此前的小写键（sidebarBackground 等）全部查不到、返回空串，侧栏回退到
+    # 主窗口 palette 才黑字深底。sidebarTextSelect/sidebarTextHighlight 在
+    # 3.3 里根本不是有效键。值走浅色半透明，对齐 WhiteSur-Light；QColor
+    # 字符串只接受 #RRGGBB/#AARRGGBB，不接受 rgba()。
+    SidebarBackground: "#E6FFFFFF"
+    SidebarText: "#202124"
+    SidebarBackgroundCurrent: "#D3E3F2"
+    SidebarTextCurrent: "#174EA6"

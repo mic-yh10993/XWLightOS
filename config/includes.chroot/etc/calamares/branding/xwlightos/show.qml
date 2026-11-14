@@ -3,13 +3,13 @@ import calamares.slideshow 1.0;
 
 Presentation {
     id: presentation
-    textColor: "#EAF6FF"
-    titleColor: "#75D6FF"
+    textColor: "#202124"
+    titleColor: "#0B57D0"
     fontFamily: "Noto Sans CJK SC"
 
     Rectangle {
         anchors.fill: parent
-        color: "#07162F"
+        color: "#F5F7FA"
         z: -1
     }
 

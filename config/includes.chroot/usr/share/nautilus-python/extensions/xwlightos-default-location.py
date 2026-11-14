@@ -1,11 +1,19 @@
-# XWLightOS: Nautilus 默认打开"其他位置"（other-locations:///）。
+# XWLightOS: Nautilus 默认打开“此电脑”（computer:///，驱动器列表）。
 #
-# 用户 2026-10-23 邮件指令：不需要"此电脑"了（1570 钩子已删除），文件管理器
-# 默认打开"其他位置"这个标签页。
+# 第 15 轮（用户 2026-11-14：文件“其他位置”不存在、打开报错）：Nautilus 48
+# 里根本没有 other-locations 这个位置（源码 + 实包 strings 全文查实），
+# 此前扩展强制跳转到它，每次打开都报错。computer:/// 仍受支持（GVfs
+# computer 后端，包单有 gvfs），即驱动器列表视图，与自写 GNOME Shell 扩展
+# “此电脑”配合：打开文件即见所有硬盘驱动器。
+#
+# 用户 2026-10-23 邮件指令：不需要“此电脑”了（1570 钩子已删除），文件管理器
+# 默认打开“其他位置”这个标签页。——该指令已被 2026-11-14 的新指令取代：
+# 用户现在明确要求打开文件时出现“此电脑”。旧的 nautilus-my-computer 项目
+# 永不复用（1571 钩子仍在防御性清理其残留）。
 #
 # 实现沿用被移除的 nautilus-my-computer 扩展 start-on-disks 的同款可靠机制：
 # 监听 Gtk.Application "window-added"，等新窗口标题稳定后，只把"默认打开"
-# （标题为本地化 "Home"，即无参数启动）的窗口原地导航到 other-locations:///；
+# （标题为本地化 "Home"，即无参数启动）的窗口原地导航到 computer:///；
 # 带明确位置打开的窗口（标题不是主目录，如从其它应用"在文件夹中显示"）、
 # 文件选择器窗口一律不动。nautilus-python 对加载失败的扩展是静默跳过，
 # 因此本文件保持最小依赖、异常全部内部吞掉，宁可不跳转也不炸掉文件管理器。
@@ -16,7 +24,7 @@ gi.require_version("Gtk", "4.0")
 
 from gi.repository import GLib, GObject, Gtk, Nautilus
 
-OTHER_LOCATIONS_URI = "other-locations:///"
+COMPUTER_URI = "computer:///"
 _HOME_TITLE = GLib.dgettext("nautilus", "Home")
 _LOADING_TITLE = GLib.dgettext("nautilus", "Loading…")
 # 第 14 轮（Trixie）：Nautilus 48 实包二进制 strings 核实——
@@ -41,8 +49,8 @@ def _is_nautilus_window(win):
     return type(win).__name__ == "NautilusWindow"
 
 
-def _navigate_to_other_locations(win):
-    param = GLib.Variant("s", OTHER_LOCATIONS_URI)
+def _navigate_to_computer(win):
+    param = GLib.Variant("s", COMPUTER_URI)
     for name in _ACTION_NAMES:
         try:
             if win.activate_action(name, param):
@@ -101,7 +109,7 @@ class XWLightOSDefaultLocation(GObject.Object, Nautilus.MenuProvider):
                 return GLib.SOURCE_REMOVE
             # 只有默认打开（主目录）的窗口才跳转；明确指定了位置的不动。
             if title == _HOME_TITLE:
-                _navigate_to_other_locations(win)
+                _navigate_to_computer(win)
             return GLib.SOURCE_REMOVE
 
         GLib.timeout_add(_RETRY_MS, _try)

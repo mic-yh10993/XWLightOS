@@ -2119,4 +2119,104 @@ grep -q '^automount-open=true$' "$GNOME_DEFAULTS" || {
 grep -q '^show-home=false$' "$GNOME_DEFAULTS" || {
     echo 'ding show-home is not disabled (desktop would show system icons)' >&2; exit 1; }
 
+# ===== 第 15 轮断言（用户 2026-11-14 虚拟机测试反馈，Trixie 安装器与桌面修复）=====
+# 1 安装器左侧栏：branding.desc 必须用 Calamares 3.3.14 QMetaEnum 认的
+# 四个大写首字母键（小写键查不到、回退 palette，黑字深底的根因），
+# 且 QSS/QML 必须已是浅色（深色底 #07162f 不得残留）。
+for _bkey in SidebarBackground SidebarBackgroundCurrent SidebarText SidebarTextCurrent; do
+    grep -q "^    $_bkey:" "$BRANDING_DESC" || {
+        echo "Calamares branding.desc lacks style key $_bkey (sidebar would fall back to palette colors)" >&2; exit 1; }
+done
+if grep -qE '^    sidebar(Background|Text|TextSelect|TextHighlight):' "$BRANDING_DESC"; then
+    echo 'Calamares branding.desc still has lowercase style keys (Calamares 3.3.14 cannot read them)' >&2; exit 1; fi
+QSS_FILE="$WORK/xwlightos-installer.qss"
+cat_image_file 'etc/calamares/branding/xwlightos/stylesheet.qss' "$QSS_FILE"
+if grep -q '#07162f' "$QSS_FILE"; then
+    echo 'Calamares stylesheet.qss still has the dark #07162f background (user asked for light translucent theme)' >&2; exit 1; fi
+grep -q 'rgba(245, 247, 250' "$QSS_FILE" || {
+    echo 'Calamares stylesheet.qss lacks the light translucent background' >&2; exit 1; }
+SHOW_QML="$WORK/xwlightos-show.qml"
+cat_image_file 'etc/calamares/branding/xwlightos/show.qml' "$SHOW_QML"
+grep -q '#F5F7FA' "$SHOW_QML" || {
+    echo 'Calamares show.qml is not light-themed' >&2; exit 1; }
+if grep -q '#07162F' "$SHOW_QML"; then
+    echo 'Calamares show.qml still has the dark #07162F background' >&2; exit 1; fi
+# 2 密码校验全去：users.conf 必须关掉字典检查并允许弱密码；nonempty
+# 在 3.3.14 里被忽略，出现即是误导性残留。
+USERS_CONF="$WORK/calamares-users.conf"
+cat_image_file 'etc/calamares/modules/users.conf' "$USERS_CONF"
+grep -q 'dictcheck=0' "$USERS_CONF" || {
+    echo 'Calamares users.conf lacks dictcheck=0 (any password would fail the dictionary check: no cracklib dictionary in the image)' >&2; exit 1; }
+grep -q 'allowWeakPasswords: true' "$USERS_CONF" || {
+    echo 'Calamares users.conf lacks allowWeakPasswords: true' >&2; exit 1; }
+if grep -q 'nonempty' "$USERS_CONF"; then
+    echo 'Calamares users.conf still has nonempty (ignored in 3.3.14; stale)' >&2; exit 1; fi
+# 3 时区锁定：settings.conf 的 show/exec 序列里不得再有 locale，
+# exec 里不得再有 localecfg（localecfg 缺 GS 值会回退全套 en_US）。
+if grep -qE '^[[:space:]]*-[[:space:]]*locale[[:space:]]*$' "$SETTINGS"; then
+    echo 'Calamares settings.conf still lists the locale module (user must not pick a timezone)' >&2; exit 1; fi
+if grep -qE '^[[:space:]]*-[[:space:]]*localecfg[[:space:]]*$' "$SETTINGS"; then
+    echo 'Calamares settings.conf still lists localecfg (it would fall back to en_US without GS locale values)' >&2; exit 1; fi
+# postinstall 必须把区域与时区一起钉死（区域锁是时区锁的配套）。
+grep -q 'LANG=zh_CN.UTF-8' "$TARGET_POSTINSTALL" || {
+    echo 'target postinstall does not pin LANG=zh_CN.UTF-8 (number/date formats would stay American English)' >&2; exit 1; }
+grep -q '/etc/locale.conf' "$TARGET_POSTINSTALL" || {
+    echo 'target postinstall does not write /etc/locale.conf' >&2; exit 1; }
+grep -q 'locale-gen zh_CN.UTF-8' "$TARGET_POSTINSTALL" || {
+    echo 'target postinstall does not regenerate the zh_CN.UTF-8 locale' >&2; exit 1; }
+# 4 任务栏安装器图标：.desktop 必须有 StartupWMClass=calamares，
+# 否则 GNOME Shell 无法把运行中的安装器窗口关联到入口。
+grep -q '^StartupWMClass=calamares$' "$DESKTOP" || {
+    echo 'installer desktop entry lacks StartupWMClass=calamares (taskbar would show the generic icon)' >&2; exit 1; }
+# 5 安装器屏幕键盘：wrapper 必须确定性走 Wayland（socket 可达才设
+# QT_QPA_PLATFORM=wayland）并把平台日志落盘，否则下次仍无法判定后端。
+INSTALLER_WRAPPER="$WORK/xwlightos-installer"
+cat_image_file 'usr/local/bin/xwlightos-installer' "$INSTALLER_WRAPPER"
+grep -q 'QT_QPA_PLATFORM=wayland' "$INSTALLER_WRAPPER" || {
+    echo 'installer wrapper does not force the Qt Wayland platform (OSK needs text-input, XWayland has none)' >&2; exit 1; }
+grep -q 'calamares-launch.log' "$INSTALLER_WRAPPER" || {
+    echo 'installer wrapper does not log the platform decision (next test could not prove the backend)' >&2; exit 1; }
+# 6 白板：本体必须在镜像里；chrome-sandbox 必须是 root 所有 + 4755
+# （包里是 1000:1000，Chromium 不认非 root 的 setuid 沙箱助手）；
+# 包装器必须把 stderr 落盘（根因待日志判定）。
+require_path 'opt/apps/com.seewo.easinote5/files/EasiNote5'
+EN_SANDBOX_PATH="$FULL_ROOT/opt/apps/com.seewo.easinote5/files/chrome-sandbox"
+[ -f "$EN_SANDBOX_PATH" ] || {
+    echo 'EasiNote5 chrome-sandbox is missing from the image' >&2; exit 1; }
+[ "$(stat -c '%U:%G %a' "$EN_SANDBOX_PATH")" = "root:root 4755" ] || {
+    echo 'EasiNote5 chrome-sandbox is not root:root 4755 (Chromium rejects a non-root setuid helper)' >&2; exit 1; }
+EN_LAUNCHER="$WORK/xwlightos-easinote5-launcher"
+cat_image_file 'usr/local/bin/xwlightos-easinote5-launcher' "$EN_LAUNCHER"
+grep -q 'easinote5-launch.log' "$EN_LAUNCHER" || {
+    echo 'EasiNote5 launcher does not log stderr (the next test could not show the real launch error)' >&2; exit 1; }
+# 7 触屏兜底通知：通知脚本必须后台等待总线（服务比会话启动得早，
+# 总线没来就直接退出是“开机后未提醒”的根因）；设置程序必须在触屏
+# 开关手动打开成功后弹通知。
+NOTIFY_SCRIPT="$WORK/xwlightos-touch-bypass-notify"
+cat_image_file 'usr/local/bin/xwlightos-touch-bypass-notify' "$NOTIFY_SCRIPT"
+grep -q 'while \[ ! -S "$BUS_PATH" \]' "$NOTIFY_SCRIPT" || {
+    echo 'touch bypass notify script does not wait for the session bus (it would exit silently before the session starts)' >&2; exit 1; }
+grep -q 'notify_touch_enabled' "$SETTINGS_TOOL" || {
+    echo 'settings tool does not notify when the touch bypass switch is turned on manually' >&2; exit 1; }
+# 8 文件默认打开“此电脑”：扩展必须跳 computer:///，旧的
+# other-locations:/// 在 Nautilus 48 里不存在，残留即回归。
+NAUTILUS_EXT="$WORK/xwlightos-default-location.py"
+cat_image_file 'usr/share/nautilus-python/extensions/xwlightos-default-location.py' "$NAUTILUS_EXT"
+grep -q 'COMPUTER_URI = "computer:///"' "$NAUTILUS_EXT" || {
+    echo 'nautilus default location extension does not target computer:///' >&2; exit 1; }
+if grep -q 'other-locations:///' "$NAUTILUS_EXT"; then
+    echo 'nautilus default location extension still references other-locations:/// (does not exist in Nautilus 48)' >&2; exit 1; fi
+# 9 自写“此电脑”Shell 扩展：三件套必须进镜像，metadata 必须声明
+# Shell 48，dconf 必须启用它（1650 钩子另有存在性与版本门禁）。
+MYCOMP_UUID='xwlightos-my-computer@xwlightos.local'
+require_path "usr/share/gnome-shell/extensions/$MYCOMP_UUID/extension.js"
+require_path "usr/share/gnome-shell/extensions/$MYCOMP_UUID/metadata.json"
+require_path "usr/share/gnome-shell/extensions/$MYCOMP_UUID/stylesheet.css"
+MYCOMP_META="$WORK/my-computer-metadata.json"
+cat_image_file "usr/share/gnome-shell/extensions/$MYCOMP_UUID/metadata.json" "$MYCOMP_META"
+grep -q '"48"' "$MYCOMP_META" || {
+    echo 'My Computer shell extension metadata does not list Shell 48' >&2; exit 1; }
+grep -q "$MYCOMP_UUID" "$GNOME_DEFAULTS" || {
+    echo 'enabled-extensions does not list the My Computer shell extension' >&2; exit 1; }
+
 printf 'XWLightOS 1.0 final ISO content validation passed: %s\n' "$ISO"

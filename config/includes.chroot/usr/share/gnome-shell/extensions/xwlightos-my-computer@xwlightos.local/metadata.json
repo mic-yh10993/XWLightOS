@@ -1,0 +1,1 @@
+{"description":"“此电脑”：顶栏菜单列出所有硬盘驱动器（内置分区、U 盘等），点开进入；未挂载的先自动挂载再打开。配合“无需授权访问硬盘驱动器”开关，免授权时不弹密码。","name":"XWLightOS My Computer","shell-version":["48"],"url":"https://github.com/mic-yh10993/XWLightOS","uuid":"xwlightos-my-computer@xwlightos.local","version":1}

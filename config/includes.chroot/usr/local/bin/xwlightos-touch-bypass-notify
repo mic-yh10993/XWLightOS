@@ -5,30 +5,65 @@
 # 创建 uinput 设备（即自动兜底真正生效）后调本脚本一次，告诉用户已自动
 # 开启、可以在“XWLightOS 设置”里开关。
 #
+# 第 15 轮修竞态（用户 2026-11-14：开机后开启兜底未提醒）：服务在
+# multi-user.target 启动（用户会话之前），cvte_touch 创建 uinput 后同步
+# system() 调本脚本；此时 /run/user/1000/bus 尚不存在，旧脚本直接静默
+# 退出，无通知、无 stamp，下次开机同样错过。本版改为立即 fork 后台等待者
+# （父进程马上返回 0，绝不阻塞 cvte_touch 的同步调用），等待者每 2 秒轮询
+# 总线、最长约 60 秒，出现后再弹通知。
+#
 # 只弹一次：stamp 文件 /var/lib/xwlightos/touch-bypass-auto-notified，
 # 只在 notify-send 成功后才写。LiveCD 上每次启动是全新系统，首次启动弹
-# 一次；装好的系统上 stamp 落盘，只弹第一次。手动在设置里开关不走本脚本，
-# 不弹通知。
+# 一次；装好的系统上 stamp 落盘，只弹第一次。手动在设置里开关不走本脚本
+# （设置程序自己在会话内弹通知，见 xwlightos-settings）。
 #
 # 尽力而为：没有会话总线、没有 notify-send、发失败，都安静退出（返回 0），
 # 绝不影响触屏服务本身。
 set -eu
 
 STAMP=/var/lib/xwlightos/touch-bypass-auto-notified
+LOCK_DIR=/run/xwlightos-touch-bypass-notify.lock
 [ -f "$STAMP" ] && exit 0
+
+# 单飞：mkdir 原子抢锁，抢到才 fork 等待者。锁在 /run（tmpfs，每 boot
+# 清空），不会留下跨 boot 的陈锁；同 boot 内等待者若被杀（如服务被关，
+# systemd 清 cgroup），锁目录残留，靠 mtime 判陈：等待者最长活约 60 秒，
+# 锁超过 3 分钟必是陈锁，拆掉接管。rm 后再次 mkdir 仍可能抢输，抢输退出。
+if mkdir "$LOCK_DIR" 2>/dev/null; then
+    :
+elif find "$LOCK_DIR" -maxdepth 0 -mmin +3 2>/dev/null | grep -q .; then
+    rm -rf "$LOCK_DIR"
+    mkdir "$LOCK_DIR" 2>/dev/null || exit 0
+else
+    exit 0
+fi
 
 USER_NAME=$(cat /etc/xwlightos/session-user 2>/dev/null || echo user)
 USER_UID=$(id -u "$USER_NAME" 2>/dev/null || echo 1000)
 BUS_PATH=/run/user/$USER_UID/bus
-[ -S "$BUS_PATH" ] || exit 0
-command -v notify-send >/dev/null 2>&1 || exit 0
-command -v runuser >/dev/null 2>&1 || exit 0
 
-if runuser -u "$USER_NAME" -- env DISPLAY=:0 \
-        DBUS_SESSION_BUS_ADDRESS="unix:path=$BUS_PATH" \
-        notify-send -a "XWLightOS 设置" "触屏兜底已自动开启" \
-        "已检测到希沃触屏，系统自带驱动无触摸事件，已自动开启触屏兜底。可在“XWLightOS 设置”里开关此功能。"; then
-    mkdir -p /var/lib/xwlightos
-    touch "$STAMP"
-fi
+# 立即脱离后台：父进程马上返回，cvte_touch 的同步 system() 调用
+# 一毫秒都不等；等待者被 init 收养，输入输出全部脱离。
+(
+    # 等用户会话总线出现（最长约 60 秒）；服务比会话启动得早，
+    # 刚调本脚本时总线大概率还没来。
+    i=0
+    while [ ! -S "$BUS_PATH" ] && [ "$i" -lt 30 ]; do
+        sleep 2
+        i=$((i + 1))
+    done
+    # 等待期间若 stamp 已被另一路写下，不重复弹。
+    if [ ! -f "$STAMP" ] && [ -S "$BUS_PATH" ] && \
+       command -v notify-send >/dev/null 2>&1 && \
+       command -v runuser >/dev/null 2>&1; then
+        if runuser -u "$USER_NAME" -- env DISPLAY=:0 \
+                DBUS_SESSION_BUS_ADDRESS="unix:path=$BUS_PATH" \
+                notify-send -a "XWLightOS 设置" "触屏兜底已自动开启" \
+                "已检测到希沃触屏，系统自带驱动无触摸事件，已自动开启触屏兜底。可在“XWLightOS 设置”里开关此功能。"; then
+            mkdir -p /var/lib/xwlightos
+            touch "$STAMP"
+        fi
+    fi
+    rm -rf "$LOCK_DIR"
+) </dev/null >/dev/null 2>&1 &
 exit 0

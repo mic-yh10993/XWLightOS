@@ -149,6 +149,22 @@ def noauth_drives_enabled():
     return os.path.exists(NOAUTH_RULE)
 
 
+def notify_touch_enabled():
+    # 第 15 轮（用户 2026-11-14：开机后开启兜底未提醒，期望开启就提醒）：
+    # 触屏兜底开关手动拨到开且服务启动成功后，在会话内直接弹通知。
+    # 设置程序本身跑在用户会话里，自带会话总线，直接调 notify-send 即可，
+    # 无需 runuser、无需等总线。Popen 即发即走，永不阻塞界面；
+    # notify-send 缺失或发送失败都静默吞掉，绝不影响开关本身。
+    try:
+        subprocess.Popen(
+            ["notify-send", "-a", "XWLightOS 设置", "触屏兜底已开启",
+             "触屏兜底服务已启动，希沃触屏可正常触摸。关掉后触屏失效。"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL, start_new_session=True)
+    except Exception:
+        pass
+
+
 def set_noauth_drives(on, parent):
     # 与 set_service 同款：一次拨动只请求一次授权，失败明确提示一次、
     # 绝不再次弹出授权框（回弹拨动开关时必须被 _busy 守卫挡住）。
@@ -282,6 +298,11 @@ class Window(Gtk.Window):
                     switch.set_active(not want)
                 finally:
                     switch.handler_unblock_by_func(self.on_service)
+            elif want and unit == TOUCH_UNIT:
+                # 第 15 轮：触屏兜底手动开启成功才弹通知；失败回弹、
+                # 关掉时都不弹。on_service 由管家与触屏两行共用，
+                # 只认 TOUCH_UNIT，避免管家开关也弹触屏通知。
+                notify_touch_enabled()
         finally:
             self._busy = False
 

@@ -6,6 +6,11 @@ Comment=Install XWLightOS to the local disk
 Comment[zh_CN]=将 XWLightOS 安装到本机磁盘
 Exec=xwlightos-installer
 Icon=xwlightos-installer
+# 第 15 轮（用户 2026-11-14：任务栏安装器图标缺失）：运行中的 Calamares
+# 窗口 WM_CLASS/app-id 是 "calamares"，没有这行 GNOME Shell 无法把窗口
+# 关联到本入口，回退箱子+齿轮通用图标。calamares.desktop 已被 1500 钩子
+# 有意删除（防重复入口），不要恢复它，加这一行即可。
+StartupWMClass=calamares
 Terminal=false
 Categories=System;Settings;
 Keywords=install;installer;XWLightOS;安装;

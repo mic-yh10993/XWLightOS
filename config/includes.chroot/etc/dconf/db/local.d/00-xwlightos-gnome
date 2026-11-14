@@ -48,7 +48,7 @@ button-layout=':minimize,maximize,close'
 # 固定栏里那个系统监视器程序仍不钉住（见 favorite-apps）。
 # 用户 2026-10-24 23:31 邮件：输入法面板扩展也要（此前 22:53 撤回，
 # 现按最新要求重新加回启用；Shift 切换配置本身的修法保留）。
-enabled-extensions=['apps-menu@gnome-shell-extensions.gcampax.github.com', 'dash-to-dock@micxgx.gmail.com', 'ding@rastersoft.com', 'native-window-placement@gnome-shell-extensions.gcampax.github.com', 'places-menu@gnome-shell-extensions.gcampax.github.com', 'drive-menu@gnome-shell-extensions.gcampax.github.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'ubuntu-appindicators@ubuntu.com', 'system-monitor@gnome-shell-extensions.gcampax.github.com']
+enabled-extensions=['apps-menu@gnome-shell-extensions.gcampax.github.com', 'dash-to-dock@micxgx.gmail.com', 'ding@rastersoft.com', 'native-window-placement@gnome-shell-extensions.gcampax.github.com', 'places-menu@gnome-shell-extensions.gcampax.github.com', 'drive-menu@gnome-shell-extensions.gcampax.github.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'ubuntu-appindicators@ubuntu.com', 'system-monitor@gnome-shell-extensions.gcampax.github.com', 'xwlightos-my-computer@xwlightos.local']
 # 用户 2026-10-20 邮件指令：固定栏固定 7 个应用——希沃白板、希沃视频展台、
 # 班级优化大师、ONLYOFFICE、钉钉、微信、QQ（按此顺序）。
 # 用户 2026-10-20 邮件指令：dock 栏把"文件"和 Firefox 加回去，放最前面。

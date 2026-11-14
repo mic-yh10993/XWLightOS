@@ -1,4 +1,5 @@
 #!/bin/sh
+# XWLightOS installer launcher: run Calamares as root from the Live session.
 set -eu
 
 if ! command -v calamares >/dev/null 2>&1; then
@@ -9,11 +10,11 @@ fi
 # In the disposable live session the live user escalates without a password
 # (see /etc/sudoers.d/xwlightos-live), so this wrapper never asks the live
 # user for a password that does not exist.
-# Preserve a usable X11 session even when the wrapper is started from a desktop
-# file through a privilege boundary.
 export LANG=zh_CN.UTF-8
 export LANGUAGE=zh_CN:zh
 export LC_ALL=zh_CN.UTF-8
+# Keep the X11 fallback usable: DISPLAY is still set for XWayland children
+# and for the fallback path when no Wayland socket is reachable.
 export DISPLAY="${DISPLAY:-:0}"
 # The XWLightOS live session stores its X cookie at a fixed, predictable path to
 # avoid xauth lock contention. Prefer that Live cookie and only fall back to
@@ -25,4 +26,50 @@ if [ -z "${XAUTHORITY:-}" ]; then
         export XAUTHORITY=/home/user/.Xauthority
     fi
 fi
-exec /usr/bin/sudo -n -E /usr/bin/calamares "$@"
+
+# Round 15 (user 2026-11-14: the on-screen keyboard still does not pop up
+# in the installer). Qt 6.8 already prefers Wayland when WAYLAND_DISPLAY is
+# set (qguiapplication.cpp createPlatformIntegration: wayland is prepended
+# to the preferred order), so the old "DISPLAY forces xcb" theory was wrong;
+# but nothing here ever MADE the platform deterministic, and an XWayland
+# Calamares never gets text-input, so the OSK can never appear. Make it
+# deterministic: only claim Wayland when the compositor socket is actually
+# reachable from this session; otherwise leave the platform unset so Qt
+# falls back to xcb and the installer still opens instead of failing hard.
+QT_QPA_PLATFORM=""
+if [ -n "${WAYLAND_DISPLAY:-}" ] && [ -n "${XDG_RUNTIME_DIR:-}" ] && \
+   [ -S "${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}" ]; then
+    QT_QPA_PLATFORM=wayland
+fi
+
+# Diagnostic: record which backend Calamares really runs on, so the next
+# test can settle the OSK question with evidence instead of theories.
+# Qt plugin logging names the loaded platform plugin.
+LOG_DIR="${HOME:-/home/user}/.local/share/xwlightos"
+mkdir -p "$LOG_DIR" 2>/dev/null || LOG_DIR="/tmp"
+LOG_FILE="$LOG_DIR/calamares-launch.log"
+{
+    echo "=== $(date '+%Y-%m-%d %H:%M:%S %Z') xwlightos-installer ==="
+    echo "WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-<unset>} XDG_SESSION_TYPE=${XDG_SESSION_TYPE:-<unset>} DISPLAY=${DISPLAY:-<unset>}"
+    echo "QT_QPA_PLATFORM=${QT_QPA_PLATFORM:-<unset, Qt auto-select>}"
+} >> "$LOG_FILE" 2>/dev/null || true
+# 日志写不进也绝不能拖垮安装器：探通失败就丢到 /dev/null（与改动前一致），
+# 2>>/dev/null 永不失败，exec 一定执行。
+touch "$LOG_FILE" 2>/dev/null || LOG_FILE=/dev/null
+
+# Pass the session variables through sudo as explicit `env` assignments:
+# they are applied at exec time, after any PAM/sudoers processing, so no
+# PAM module or sudoers env scrub can silently drop the Wayland socket
+# address. sudo -E alone preserves them today (pam_systemd is
+# Session-Interactive-Only and never runs for sudo), but the explicit
+# passthrough does not depend on that staying true.
+exec /usr/bin/sudo -n env \
+    WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-}" \
+    XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-}" \
+    XDG_SESSION_TYPE="${XDG_SESSION_TYPE:-}" \
+    QT_QPA_PLATFORM="$QT_QPA_PLATFORM" \
+    QT_LOGGING_RULES="qt.qpa.plugin=true" \
+    DISPLAY="$DISPLAY" \
+    XAUTHORITY="${XAUTHORITY:-}" \
+    LANG="$LANG" LANGUAGE="$LANGUAGE" LC_ALL="$LC_ALL" \
+    /usr/bin/calamares "$@" 2>>"$LOG_FILE"

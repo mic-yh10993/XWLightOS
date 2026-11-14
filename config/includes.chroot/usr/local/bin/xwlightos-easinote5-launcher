@@ -42,5 +42,21 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+# 第 15 轮（用户 2026-11-14：希沃白板打不开了）：静态检查全部通过
+# （包已装、库齐全、XWayland 在、无 AppArmor），真根因只能看运行时报错。
+# 把厂商 sh 的 stderr 落盘（追加写、带时间戳），用户下次点开白板后直接贴
+# 这个日志即可判定；.desktop 启动时 stderr 本来丢进 journal，用户不好拿。
+# stdout 仍走原通道（厂商 sh 的正常输出不进日志，避免刷屏）。
+LOG_DIR="${HOME:-/home/user}/.local/share/xwlightos"
+mkdir -p "$LOG_DIR" 2>/dev/null || LOG_DIR="/tmp"
+LOG_FILE="$LOG_DIR/easinote5-launch.log"
+{
+    echo "=== $(date '+%Y-%m-%d %H:%M:%S %Z') xwlightos-easinote5-launcher ==="
+    echo "XDG_SESSION_TYPE=${XDG_SESSION_TYPE:-<unset>} WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-<unset>} DISPLAY=${DISPLAY:-<unset>}"
+} >> "$LOG_FILE" 2>/dev/null || true
+# 日志写不进也绝不能拖垮白板：探通失败就丢到 /dev/null（与改动前一致），
+# 2>>/dev/null 永不失败，厂商 sh 一定执行。
+touch "$LOG_FILE" 2>/dev/null || LOG_FILE=/dev/null
+
 # 阻塞运行厂商 sh（%F 参数透传）；白板退出后 trap 自动清理守护。
-"$VENDOR_SH" "$@"
+"$VENDOR_SH" "$@" 2>>"$LOG_FILE"

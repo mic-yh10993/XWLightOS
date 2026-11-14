@@ -62,6 +62,48 @@ if [ -f /usr/share/zoneinfo/Asia/Shanghai ]; then
 else
     echo 'XWLightOS: tzdata is missing /usr/share/zoneinfo/Asia/Shanghai in the target (timezone left as-is)' >&2
 fi
+# 区域锁定 zh_CN.UTF-8（第 15 轮，用户 2026-11-14：不要让用户选时区，
+# 数字日期格式不要默认 American English）。安装器的 locale/localecfg
+# 模块已从序列里拿掉（1600 钩子），localecfg 不再写装好的系统；这里
+# 与时区锁同款，直接钉死区域：locale.conf 与 default/locale 全写
+# zh_CN.UTF-8，locale.gen 启用 zh_CN.UTF-8 后重新生成，数字/日期/
+# 货币格式全部跟中文，不再有 American English。
+if [ -f /etc/locale.gen ]; then
+    # 先取消注释（sed 无匹配也返回 0，所以事后必须再验一次）；
+    # 文件里根本没有这一行时直接追加，绝不静默漏启用。
+    sed -i -E 's/^#[[:space:]]*(zh_CN.UTF-8[[:space:]]+UTF-8)/\1/' /etc/locale.gen
+    grep -q '^zh_CN.UTF-8 UTF-8' /etc/locale.gen || \
+        printf '%s\n' 'zh_CN.UTF-8 UTF-8' >> /etc/locale.gen
+else
+    echo 'XWLightOS: /etc/locale.gen missing in target (locale still forced below)' >&2
+fi
+cat > /etc/locale.conf <<'EOF'
+LANG=zh_CN.UTF-8
+LANGUAGE=zh_CN:zh
+LC_MESSAGES=zh_CN.UTF-8
+LC_NUMERIC=zh_CN.UTF-8
+LC_TIME=zh_CN.UTF-8
+LC_MONETARY=zh_CN.UTF-8
+LC_PAPER=zh_CN.UTF-8
+LC_NAME=zh_CN.UTF-8
+LC_ADDRESS=zh_CN.UTF-8
+LC_TELEPHONE=zh_CN.UTF-8
+LC_MEASUREMENT=zh_CN.UTF-8
+LC_IDENTIFICATION=zh_CN.UTF-8
+EOF
+cat > /etc/default/locale <<'EOF'
+LANG=zh_CN.UTF-8
+LANGUAGE=zh_CN:zh
+LC_MESSAGES=zh_CN.UTF-8
+EOF
+if command -v locale-gen >/dev/null 2>&1; then
+    locale-gen zh_CN.UTF-8 >/dev/null 2>&1 || \
+        echo 'XWLightOS: locale-gen zh_CN.UTF-8 failed in target (compiled locale from the live copy may still serve)' >&2
+fi
+grep -q '^LANG=zh_CN.UTF-8$' /etc/locale.conf || {
+    echo 'XWLightOS: target /etc/locale.conf does not pin LANG=zh_CN.UTF-8' >&2
+    exit 1
+}
 # The Live `user` account is baked into the image so GDM can autologin on the
 # LiveCD. It must never survive into the installed system: remove the account
 # (and its home) here in the target, before the installed session is used.

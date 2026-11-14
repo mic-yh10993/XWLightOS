@@ -76,6 +76,76 @@ backend: apt
 operations: []
 EOF
 
+# Round 15 (user 2026-11-14, installer unusable): remove ALL password
+# restrictions. Root cause (verified against Calamares 3.3.14
+# CheckPWQuality.cpp and Debian's users.conf): Debian's config only relaxes
+# minlen/minclass, leaving libpwquality's dictcheck at its default 1; the
+# image ships no cracklib dictionary, so the dictionary check fails for ANY
+# password ("The password fails the dictionary check"). Written here in the
+# hook -- not via includes.chroot -- so the package-provided users.conf can
+# never overwrite it afterwards (same pattern as packages.conf above).
+# Group assignments are copied verbatim from Debian's users.conf; only the
+# password requirements change. `nonempty` is dropped: Calamares 3.3.14
+# ignores it ("nonempty check is ignored; use minLength: 1") and its schema
+# has no such key. minLength/maxLength -1 means "no check".
+cat > /etc/calamares/modules/users.conf <<'EOF'
+---
+userGroup:       users
+defaultGroups:
+    - cdrom
+    - floppy
+    - sudo
+    - audio
+    - dip
+    - video
+    - plugdev
+    - netdev
+    - lpadmin
+    - scanner
+    - bluetooth
+autologinGroup:  autologin
+sudoersGroup:    sudo
+setRootPassword: false
+allowWeakPasswords: true
+
+passwordRequirements:
+    minLength: -1  # Password at least this many characters (-1: no check)
+    maxLength: -1  # Password at most this many characters (-1: no check)
+    libpwquality:
+        - minlen=0
+        - minclass=0
+        - dictcheck=0
+        - usercheck=0
+        - gecoscheck=0
+EOF
+grep -q 'dictcheck=0' /etc/calamares/modules/users.conf || {
+    echo "XWLightOS: users.conf lost dictcheck=0, installer passwords would still be rejected" >&2
+    exit 1
+}
+
+# Round 15 (user 2026-11-14): lock the timezone, do not ask the user.
+# Debian ships no locale.conf, so Calamares 3.3.14 getStartingTimezone()
+# hardcodes the starting timezone to America/New_York (the user's
+# screenshot). Removing `locale` from the show phase alone is NOT enough:
+# with the view never activated, GlobalStorage `localeConf` is never
+# written, and localecfg falls back to all-en_US.UTF-8 for the installed
+# system (main.py:122-134) -- number/date formats would stay American
+# English. So remove `locale` from show AND `locale` + `localecfg` from
+# exec (Debian's own comment: view modules in exec must have been shown),
+# and let the target postinstall lock timezone (already) + locale (new).
+if grep -qE '^[[:space:]]*-[[:space:]]*locale[[:space:]]*$' "$SETTINGS"; then
+    sed -i -E '/^[[:space:]]*-[[:space:]]*locale[[:space:]]*$/d' "$SETTINGS"
+    echo "XWLightOS: removed locale module from Calamares sequences (timezone locked to Asia/Shanghai)"
+fi
+if grep -qE '^[[:space:]]*-[[:space:]]*localecfg[[:space:]]*$' "$SETTINGS"; then
+    sed -i -E '/^[[:space:]]*-[[:space:]]*localecfg[[:space:]]*$/d' "$SETTINGS"
+    echo "XWLightOS: removed localecfg module from Calamares exec sequence (locale locked by postinstall)"
+fi
+if grep -qE '^[[:space:]]*-[[:space:]]*(locale|localecfg)[[:space:]]*$' "$SETTINGS"; then
+    echo "XWLightOS: locale/localecfg still present in Calamares settings.conf after removal" >&2
+    exit 1
+fi
+
 # Register a target-chroot shellprocess after Calamares creates the selected
 # user. This must not follow `packages`, because the Live temporary `user`
 # account is present then while the account selected in Calamares is created

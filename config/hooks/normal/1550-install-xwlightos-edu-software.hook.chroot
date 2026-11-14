@@ -192,6 +192,28 @@ else
 fi
 unset DT_FILES stale hit
 
+# --- 希沃白板：chrome-sandbox 归属修正（第 15 轮 hygiene） ---
+# 实包核验（com.seewo.easinote5 5.2.2.4.13701）：chrome-sandbox 在包里是
+# 1000:1000 所有、4755；dpkg 原样安装后非 root 所有，不符合 Chromium 对
+# setuid 沙箱助手的要求（须 root 所有 + 4755）。厂商 postinst 里根本没有
+# 给它 chmod/chown 的逻辑（与钉钉不同，钉钉的 postinst 有但被 /home 为空
+# 跳过）。这里照钉钉同款在构建期修正归属与权限。注意：Bookworm 上同一文件
+# 同样 1000 所有却能跑（走 userns 沙箱），所以这项是 hygiene，不宣称是
+# “白板打不开”的根因修法；根因待启动日志（见包装器）判定。
+EN_SANDBOX=/opt/apps/com.seewo.easinote5/files/chrome-sandbox
+if [ -f "$EN_SANDBOX" ]; then
+    chown root:root "$EN_SANDBOX"
+    chmod 4755 "$EN_SANDBOX"
+    [ "$(stat -c '%U:%G %a' "$EN_SANDBOX")" = "root:root 4755" ] || {
+        echo "XWLightOS: EasiNote5 chrome-sandbox is not root:root 4755 after fix" >&2
+        exit 1
+    }
+    echo "XWLightOS: EasiNote5 chrome-sandbox fixed to root:root 4755"
+else
+    echo "XWLightOS: NOTE: EasiNote5 chrome-sandbox missing, skipping ownership fix" >&2
+fi
+unset EN_SANDBOX
+
 # --- 希沃视频展台：librectification.so 需要 GTK2（构建期断言） ---
 # 根因见 xwlightos-desktop.list.chroot 中 libgtk2.0-0 的注释。
 # 此处断言构建产物里该 native 库的 GTK2 依赖确实可解析，缺失则构建失败，
