@@ -275,20 +275,33 @@ unset LU2_DEB_URL LU2_DEB_FALLBACK LU2_DEB_SHA256 LU2_TMP
 # 视频展台的 libmp_mqtt.so NEEDED libcurl.so（未版本化名，厂商链接时
 # 用了开发期名字）；Trixie 只有 -dev 包提供 libcurl.so，运行时包
 # libcurl4t64 只提供 libcurl.so.4。装 -dev 包进镜像又重又不对，故在
-# /usr/local/lib 建符号链接 libcurl.so -> libcurl.so.4（动态加载器按
-# 文件名搜 /usr/local/lib，见 ld.so.conf.d/libc.conf；ldconfig 缓存
-# 只记 SONAME，故不断言缓存条目，只断言链接与目标在场，真正的功能
-# 验证由本钩子末尾的 ldd 门禁对 libmp_mqtt.so 实测）。
+# /usr/local/lib 建符号链接 libcurl.so -> 系统的 libcurl.so.4。
+# 两处要点（run 80 实测教训）：
+# 1. 链接目标必须写绝对路径。相对目标 libcurl.so.4 会解析成
+#    /usr/local/lib/libcurl.so.4（不存在），链接是断的，-e 断言
+#    直接让构建失败；run 80 就死在这里。
+# 2. 建完链接必须跑 ldconfig 再断言缓存。实测：ldconfig 会把未版本
+#    化名也记进缓存（ldconfig -p 里有 "libcurl.so =>
+#    /usr/local/lib/libcurl.so"），ldd 据此解析；不跑 ldconfig 的
+#    话缓存里没有该条目，本钩子末尾的 ldd 门禁就会报 not found。
 [ -f /usr/lib/x86_64-linux-gnu/libcurl.so.4 ] || {
     echo "XWLightOS: libcurl.so.4 missing (libcurl4t64 not installed; the libcurl.so shim has no target)" >&2
     exit 1
 }
-ln -sf libcurl.so.4 /usr/local/lib/libcurl.so
+ln -sf /usr/lib/x86_64-linux-gnu/libcurl.so.4 /usr/local/lib/libcurl.so
 [ -L /usr/local/lib/libcurl.so ] && [ -e /usr/local/lib/libcurl.so ] || {
     echo "XWLightOS: failed to create /usr/local/lib/libcurl.so symlink" >&2
     exit 1
 }
-echo "XWLightOS: libcurl.so shim installed (/usr/local/lib/libcurl.so -> libcurl.so.4)"
+ldconfig || {
+    echo "XWLightOS: ldconfig failed after installing libcurl.so shim" >&2
+    exit 1
+}
+ldconfig -p | grep -q 'libcurl.so ' || {
+    echo "XWLightOS: libcurl.so is not in the ldconfig cache after install" >&2
+    exit 1
+}
+echo "XWLightOS: libcurl.so shim installed (/usr/local/lib/libcurl.so -> /usr/lib/x86_64-linux-gnu/libcurl.so.4)"
 
 # --- 希沃视频展台：librectification.so 需要 GTK2（构建期断言） ---
 # 根因见 xwlightos-desktop.list.chroot 中 libgtk2.0-0 的注释。
