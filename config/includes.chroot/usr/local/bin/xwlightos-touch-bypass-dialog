@@ -1,0 +1,42 @@
+#!/usr/bin/python3
+# XWLightOS: 触屏兜底自动开启后的提示窗口。
+#
+# 第 16 轮（用户 2026-11-14：气泡通知转瞬即逝，开机后开启兜底没看到
+# 提醒）：自动开启后弹一个窗口提示，等用户点掉。由
+# xwlightos-touch-bypass-notify 经 runuser 在用户会话里调起（带
+# DISPLAY/WAYLAND_DISPLAY/XDG_RUNTIME_DIR/DBUS_SESSION_BUS_ADDRESS）。
+# 独立进程、无父窗口；点“知道了”或关窗口即退出。只做提示，不做任何
+# 设置改动；GTK 初始化失败（如会话未就绪）时直接退出，调用方按
+# “未成功”处理（不写 stamp，下次开机再试）。
+import sys
+
+import gi
+
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gtk  # noqa: E402
+
+
+def main():
+    dlg = Gtk.MessageDialog(
+        parent=None,
+        flags=0,
+        message_type=Gtk.MessageType.INFO,
+        buttons=Gtk.ButtonsType.NONE,
+        text="触屏兜底已自动开启")
+    dlg.set_title("XWLightOS 设置")
+    dlg.format_secondary_text(
+        "已检测到希沃触屏，系统自带驱动无触摸事件，已自动开启触屏兜底。\n"
+        "可在“XWLightOS 设置”里开关此功能。")
+    dlg.add_button("知道了", Gtk.ResponseType.OK)
+    dlg.set_default_response(Gtk.ResponseType.OK)
+    # 居中 + 置顶提示：用户上一轮就是没看到提醒，窗口必须显眼；
+    # Wayland 下置顶只是给合成器的提示，忽略也无害。
+    dlg.set_position(Gtk.WindowPosition.CENTER)
+    dlg.set_keep_above(True)
+    dlg.run()
+    dlg.destroy()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -2189,13 +2189,16 @@ EN_LAUNCHER="$WORK/xwlightos-easinote5-launcher"
 cat_image_file 'usr/local/bin/xwlightos-easinote5-launcher' "$EN_LAUNCHER"
 grep -q 'easinote5-launch.log' "$EN_LAUNCHER" || {
     echo 'EasiNote5 launcher does not log stderr (the next test could not show the real launch error)' >&2; exit 1; }
-# 7 触屏兜底通知：通知脚本必须后台等待总线（服务比会话启动得早，
-# 总线没来就直接退出是“开机后未提醒”的根因）；设置程序必须在触屏
+# 7 触屏兜底通知：通知脚本必须后台等待会话就绪（总线 + 显示通道；
+# 服务比会话启动得早，没来就直接退出是“开机后未提醒”的根因）；
+# 第 16 轮起末端是对话框窗口（不再是气泡）；设置程序必须在触屏
 # 开关手动打开成功后弹通知。
 NOTIFY_SCRIPT="$WORK/xwlightos-touch-bypass-notify"
 cat_image_file 'usr/local/bin/xwlightos-touch-bypass-notify' "$NOTIFY_SCRIPT"
-grep -q 'while \[ ! -S "$BUS_PATH" \]' "$NOTIFY_SCRIPT" || {
+grep -q 'BUS_PATH' "$NOTIFY_SCRIPT" || {
     echo 'touch bypass notify script does not wait for the session bus (it would exit silently before the session starts)' >&2; exit 1; }
+grep -q 'xwlightos-touch-bypass-dialog' "$NOTIFY_SCRIPT" || {
+    echo 'touch bypass notify script does not call the dialog (auto-enable would never show a window)' >&2; exit 1; }
 grep -q 'notify_touch_enabled' "$SETTINGS_TOOL" || {
     echo 'settings tool does not notify when the touch bypass switch is turned on manually' >&2; exit 1; }
 # 8 文件默认打开“此电脑”：扩展必须跳 computer:///，旧的
@@ -2218,5 +2221,42 @@ grep -q '"48"' "$MYCOMP_META" || {
     echo 'My Computer shell extension metadata does not list Shell 48' >&2; exit 1; }
 grep -q "$MYCOMP_UUID" "$GNOME_DEFAULTS" || {
     echo 'enabled-extensions does not list the My Computer shell extension' >&2; exit 1; }
+
+# ===== 第 16 轮断言（preview-79 两处硬故障 + 触屏兜底策略重做）=====
+# 1 安装器 Wayland 插件：qt6-wayland 的两个平台插件文件必须在镜像里
+# （preview-79 只装了客户端库、没装插件，包装器强制 wayland 后
+# Calamares 直接 abort、退出码 134）；包装器必须先探插件存在才强制
+# wayland，否则回退 xcb（安装器绝不能因平台选择打不开）。
+require_path 'usr/lib/x86_64-linux-gnu/qt6/plugins/platforms/libqwayland-egl.so'
+require_path 'usr/lib/x86_64-linux-gnu/qt6/plugins/platforms/libqwayland-generic.so'
+grep -q 'libqwayland-egl.so' "$INSTALLER_WRAPPER" || {
+    echo 'installer wrapper does not probe for the Qt Wayland plugin before forcing wayland (missing plugin would abort Calamares again)' >&2; exit 1; }
+# 2 白板 libunistring.so.2 垫片：Trixie 没有 libunistring2 包，垫片
+# 必须随镜像出货（1550 钩子从 Bookworm 包抽取），否则 EasiNote5
+# 加载期即死。
+require_path 'usr/local/lib/libunistring.so.2'
+# 3 触屏兜底新策略：对话框脚本与助手脚本必须进镜像；cvte_touch.c
+# 必须有 30 秒观测 + stamp 决策，且不得再有守卫残留（guard_fd）；
+# 兜底服务必须排在触屏修复服务之后；设置程序必须有确认窗与助手调用。
+require_path 'usr/local/bin/xwlightos-touch-bypass-dialog'
+require_path 'usr/local/libexec/xwlightos-touch-bypass-ctl'
+CVTE_SRC="$WORK/cvte_touch.c"
+cat_image_file 'usr/local/src/xwlightos-touch-cvte/cvte_touch.c' "$CVTE_SRC"
+grep -q 'CVTE_OBSERVE_WINDOW_MS' "$CVTE_SRC" || {
+    echo 'cvte_touch.c lost the 30-second first-boot observation window (round 16)' >&2; exit 1; }
+grep -q 'bypass_decision' "$CVTE_SRC" || {
+    echo 'cvte_touch.c lost bypass_decision (first-boot stamp logic, round 16)' >&2; exit 1; }
+grep -q 'touch-bypass-first-boot' "$CVTE_SRC" || {
+    echo 'cvte_touch.c lost the first-boot stamp path (round 16)' >&2; exit 1; }
+if grep -q 'guard_fd' "$CVTE_SRC"; then
+    echo 'cvte_touch.c still references guard_fd (the kernel guard was removed by user decision 2026-11-14)' >&2; exit 1; fi
+BYPASS_SVC="$WORK/xwlightos-touch-bypass.service"
+cat_image_file 'etc/systemd/system/xwlightos-touch-bypass.service' "$BYPASS_SVC"
+grep -q '^After=.*xwlightos-touchscreen-fix.service' "$BYPASS_SVC" || {
+    echo 'xwlightos-touch-bypass.service lost its After=xwlightos-touchscreen-fix.service ordering (round 16)' >&2; exit 1; }
+grep -q 'confirm_touch_off' "$SETTINGS_TOOL" || {
+    echo 'settings tool lost the touch-off confirmation dialog (round 16 anti-lockout)' >&2; exit 1; }
+grep -q 'xwlightos-touch-bypass-ctl' "$SETTINGS_TOOL" || {
+    echo 'settings tool does not use the touch bypass helper (round 16)' >&2; exit 1; }
 
 printf 'XWLightOS 1.0 final ISO content validation passed: %s\n' "$ISO"

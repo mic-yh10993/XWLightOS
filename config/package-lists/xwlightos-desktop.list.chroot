@@ -183,6 +183,28 @@ libqt6core6t64
 libqt6network6
 libqt6dbus6
 libqt6printsupport6
+# 第 16 轮（preview-79 回归：安装器打不开了，退出码 134）：Qt Wayland
+# 平台插件（libqwayland-egl.so / libqwayland-generic.so）不在上面这组
+# 库里，也不在 libqt6waylandclient6（那只是客户端库），只在 qt6-wayland
+# 包里。preview-79 构建日志里 qt6-wayland 只出现在 autoremove 列表，
+# 镜像里根本没有插件；第 15 轮包装器又强制 QT_QPA_PLATFORM=wayland，
+# Qt 找不到插件直接 abort。显式声明，autoremove 拿不走。1600 钩子另有
+# 门禁（包已装 + 插件文件存在 + ldd 无缺失）。
+qt6-wayland
+# 第 16 轮（厂商二进制依赖审计，13 个应用、1468 个 ELF 逐条跑 NEEDED）：
+# 以下 4 个包 Trixie 都有，但 preview-79 镜像里没装，厂商二进制缺了
+# 对应 SONAME：libxres1 → libXRes.so.1（希沃管家 live_player 捆绑的
+# PulseAudio 工具要，live_player 主程序 strings 确认会实际执行）；
+# libpaho-mqtt1.3 / libpaho-mqttpp3-1 → libpaho-mqtt3as.so.1 /
+# libpaho-mqttpp3.so.1（视频展台 sketchpad-addon 的 MQTT 原生模块
+# libmp_mqtt.so 要）；libcom-err2 → libcom_err.so.2（钉钉 DingGuard
+# 经捆绑 libcurl.so.4 要）。其余 4 个缺失 SONAME 在 Trixie 里根本没
+# 有对应包（OpenLDAP 2.4 老名、pangox、libpcre.so.3、musl 死代码），
+# 不走包单，见 1550 钩子 ldd 门禁的 allowlist（评估卡 §2 有逐条依据）。
+libxres1
+libpaho-mqtt1.3
+libpaho-mqttpp3-1
+libcom-err2
 libgdk-pixbuf-2.0-0
 
 # 输入法框架（2026-11-01 第四轮定版，取代第三轮双栈）：用户裁决

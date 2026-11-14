@@ -20,6 +20,37 @@ find /usr/lib -path '*/calamares/modules/mount/module.desc' -print -quit | grep 
     exit 1
 }
 
+# Round 16 (preview-79 regression: the installer would not start at all,
+# exit 134, "Could not find the Qt platform plugin 'wayland'"). The
+# installer wrapper claims the Qt Wayland platform only when the plugin
+# file exists, but the plugin itself must be in the image or Calamares
+# runs under XWayland and the on-screen keyboard can never appear (no
+# text-input protocol there). The plugin lives in the qt6-wayland package
+# (libqt6waylandclient6 is only the client library); preview-79 shipped
+# the library but not the package -- it only showed up in an autoremove
+# list. Fail the build if the package, the plugin files, or the plugin's
+# own dependencies are missing.
+dpkg -l qt6-wayland 2>/dev/null | grep -q '^ii' || {
+    echo "XWLightOS: qt6-wayland is not installed (Calamares would have no Qt Wayland platform plugin)" >&2
+    exit 1
+}
+for _qt_plugin in libqwayland-egl.so libqwayland-generic.so; do
+    _qt_plugin_path="/usr/lib/x86_64-linux-gnu/qt6/plugins/platforms/$_qt_plugin"
+    [ -f "$_qt_plugin_path" ] || {
+        echo "XWLightOS: Qt Wayland platform plugin missing: $_qt_plugin_path" >&2
+        exit 1
+    }
+    if command -v ldd >/dev/null 2>&1; then
+        _qt_plugin_missing="$(ldd "$_qt_plugin_path" 2>/dev/null | grep 'not found' || true)"
+        [ -z "$_qt_plugin_missing" ] || {
+            echo "XWLightOS: Qt Wayland platform plugin has unresolved dependencies: $_qt_plugin: $_qt_plugin_missing" >&2
+            exit 1
+        }
+    fi
+done
+unset _qt_plugin _qt_plugin_path _qt_plugin_missing
+echo "XWLightOS: Qt Wayland platform plugins present (qt6-wayland)"
+
 # calamares-settings-debian supplies the tested Debian module sequence. Keep
 # that sequence but replace its selected branding component with XWLightOS.
 SETTINGS=/etc/calamares/settings.conf

@@ -1,5 +1,5 @@
 #!/bin/sh
-# XWLightOS: 触屏兜底自动开启后弹一次桌面通知。
+# XWLightOS: 触屏兜底自动开启后弹一次桌面提示。
 #
 # 第 12 轮（Build 73，用户 2026-11-10 22:14 邮件第 2 项）：兜底服务首次
 # 创建 uinput 设备（即自动兜底真正生效）后调本脚本一次，告诉用户已自动
@@ -12,17 +12,24 @@
 # （父进程马上返回 0，绝不阻塞 cvte_touch 的同步调用），等待者每 2 秒轮询
 # 总线、最长约 60 秒，出现后再弹通知。
 #
+# 第 16 轮改窗口（用户 2026-11-14：气泡转瞬即逝，没看到提醒）：末端由
+# notify-send 气泡换成 GTK 对话框窗口（xwlightos-touch-bypass-dialog，
+# 等用户点掉）。等待者除总线外还等显示通道（Wayland socket 或 X socket）
+# 再弹；对话框经 runuser 在用户会话里脱离启动，启动成功（2 秒后进程
+# 仍在）才写 stamp。
+#
 # 只弹一次：stamp 文件 /var/lib/xwlightos/touch-bypass-auto-notified，
-# 只在 notify-send 成功后才写。LiveCD 上每次启动是全新系统，首次启动弹
+# 只在对话框成功启动后才写。LiveCD 上每次启动是全新系统，首次启动弹
 # 一次；装好的系统上 stamp 落盘，只弹第一次。手动在设置里开关不走本脚本
 # （设置程序自己在会话内弹通知，见 xwlightos-settings）。
 #
-# 尽力而为：没有会话总线、没有 notify-send、发失败，都安静退出（返回 0），
-# 绝不影响触屏服务本身。
+# 尽力而为：没有会话总线、没有显示通道、对话框启动失败，都安静退出
+# （返回 0），绝不影响触屏服务本身。
 set -eu
 
 STAMP=/var/lib/xwlightos/touch-bypass-auto-notified
 LOCK_DIR=/run/xwlightos-touch-bypass-notify.lock
+DIALOG=/usr/local/bin/xwlightos-touch-bypass-dialog
 [ -f "$STAMP" ] && exit 0
 
 # 单飞：mkdir 原子抢锁，抢到才 fork 等待者。锁在 /run（tmpfs，每 boot
@@ -41,25 +48,41 @@ fi
 USER_NAME=$(cat /etc/xwlightos/session-user 2>/dev/null || echo user)
 USER_UID=$(id -u "$USER_NAME" 2>/dev/null || echo 1000)
 BUS_PATH=/run/user/$USER_UID/bus
+WAYLAND_SOCK=/run/user/$USER_UID/wayland-0
+X_SOCK=/tmp/.X11-unix/X0
 
 # 立即脱离后台：父进程马上返回，cvte_touch 的同步 system() 调用
 # 一毫秒都不等；等待者被 init 收养，输入输出全部脱离。
 (
-    # 等用户会话总线出现（最长约 60 秒）；服务比会话启动得早，
-    # 刚调本脚本时总线大概率还没来。
+    # 等用户会话就绪（最长约 60 秒）：总线 + 显示通道（Wayland socket
+    # 或 X socket 任一出现即算会话已起）。服务比会话启动得早，
+    # 刚调本脚本时两者大概率都还没来。
     i=0
-    while [ ! -S "$BUS_PATH" ] && [ "$i" -lt 30 ]; do
+    while [ "$i" -lt 30 ]; do
+        if [ -S "$BUS_PATH" ] && { [ -S "$WAYLAND_SOCK" ] || [ -S "$X_SOCK" ]; }; then
+            break
+        fi
         sleep 2
         i=$((i + 1))
     done
     # 等待期间若 stamp 已被另一路写下，不重复弹。
     if [ ! -f "$STAMP" ] && [ -S "$BUS_PATH" ] && \
-       command -v notify-send >/dev/null 2>&1 && \
-       command -v runuser >/dev/null 2>&1; then
-        if runuser -u "$USER_NAME" -- env DISPLAY=:0 \
-                DBUS_SESSION_BUS_ADDRESS="unix:path=$BUS_PATH" \
-                notify-send -a "XWLightOS 设置" "触屏兜底已自动开启" \
-                "已检测到希沃触屏，系统自带驱动无触摸事件，已自动开启触屏兜底。可在“XWLightOS 设置”里开关此功能。"; then
+       { [ -S "$WAYLAND_SOCK" ] || [ -S "$X_SOCK" ]; } && \
+       [ -x "$DIALOG" ] && command -v runuser >/dev/null 2>&1; then
+        # Wayland 优先（GNOME 48 默认会话），XWayland 兜底：两个环境
+        # 都传，GTK 自己选。脱离启动（对话框等用户点掉才退出，
+        # 不能阻塞等待者）；2 秒后进程仍在即算启动成功，写 stamp。
+        WAYLAND_DISPLAY_ARG=""
+        if [ -S "$WAYLAND_SOCK" ]; then
+            WAYLAND_DISPLAY_ARG="wayland-0"
+        fi
+        runuser -u "$USER_NAME" -- env DISPLAY=:0 \
+            WAYLAND_DISPLAY="$WAYLAND_DISPLAY_ARG" \
+            XDG_RUNTIME_DIR="/run/user/$USER_UID" \
+            DBUS_SESSION_BUS_ADDRESS="unix:path=$BUS_PATH" \
+            "$DIALOG" </dev/null >/dev/null 2>&1 &
+        sleep 2
+        if pgrep -f "xwlightos-touch-bypass-dialog" >/dev/null 2>&1; then
             mkdir -p /var/lib/xwlightos
             touch "$STAMP"
         fi

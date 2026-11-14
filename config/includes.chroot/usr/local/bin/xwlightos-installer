@@ -36,21 +36,42 @@ fi
 # deterministic: only claim Wayland when the compositor socket is actually
 # reachable from this session; otherwise leave the platform unset so Qt
 # falls back to xcb and the installer still opens instead of failing hard.
+#
+# Round 16 (preview-79 regression: the installer would not start at all,
+# exit 134, "Could not find the Qt platform plugin 'wayland'"). Forcing
+# QT_QPA_PLATFORM=wayland is only safe when the Qt Wayland platform plugin
+# is actually installed (it lives in the qt6-wayland package;
+# libqt6waylandclient6 is only the client library, not the plugin, and
+# preview-79 did not ship the plugin at all). So Wayland is claimed only
+# when BOTH the socket is reachable AND the plugin file exists; otherwise
+# the platform stays unset and Qt falls back to xcb (XWayland) -- the
+# installer must never fail to open because of platform selection.
+# XWLIGHTOS_QT_PLUGIN_DIR is a test seam for the local pre-check (unset in
+# production); it only changes which directory is probed for the plugin.
+QT_WAYLAND_PLUGIN_DIR="${XWLIGHTOS_QT_PLUGIN_DIR:-/usr/lib/x86_64-linux-gnu/qt6/plugins/platforms}"
+QT_WAYLAND_PLUGIN="$QT_WAYLAND_PLUGIN_DIR/libqwayland-egl.so"
 QT_QPA_PLATFORM=""
 if [ -n "${WAYLAND_DISPLAY:-}" ] && [ -n "${XDG_RUNTIME_DIR:-}" ] && \
-   [ -S "${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}" ]; then
+   [ -S "${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}" ] && \
+   [ -f "$QT_WAYLAND_PLUGIN" ]; then
     QT_QPA_PLATFORM=wayland
 fi
 
 # Diagnostic: record which backend Calamares really runs on, so the next
 # test can settle the OSK question with evidence instead of theories.
-# Qt plugin logging names the loaded platform plugin.
+# Qt plugin logging names the loaded platform plugin. The plugin probe
+# result is logged too: it is what decides wayland vs fallback.
 LOG_DIR="${HOME:-/home/user}/.local/share/xwlightos"
 mkdir -p "$LOG_DIR" 2>/dev/null || LOG_DIR="/tmp"
 LOG_FILE="$LOG_DIR/calamares-launch.log"
 {
     echo "=== $(date '+%Y-%m-%d %H:%M:%S %Z') xwlightos-installer ==="
     echo "WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-<unset>} XDG_SESSION_TYPE=${XDG_SESSION_TYPE:-<unset>} DISPLAY=${DISPLAY:-<unset>}"
+    if [ -f "$QT_WAYLAND_PLUGIN" ]; then
+        echo "wayland_plugin=present ($QT_WAYLAND_PLUGIN)"
+    else
+        echo "wayland_plugin=missing ($QT_WAYLAND_PLUGIN)"
+    fi
     echo "QT_QPA_PLATFORM=${QT_QPA_PLATFORM:-<unset, Qt auto-select>}"
 } >> "$LOG_FILE" 2>/dev/null || true
 # 日志写不进也绝不能拖垮安装器：探通失败就丢到 /dev/null（与改动前一致），

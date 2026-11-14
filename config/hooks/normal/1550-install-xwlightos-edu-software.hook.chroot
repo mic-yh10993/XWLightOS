@@ -214,6 +214,82 @@ else
 fi
 unset EN_SANDBOX
 
+# --- libunistring.so.2 垫片（第 16 轮，preview-79 白板打不开的根因） ---
+# 根因（实包核验）：白板捆绑的 libidn2.so.0（Bookworm 时代编译，
+# 在 files/resources/public/lib/ 下，经厂商 sh 的 LD_LIBRARY_PATH
+# 覆盖系统版）NEEDED libunistring.so.2，而 Trixie 根本没有
+# libunistring2 包（只有 libunistring5，提供 .so.5）；Bookworm 有
+# libunistring2 1.0-2，所以旧版能开、Trixie 版打不开。包单加不了
+# 这个包（apt 会失败），故从 Bookworm 池下载 .deb、只抽 .so.2 放进
+# /usr/local/lib（Debian 默认 ld 路径），跑 ldconfig。垫片的 SONAME
+# 是 libunistring.so.2，与系统 .so.5 不冲突；它自身只 NEEDED
+# libc.so.6，无其他依赖。SHA256 钉死 Bookworm 索引值；主源
+# deb.debian.org、备源 snapshot.debian.org（Bookworm 退为
+# oldoldstable 后主源可能下架）。下载/校验/抽取任一步失败即构建失败
+# （白板缺了它启动即死，不是可选项）。
+LU2_DEB_URL="https://deb.debian.org/debian/pool/main/libu/libunistring/libunistring2_1.0-2_amd64.deb"
+LU2_DEB_FALLBACK="https://snapshot.debian.org/archive/debian/20250101T000000Z/pool/main/libu/libunistring/libunistring2_1.0-2_amd64.deb"
+LU2_DEB_SHA256="d466bbfe011d764d793c1d9d777cad9c7cf65b938e11598f27408171ad95a951"
+LU2_TMP="$(mktemp -d)"
+if ! curl -fsSL -o "$LU2_TMP/libunistring2.deb" "$LU2_DEB_URL" 2>/dev/null; then
+    echo "XWLightOS: primary libunistring2 download failed, trying snapshot.debian.org" >&2
+    curl -fsSL -o "$LU2_TMP/libunistring2.deb" "$LU2_DEB_FALLBACK" || {
+        echo "XWLightOS: cannot download libunistring2 1.0-2 (EasiNote5 would fail to load)" >&2
+        rm -rf "$LU2_TMP"
+        exit 1
+    }
+fi
+echo "$LU2_DEB_SHA256  $LU2_TMP/libunistring2.deb" | sha256sum -c - >/dev/null || {
+    echo "XWLightOS: libunistring2 SHA256 mismatch" >&2
+    rm -rf "$LU2_TMP"
+    exit 1
+}
+mkdir -p "$LU2_TMP/x"
+dpkg-deb -x "$LU2_TMP/libunistring2.deb" "$LU2_TMP/x" || {
+    echo "XWLightOS: cannot extract libunistring2" >&2
+    rm -rf "$LU2_TMP"
+    exit 1
+}
+[ -f "$LU2_TMP/x/usr/lib/x86_64-linux-gnu/libunistring.so.2.2.0" ] || {
+    echo "XWLightOS: libunistring.so.2.2.0 missing from libunistring2 package" >&2
+    rm -rf "$LU2_TMP"
+    exit 1
+}
+mkdir -p /usr/local/lib
+cp -f "$LU2_TMP/x/usr/lib/x86_64-linux-gnu/libunistring.so.2.2.0" /usr/local/lib/
+ln -sf libunistring.so.2.2.0 /usr/local/lib/libunistring.so.2
+chmod 0644 /usr/local/lib/libunistring.so.2.2.0
+rm -rf "$LU2_TMP"
+ldconfig || {
+    echo "XWLightOS: ldconfig failed after installing libunistring.so.2" >&2
+    exit 1
+}
+ldconfig -p | grep -q 'libunistring.so.2 ' || {
+    echo "XWLightOS: libunistring.so.2 is not in the ldconfig cache after install" >&2
+    exit 1
+}
+echo "XWLightOS: libunistring.so.2 shim installed (Bookworm libunistring2 1.0-2)"
+unset LU2_DEB_URL LU2_DEB_FALLBACK LU2_DEB_SHA256 LU2_TMP
+
+# --- libcurl.so 未版本化名垫片（第 16 轮，视频展台 MQTT 模块） ---
+# 视频展台的 libmp_mqtt.so NEEDED libcurl.so（未版本化名，厂商链接时
+# 用了开发期名字）；Trixie 只有 -dev 包提供 libcurl.so，运行时包
+# libcurl4t64 只提供 libcurl.so.4。装 -dev 包进镜像又重又不对，故在
+# /usr/local/lib 建符号链接 libcurl.so -> libcurl.so.4（动态加载器按
+# 文件名搜 /usr/local/lib，见 ld.so.conf.d/libc.conf；ldconfig 缓存
+# 只记 SONAME，故不断言缓存条目，只断言链接与目标在场，真正的功能
+# 验证由本钩子末尾的 ldd 门禁对 libmp_mqtt.so 实测）。
+[ -f /usr/lib/x86_64-linux-gnu/libcurl.so.4 ] || {
+    echo "XWLightOS: libcurl.so.4 missing (libcurl4t64 not installed; the libcurl.so shim has no target)" >&2
+    exit 1
+}
+ln -sf libcurl.so.4 /usr/local/lib/libcurl.so
+[ -L /usr/local/lib/libcurl.so ] && [ -e /usr/local/lib/libcurl.so ] || {
+    echo "XWLightOS: failed to create /usr/local/lib/libcurl.so symlink" >&2
+    exit 1
+}
+echo "XWLightOS: libcurl.so shim installed (/usr/local/lib/libcurl.so -> libcurl.so.4)"
+
 # --- 希沃视频展台：librectification.so 需要 GTK2（构建期断言） ---
 # 根因见 xwlightos-desktop.list.chroot 中 libgtk2.0-0 的注释。
 # 此处断言构建产物里该 native 库的 GTK2 依赖确实可解析，缺失则构建失败，
@@ -275,5 +351,92 @@ else
     echo "XWLightOS: WARNING: OTA block script/service missing" >&2
 fi
 echo "XWLightOS: Seewo OTA updates disabled"
+
+# --- 第 16 轮 ldd 门禁：/opt 下全部厂商 ELF 的动态依赖必须齐全 ---
+# preview-79 的教训：EasiNote5 死在 libunistring.so.2 缺失，而第 15 轮
+# 的静态 SONAME 检查（只查直接 NEEDED + 几个具名库）漏掉了它——缺失的
+# 库是经捆绑 libidn2.so.0 传递引入的。本门禁在 chroot 里对每个厂商
+# ELF 真跑 ldd，任何 "not found" 即构建失败并打印二进制与缺失的库。
+# LD_LIBRARY_PATH 按应用取该应用树下全部含 .so 的目录（超集近似厂商
+# sh 的运行时路径；ldd 本身已 honor 各 ELF 的 RUNPATH）。
+# 跳过：非 ELF 文件、非 x86-64 ELF（ldd 会误报）、静态链接/非动态 ELF。
+# ldd 本身出错但无 "not found" 时只告警不断言（个别怪异 ELF 不应拖垮
+# 构建；真缺库一定表现为 "not found"）。
+# allowlist（应用名:SONAME，精确行匹配）：以下 5 条在 Trixie 里根本
+# 没有对应包，且主程序启动不受影响——只允许这 5 条，任何新缺失一律
+# 失败。逐条依据见评估卡 round16 §2：
+# - 钉钉 DingGuard/更新检查：liblber-2.4.so.2、libldap_r-2.4.so.2
+#   （Trixie 只有 OpenLDAP 2.6 的 liblber.so.2/libldap.so.2；从
+#   Bookworm 抽 2.4 版有 ABI 级联风险，组件本身非核心，不抽）
+# - 钉钉 doctor 诊断工具：libpangox-1.0.so.0（pangox-compat 已从
+#   Debian 移除；诊断工具非核心）
+# - 白板 node-hid musl 预编译 .node：libc.musl-x86_64.so.1（glibc
+#   系统加载同目录的 glibc 变体，musl 件是死代码）
+# - 白板 mirror/lib/libselinux.so.1：libpcre.so.3（Trixie 已无
+#   libpcre3；树内无 ELF 链接 libselinux，属潜伏风险）
+_LDD_ALLOWLIST="com.alibabainc.dingtalk:liblber-2.4.so.2
+com.alibabainc.dingtalk:libldap_r-2.4.so.2
+com.alibabainc.dingtalk:libpangox-1.0.so.0
+com.seewo.easinote5:libc.musl-x86_64.so.1
+com.seewo.easinote5:libpcre.so.3"
+_LDD_TMP="$(mktemp -d)"
+_LDD_N=0
+_LDD_FAIL=0
+_LDD_ALLOW=0
+_LDD_FAIL_LIST="$_LDD_TMP/failures.txt"
+: > "$_LDD_FAIL_LIST"
+printf '%s\n' "$_LDD_ALLOWLIST" > "$_LDD_TMP/allowlist.txt"
+# 注意：find 结果先落盘再重定向进 while 循环——管道会让循环跑在子
+# shell 里，_LDD_FAIL 的赋值传不出来，门禁会变成空转。
+find /opt \( -type f -executable -o -type f -name '*.so*' -o -type f -name '*.node' \) 2>/dev/null > "$_LDD_TMP/elfs.txt"
+while read -r _elf; do
+    _magic="$(head -c 4 "$_elf" 2>/dev/null | od -An -tx1 2>/dev/null | tr -d ' \n')"
+    [ "$_magic" = "7f454c46" ] || continue
+    if command -v readelf >/dev/null 2>&1; then
+        readelf -h "$_elf" 2>/dev/null | grep -q 'Class: *ELF64' || continue
+        readelf -h "$_elf" 2>/dev/null | grep -q 'Machine: *Advanced Micro Devices X86-64' || continue
+    fi
+    _LDD_N=$((_LDD_N + 1))
+    # 应用根：/opt/apps/<name> 或 /opt/<name>；其下全部含 .so 的目录
+    # 拼成该应用的 LD_LIBRARY_PATH（每个根只算一次，缓存到文件）。
+    _rest=${_elf#/opt/}
+    case "$_rest" in
+        apps/*) _app=${_rest#apps/}; _app=${_app%%/*}; _root="/opt/apps/$_app" ;;
+        *) _app=${_rest%%/*}; _root="/opt/$_app" ;;
+    esac
+    _cache="$_LDD_TMP/$(echo "$_root" | tr '/' '_').libpath"
+    if [ ! -f "$_cache" ]; then
+        find "$_root" -type f -name '*.so*' -exec dirname {} + 2>/dev/null \
+            | sort -u | paste -sd: - > "$_cache" 2>/dev/null || : > "$_cache"
+    fi
+    _libpath="$(cat "$_cache" 2>/dev/null || true)"
+    _ldd_out="$(LD_LIBRARY_PATH="$_libpath" ldd "$_elf" 2>&1)" || true
+    case "$_ldd_out" in
+        *'not a dynamic executable'*|*'statically linked'*) continue ;;
+    esac
+    _missing="$(printf '%s\n' "$_ldd_out" | grep 'not found' || true)"
+    if [ -n "$_missing" ]; then
+        # 逐条判 allowlist：ldd 行形如 "\tlibfoo.so.1 => not found"，
+        # 取第一列即 SONAME。SONAME 无空格，for 拆词是安全的。
+        _missing_sonames="$(printf '%s\n' "$_missing" | sed 's/^[[:space:]]*//; s/[[:space:]].*//')"
+        for _soname in $_missing_sonames; do
+            if grep -qxF "$_app:$_soname" "$_LDD_TMP/allowlist.txt"; then
+                _LDD_ALLOW=$((_LDD_ALLOW + 1))
+                echo "XWLightOS: vendor ldd gate: allowlisted missing library $_soname in $_elf (see round 16 eval card)" >&2
+            else
+                _LDD_FAIL=1
+                echo "XWLightOS: vendor binary has unresolved library: $_elf: $_soname" | tee -a "$_LDD_FAIL_LIST" >&2
+            fi
+        done
+    fi
+done < "$_LDD_TMP/elfs.txt"
+if [ "$_LDD_FAIL" -ne 0 ]; then
+    echo "XWLightOS: vendor ldd gate failed (see failures above)" >&2
+    rm -rf "$_LDD_TMP"
+    exit 1
+fi
+echo "XWLightOS: vendor ldd gate passed ($_LDD_N vendor ELFs, 0 unresolved, $_LDD_ALLOW allowlisted)"
+rm -rf "$_LDD_TMP"
+unset _LDD_TMP _LDD_N _LDD_FAIL _LDD_ALLOW _LDD_FAIL_LIST _LDD_ALLOWLIST
 
 echo "XWLightOS: education software installation complete"

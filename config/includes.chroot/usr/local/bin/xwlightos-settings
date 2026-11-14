@@ -17,20 +17,30 @@
 #
 # User instruction 2026-11-10 22:14 (mail "补充" item 2): the touch
 # fallback must auto-detect whether it is needed, auto-enable, pop a
-# notification, and be toggleable here. The touch toggle below follows
-# the manager toggle's pattern exactly (system service, pkexec,
-# on_service with the same rebound/re-entry guard): the unit is
+# notification, and be toggleable here. The unit is
 # xwlightos-touch-bypass.service (Build 72), flipping it really starts
 # or stops the CVTE hidraw->uinput bypass.
+#
+# User instruction 2026-11-14 (round 16): turning the touch toggle OFF
+# must pop a "keep this setting?" confirmation with a 10-second countdown
+# (same policy as Windows display-resolution changes: turning the bypass
+# off may kill the touchscreen, so a timeout must auto-restore it). The
+# touch toggle therefore has its own handler (on_touch) instead of the
+# shared on_service: OFF goes through the pkexec helper
+# xwlightos-touch-bypass-ctl (which forks a root-side 10-second waiter
+# so restore needs no second authorization), then the confirmation
+# dialog; ON goes through the same helper (which also rewrites the
+# first-boot stamp) plus the notification.
 import glob
 import os
 import subprocess
 import sys
+import time
 
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk  # noqa: E402
+from gi.repository import Gtk, GLib  # noqa: E402
 
 def find_unit(patterns, fallback):
     for pat in patterns:
@@ -47,6 +57,27 @@ TM_UNIT = find_unit(["com.seewo.terminalmanager.service"],
 
 TOUCH_UNIT = find_unit(["xwlightos-touch-bypass.service"],
                        "xwlightos-touch-bypass.service")
+
+# 第 16 轮：触屏兜底开关的 pkexec 助手（on/off 子命令）与关闭确认的
+# 决策文件。助手以 root 跑：off 时 fork 10 秒等待者（超时自动恢复，
+# 无需第二次授权）；on 时先把首次启动 stamp 改写成 bypass。
+TOUCH_CTL = "/usr/local/libexec/xwlightos-touch-bypass-ctl"
+TOUCH_DECISION_DIR = "/run/xwlightos-touch-bypass-decision"
+TOUCH_KEEP_FILE = os.path.join(TOUCH_DECISION_DIR, "keep")
+TOUCH_RESTORE_FILE = os.path.join(TOUCH_DECISION_DIR, "restore")
+
+
+def _confirm_timeout():
+    # 确认窗倒计时出货值 10 秒；环境变量只供本地先验缩短，生产不设。
+    try:
+        v = int(os.environ.get("XWLIGHTOS_TOUCH_BYPASS_CONFIRM_TIMEOUT",
+                               "10"))
+        return v if v > 0 else 10
+    except ValueError:
+        return 10
+
+
+TOUCH_CONFIRM_TIMEOUT_SEC = _confirm_timeout()
 
 # 用户 2026-11-11 邮件《补充》第 3 项（第 13 轮）：无需授权访问硬盘
 # 驱动器开关。状态 = polkit 规则文件是否存在；拨动 = 经 pkexec 调
@@ -165,6 +196,106 @@ def notify_touch_enabled():
         pass
 
 
+def set_touch_bypass(on, parent):
+    # 第 16 轮：触屏兜底开关经 pkexec 调助手（on/off），与 set_service
+    # 同款：一次拨动只请求一次授权，失败明确提示一次、绝不再次弹出
+    # 授权框（回弹拨动开关时必须被 _busy 守卫挡住）。
+    cmd = ["pkexec", TOUCH_CTL, "on" if on else "off"]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode != 0:
+        if res.returncode == 126:
+            msg = "已取消授权，未作任何更改。"
+        else:
+            msg = "设置失败：%s" % (res.stderr.strip() or TOUCH_CTL)
+        dlg = Gtk.MessageDialog(
+            transient_for=parent, modal=True,
+            message_type=Gtk.MessageType.ERROR,
+            buttons=Gtk.ButtonsType.OK,
+            text=msg)
+        dlg.run()
+        dlg.destroy()
+        return False
+    return True
+
+
+def write_touch_decision(kind):
+    # 第 16 轮：把确认窗的结果写给 root 等待者（keep = 保留关闭，
+    # restore = 立即恢复开启）。决策目录由助手建（1777），用户可写。
+    # 写失败静默吞掉：等待者 10 秒到时按无决策自动恢复，仍是安全方向。
+    try:
+        path = TOUCH_KEEP_FILE if kind == "keep" else TOUCH_RESTORE_FILE
+        with open(path, "w") as f:
+            f.write(kind + "\n")
+    except Exception:
+        pass
+
+
+def wait_touch_enabled(timeout_sec=5):
+    # 第 16 轮：轮询 systemctl is-enabled，最长 timeout_sec 秒；读到
+    # enabled 返回 True。等待者的恢复与确认窗的倒计时有约 1 秒的
+    # 启动 skew，轮询盖住它；is-enabled 只查启用链接，恢复命令一起
+    # 来就读到 True，通常 1 秒内返回。
+    deadline = time.time() + timeout_sec
+    while time.time() < deadline:
+        if service_enabled(TOUCH_UNIT):
+            return True
+        time.sleep(0.5)
+    return service_enabled(TOUCH_UNIT)
+
+
+def confirm_touch_off(parent):
+    # 第 16 轮：触屏兜底关闭确认窗（Windows 改分辨率同款策略）。
+    # 返回 "keep"（保留关闭）、"restore"（恢复开启）或 "timeout"
+    # （倒计时到 0 或关掉窗口，按恢复处理）。对话框模态于设置窗口，
+    # 倒计时用 GLib timeout 每秒更新标签；点按钮或到时都关闭。
+    dlg = Gtk.Dialog(title="触屏兜底服务已关闭", transient_for=parent,
+                     modal=True)
+    dlg.set_default_size(440, 190)
+    content = dlg.get_content_area()
+    msg = Gtk.Label(xalign=0)
+    msg.set_markup(
+        "触屏兜底服务已关闭，是否保留设置？\n"
+        "触屏可能已失效；点不到恢复按钮时请等待倒计时结束自动恢复。")
+    msg.set_margin_start(14)
+    msg.set_margin_end(14)
+    msg.set_margin_top(12)
+    content.pack_start(msg, False, False, 0)
+    countdown = Gtk.Label(xalign=0)
+    countdown.set_margin_start(14)
+    countdown.set_margin_end(14)
+    content.pack_start(countdown, False, False, 6)
+    dlg.add_button("保留关闭", Gtk.ResponseType.YES)
+    dlg.add_button("恢复开启", Gtk.ResponseType.NO)
+    dlg.set_default_response(Gtk.ResponseType.NO)
+    remaining = [TOUCH_CONFIRM_TIMEOUT_SEC]
+    countdown.set_text("%d 秒后自动恢复开启" % remaining[0])
+    # tick 返回 False 时 GLib 已自动摘掉该 source；再调 source_remove
+    # 会报 "Source ID ... was not found" 告警（本地 GTK 测试实测）。
+    # 用 timer_done 记它是否已自摘，run() 返回后只在仍在时才摘。
+    timer_done = [False]
+
+    def tick():
+        remaining[0] -= 1
+        if remaining[0] <= 0:
+            timer_done[0] = True
+            dlg.response(Gtk.ResponseType.CANCEL)
+            return False
+        countdown.set_text("%d 秒后自动恢复开启" % remaining[0])
+        return True
+
+    timer = GLib.timeout_add_seconds(1, tick)
+    dlg.show_all()
+    resp = dlg.run()
+    if not timer_done[0]:
+        GLib.source_remove(timer)
+    dlg.destroy()
+    if resp == Gtk.ResponseType.YES:
+        return "keep"
+    if resp == Gtk.ResponseType.NO:
+        return "restore"
+    return "timeout"
+
+
 def set_noauth_drives(on, parent):
     # 与 set_service 同款：一次拨动只请求一次授权，失败明确提示一次、
     # 绝不再次弹出授权框（回弹拨动开关时必须被 _busy 守卫挡住）。
@@ -236,16 +367,19 @@ class Window(Gtk.Window):
         box.pack_start(self.row_tm, False, False, 0)
 
         # 用户 2026-11-10 22:14 邮件《补充》第 2 项：触屏兜底的开关。
-        # 照希沃管家开关的模式（系统服务、pkexec、on_service）：关掉后
-        # 希沃触屏失效（兜底停了，内核驱动本身不出触摸事件）；打开后
-        # 服务启动，自动判断重新跑。
+        # 第 16 轮走专用流程 on_touch（不再走通用 on_service）：关掉后
+        # 希沃触屏失效（兜底停了，内核驱动本身不出触摸事件），所以关
+        # 闭要弹确认窗、10 秒无操作自动恢复开启（Windows 改分辨率同款
+        # 策略）；打开后服务启动，立即生效。
         touch_ok = service_present(TOUCH_UNIT)
         self.row_touch = Row(
-            "触屏兜底服务", "systemd 服务：%s（关掉后希沃触屏失效）" % TOUCH_UNIT,
+            "触屏兜底服务",
+            "systemd 服务：%s（关掉后触屏失效，10 秒无操作自动恢复）"
+            % TOUCH_UNIT,
             service_enabled(TOUCH_UNIT) if touch_ok else False,
             sensitive=touch_ok)
         self.row_touch.switch.connect(
-            "notify::active", self.on_service, TOUCH_UNIT, self.row_touch)
+            "notify::active", self.on_touch, self.row_touch)
         box.pack_start(self.row_touch, False, False, 0)
 
         # 用户 2026-11-11 邮件《补充》第 3 项（第 13 轮）：无需授权访问
@@ -283,9 +417,19 @@ class Window(Gtk.Window):
         box.pack_start(note, False, False, 8)
         self.add(box)
 
+    def _flip_switch(self, switch, handler, active):
+        # 不触发 handler 地拨开关（失败回弹、恢复同步用；_busy 守卫
+        # 是第二道防线，即使 handler_block 失效也不会再次触发授权）。
+        switch.handler_block_by_func(handler)
+        try:
+            switch.set_active(active)
+        finally:
+            switch.handler_unblock_by_func(handler)
+
     def on_service(self, switch, _param, unit, row):
         # 回弹/重入守卫：一次拨动只走一次授权流程。回弹本身也在守卫
         # 内完成，即使 handler_block 失效也不会再次触发授权。
+        # 第 16 轮起只供希沃管家行用；触屏行走专用 on_touch。
         if self._busy:
             return
         want = switch.get_active()
@@ -293,16 +437,50 @@ class Window(Gtk.Window):
         try:
             ok = set_service(unit, want, self)
             if not ok:
-                switch.handler_block_by_func(self.on_service)
-                try:
-                    switch.set_active(not want)
-                finally:
-                    switch.handler_unblock_by_func(self.on_service)
-            elif want and unit == TOUCH_UNIT:
-                # 第 15 轮：触屏兜底手动开启成功才弹通知；失败回弹、
-                # 关掉时都不弹。on_service 由管家与触屏两行共用，
-                # 只认 TOUCH_UNIT，避免管家开关也弹触屏通知。
+                self._flip_switch(switch, self.on_service, not want)
+        finally:
+            self._busy = False
+
+    def on_touch(self, switch, _param, row):
+        # 第 16 轮：触屏兜底开关专用流程。开：助手 on + 气泡；
+        # 关：助手 off（disable --now + fork 10 秒等待者）+ 确认窗。
+        # 确认窗结果：保留 → 写 keep 文件、开关保持关；恢复 → 写
+        # restore 文件、轮询确认服务已启用后把开关翻回开；超时无
+        # 点击 → 不写文件、等待者 10 秒到时自动恢复，同样轮询确认
+        # 后翻回开。回弹/重入守卫与 on_service 同款。
+        if self._busy:
+            return
+        want = switch.get_active()
+        self._busy = True
+        try:
+            ok = set_touch_bypass(want, self)
+            if not ok:
+                self._flip_switch(switch, self.on_touch, not want)
+                return
+            if want:
+                # 手动开启成功才弹通知（第 15 轮）。
                 notify_touch_enabled()
+                return
+            # 关闭成功：助手里的等待者已在 10 秒倒计时，弹确认窗。
+            outcome = confirm_touch_off(self)
+            if outcome == "keep":
+                write_touch_decision("keep")
+                return
+            if outcome == "restore":
+                write_touch_decision("restore")
+            # restore 或 timeout：等待者恢复（立即或 10 秒到时），
+            # 轮询确认服务已启用后把开关翻回开。
+            if wait_touch_enabled():
+                self._flip_switch(switch, self.on_touch, True)
+            else:
+                msg = "触屏兜底未能自动恢复，请重新打开开关或检查服务状态。"
+                dlg = Gtk.MessageDialog(
+                    transient_for=self, modal=True,
+                    message_type=Gtk.MessageType.WARNING,
+                    buttons=Gtk.ButtonsType.OK,
+                    text=msg)
+                dlg.run()
+                dlg.destroy()
         finally:
             self._busy = False
 

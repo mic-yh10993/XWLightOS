@@ -152,6 +152,8 @@ for _crlf_file in /etc/systemd/system/xwlightos-touch-bypass.service \
         /etc/systemd/system/xwlightos-touchscreen-fix.service \
         /usr/local/src/xwlightos-touch-cvte/cvte_touch.c \
         /usr/local/bin/xwlightos-touch-bypass-notify \
+        /usr/local/bin/xwlightos-touch-bypass-dialog \
+        /usr/local/libexec/xwlightos-touch-bypass-ctl \
         /usr/local/bin/xwlightos-settings \
         /usr/local/sbin/xwlightos-touchscreen-fix.sh \
         /etc/udev/rules.d/70-xwlightos-touch-bypass.rules; do
@@ -238,7 +240,7 @@ _UINP=$(ls /lib/modules/*/kernel/drivers/input/misc/uinput.ko* 2>/dev/null | hea
     echo 'XWLightOS: uinput kernel module missing from the image (bypass service could never create /dev/uinput)' >&2
     exit 1
 }
-# 8c. 第十二轮（Build 73）：防抖与内核守卫必须在源码里，否则“所有程序”
+# 8c. 第十二轮（Build 73）：防抖必须在源码里，否则“所有程序”
 # 闪退修法等于没装；通知脚本与 notify-send 必须齐全，否则自动开启的提示
 # 发不出去；设置里必须有触屏兜底开关，否则用户关不掉自动兜底。
 grep -q 'CVTE_DEBOUNCE_MS' /usr/local/src/xwlightos-touch-cvte/cvte_touch.c || {
@@ -249,20 +251,71 @@ grep -q 'flush_pending_releases' /usr/local/src/xwlightos-touch-cvte/cvte_touch.
     echo 'XWLightOS: cvte_touch.c lost flush_pending_releases (debounce never fires)' >&2
     exit 1
 }
-grep -q 'kernel_touch_event_seen' /usr/local/src/xwlightos-touch-cvte/cvte_touch.c || {
-    echo 'XWLightOS: cvte_touch.c lost the kernel guard (bypass would never yield to a working kernel driver)' >&2
+# 8d. 第十六轮（用户 2026-11-14）：内核守卫已删除，换成 30 秒首次启动
+# 观测 + stamp 决策。旧守卫断言（kernel_touch_event_seen 必须存在）
+# 已随守卫一起删除；现断言观测逻辑在场、让路路径不在场。
+grep -q 'CVTE_OBSERVE_WINDOW_MS' /usr/local/src/xwlightos-touch-cvte/cvte_touch.c || {
+    echo 'XWLightOS: cvte_touch.c lost the 30-second first-boot observation window (round 16)' >&2
     exit 1
 }
+grep -q 'bypass_decision' /usr/local/src/xwlightos-touch-cvte/cvte_touch.c || {
+    echo 'XWLightOS: cvte_touch.c lost bypass_decision (first-boot stamp logic, round 16)' >&2
+    exit 1
+}
+grep -q 'touch-bypass-first-boot' /usr/local/src/xwlightos-touch-cvte/cvte_touch.c || {
+    echo 'XWLightOS: cvte_touch.c lost the first-boot stamp path (round 16)' >&2
+    exit 1
+}
+if grep -q 'guard_fd' /usr/local/src/xwlightos-touch-cvte/cvte_touch.c; then
+    echo 'XWLightOS: cvte_touch.c still references guard_fd (the kernel guard was removed by user decision 2026-11-14)' >&2
+    exit 1
+fi
+# 观测必须在触屏修复服务（rebind）之后跑，否则节点中途重建打断观测。
+grep -q '^After=.*xwlightos-touchscreen-fix.service' \
+    /etc/systemd/system/xwlightos-touch-bypass.service || {
+    echo 'XWLightOS: xwlightos-touch-bypass.service lost its After=xwlightos-touchscreen-fix.service ordering (round 16)' >&2
+    exit 1
+}
+# 8e. 第十六轮：自动开启改弹窗口（对话框脚本）+ 设置关闭确认的助手
+# 脚本，两者必须齐全可执行，否则新策略等于没装。
 [ -x /usr/local/bin/xwlightos-touch-bypass-notify ] || {
     echo 'XWLightOS: xwlightos-touch-bypass-notify missing or not executable (auto-enable notification would never fire)' >&2
     exit 1
 }
+[ -x /usr/local/bin/xwlightos-touch-bypass-dialog ] || {
+    echo 'XWLightOS: xwlightos-touch-bypass-dialog missing or not executable (auto-enable window would never show)' >&2
+    exit 1
+}
+python3 -m py_compile /usr/local/bin/xwlightos-touch-bypass-dialog || {
+    echo 'XWLightOS: xwlightos-touch-bypass-dialog has a Python syntax error' >&2
+    exit 1
+}
+grep -q 'xwlightos-touch-bypass-dialog' /usr/local/bin/xwlightos-touch-bypass-notify || {
+    echo 'XWLightOS: xwlightos-touch-bypass-notify does not call the dialog (auto-enable would never show a window)' >&2
+    exit 1
+}
+[ -x /usr/local/libexec/xwlightos-touch-bypass-ctl ] || {
+    echo 'XWLightOS: xwlightos-touch-bypass-ctl missing or not executable (settings touch toggle would fail)' >&2
+    exit 1
+}
+sh -n /usr/local/libexec/xwlightos-touch-bypass-ctl || {
+    echo 'XWLightOS: xwlightos-touch-bypass-ctl has a shell syntax error' >&2
+    exit 1
+}
 command -v notify-send >/dev/null 2>&1 || {
-    echo 'XWLightOS: notify-send missing (libnotify-bin not installed; auto-enable notification would never fire)' >&2
+    echo 'XWLightOS: notify-send missing (libnotify-bin not installed; manual touch-enable notification would never fire)' >&2
     exit 1
 }
 grep -q 'xwlightos-touch-bypass.service' /usr/local/bin/xwlightos-settings || {
     echo 'XWLightOS: xwlightos-settings lost the touch fallback switch (user could not turn the bypass off)' >&2
+    exit 1
+}
+grep -q 'confirm_touch_off' /usr/local/bin/xwlightos-settings || {
+    echo 'XWLightOS: xwlightos-settings lost the touch-off confirmation dialog (round 16 anti-lockout)' >&2
+    exit 1
+}
+grep -q 'xwlightos-touch-bypass-ctl' /usr/local/bin/xwlightos-settings || {
+    echo 'XWLightOS: xwlightos-settings does not use the touch bypass helper (round 16)' >&2
     exit 1
 }
 

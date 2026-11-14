@@ -10,7 +10,10 @@ Description=Seewo touch bypass: decode CVTE hidraw reports to uinput (round 11)
 # Build 71 的 Python 守护进程已删除（未在真机验证过；只留一个触屏服务）。
 # 无设备机器：程序只空转等待 hidraw 节点出现，不影响开机；
 # 设备断开重插自动重连。
-After=local-fs.target systemd-udevd.service systemd-modules-load.service
+# 第 16 轮：首次启动时 cvte_touch 先观测内核触摸节点 30 秒再决定
+# 是否开启兜底；观测必须在触屏修复服务（会 rebind 设备、重建
+# evdev 节点）之后跑，否则节点中途重建会打断观测，故排在它后面。
+After=local-fs.target systemd-udevd.service systemd-modules-load.service xwlightos-touchscreen-fix.service
 Wants=systemd-udevd.service systemd-modules-load.service
 
 [Service]

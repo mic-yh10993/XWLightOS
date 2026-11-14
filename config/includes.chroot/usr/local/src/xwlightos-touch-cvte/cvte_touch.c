@@ -20,12 +20,29 @@
 // 本地测试：编译时定义 CVTE_TOUCH_TEST，则 main() 与 emit() 不编入，
 // 测试文件提供自己的 emit()（记录事件）与 main()，再 #include 本文件，
 // 直接调 process_report2() / flush_pending_releases() /
-// kernel_touch_event_seen() 验解码、槽位映射、防抖与内核守卫（见 round12 测试）。
+// bypass_decision() 验解码、槽位映射、防抖与首次启动观测（见 round16 测试）。
 //
 // 第 12 轮（Build 73）：防抖（Tip 闪烁不再变两次点击，见 CVTE_DEBOUNCE_MS
-// 与 flush_pending_releases）；内核守卫（内核 MT 节点一旦出触摸事件，兜底
-// 让路退出，不产生双份输入）；首次创建 uinput 后调通知脚本一次
+// 与 flush_pending_releases）；首次创建 uinput 后调通知脚本一次
 // （/usr/local/bin/xwlightos-touch-bypass-notify，尽力而为）。
+//
+// 第 16 轮（用户 2026-11-14 三次拍板）：
+// （1）内核守卫已删除（用户 18:25 裁决：持续监视浪费性能；内核驱动即使
+// 能出事件也可能触摸偏移，让路给偏移的驱动更糟）。兜底一旦开启就一直
+// 开着，不再监视内核节点、不再自动让路。找内核 MT 节点与读事件的函数
+// 保留，但只在首次启动观测里调用，主循环里不再有任何内核节点读取。
+// 权衡：某台硬件内核驱动真出事件时可能双份输入；目标硬件（希沃 T86EA /
+// CVTE 1FF7:0F26）实测内核事件字节=0，此风险在目标硬件上不存在。
+// （2）30 秒首次启动观测（用户 18:22/18:27）：开机后 30 秒内没有任何
+// 触屏输入（内核 MT 节点的触摸事件）才自动开启兜底；只做 LiveCD 每次
+// 开机 + 装好系统的首次启动，之后开机只尊重服务本身的启用/禁用状态。
+// 靠 stamp 文件区分：/var/lib/xwlightos/touch-bypass-first-boot，内容
+// 为 bypass 或 kernel；LiveCD 的 /var 不持久，每次开机都没有 stamp，
+// 所以每次都跑观测；装好的系统首次启动跑完就建 stamp，之后开机跳过。
+// 无论观测结果是开启还是不开启，都建 stamp（决策已做过，不重复判断）。
+// 手动在设置里打开时 stamp 必已存在，立即开启、无 30 秒延迟；若 stamp
+// 是 kernel，手动开启的助手脚本先把它改写成 bypass（用户显式选择压过
+// 自动决策）。
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,6 +51,8 @@
 #include <errno.h>
 #include <dirent.h>
 #include <time.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <linux/uinput.h>
 #include <linux/input.h>
 
@@ -47,6 +66,18 @@
    ≥150ms，60ms 不会合并两次有意点击；抬起延迟 60ms 低于约 100ms 的
    可察觉阈值。按下本身不延迟，响应零影响。 */
 #define CVTE_DEBOUNCE_MS 60
+/* 第 16 轮：首次启动观测窗口（毫秒）。开机后 30 秒内没有任何内核触摸
+   事件，才自动开启兜底。出货值 30 秒；测试时 bypass_decision() 的
+   observe_ms 参数可传短值。 */
+#define CVTE_OBSERVE_WINDOW_MS 30000
+/* 第 16 轮：首次启动决策 stamp。内容 bypass = 兜底已判需要（之后开机
+   直接开启，不再观测）；kernel = 内核驱动已判能用（之后开机直接退出，
+   不开启）。LiveCD 的 /var 不持久，每次开机都没有 stamp，所以每次都
+   跑观测；装好的系统首次启动跑完就建 stamp，之后开机跳过。 */
+#define CVTE_FIRST_BOOT_STAMP "/var/lib/xwlightos/touch-bypass-first-boot"
+/* 观测轮询间隔（毫秒）：200ms 足够密（触摸事件不会 200ms 内来又走），
+   又不会让观测期的 CPU 空转有存在感。 */
+#define CVTE_OBSERVE_POLL_MS 200
 
 struct touch_state {
     /* 每槽当前占用的设备接触编号，-1 = 空槽。tracking ID 用设备编号原值。 */
@@ -65,17 +96,17 @@ static void touch_state_init(struct touch_state *st)
     }
 }
 
-/* 单调时钟毫秒（防抖与守卫用；不受系统时间调整影响）。
-   只在真实 main() 里用；测试构建（CVTE_TOUCH_TEST）用测试注入的假时钟，
-   故包进 #ifndef，否则 -Werror 下 unused-function 会让测试架编译红灯。 */
-#ifndef CVTE_TOUCH_TEST
+/* 单调时钟毫秒（防抖与首次启动观测用；不受系统时间调整影响）。
+   第 16 轮起测试构建也用它（观测函数直接调 now_ms 判截止时间，
+   测试传短窗口即可），故不再包进 #ifndef；两个构建里都有调用方，
+   -Werror 下不会 unused-function。解码/防抖测试仍用测试注入的
+   假时钟（process_report2/flush_pending_releases 的 now 参数）。 */
 static long now_ms(void)
 {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
-#endif
 
 #ifndef CVTE_TOUCH_TEST
 void emit(int fd, int type, int code, int val) {
@@ -223,11 +254,14 @@ static int flush_pending_releases(int uinput_fd, struct touch_state *st,
     return 1;
 }
 
-/* 第 12 轮内核守卫：找同一 HID 设备下内核驱动的 MT 触摸节点。
-   扫描 /sys/bus/hid/devices/ 找 1FF7:0F26 设备，再进其 input/input*
-   找 event* 节点，用 EVIOCGBIT 甄别带 ABS_MT_SLOT 能力的节点（只认
-   触摸节点，避免把鼠标/笔节点误认）。返回已打开的 fd（O_RDONLY |
-   O_NONBLOCK），找不到返回 -1（守卫不激活，兜底照常跑）。 */
+/* 第 12 轮由内核守卫引入，第 16 轮起只供首次启动观测用：找同一 HID
+   设备下内核驱动的 MT 触摸节点。扫描 /sys/bus/hid/devices/ 找
+   1FF7:0F26 设备，再进其 input/input* 找 event* 节点，用 EVIOCGBIT
+   甄别带 ABS_MT_SLOT 能力的节点（只认触摸节点，避免把鼠标/笔节点
+   误认）。返回已打开的 fd（O_RDONLY | O_NONBLOCK），找不到返回 -1
+   （观测期内可重试；30 秒都找不到按“无内核触摸输入”处理）。
+   注意：只读打开不抢事件——evdev 向所有打开的 fd 广播，GNOME/
+   libinput 照常收到触摸事件。 */
 int find_kernel_touch_evdev() {
     DIR *dir, *idir, *edir;
     struct dirent *ent, *ient, *eent;
@@ -281,10 +315,13 @@ int find_kernel_touch_evdev() {
     return -1;
 }
 
-/* 第 12 轮内核守卫：从内核 MT 节点 fd 非阻塞读事件。读到 MT 触摸事件
-   （ABS_MT_* 或 BTN_TOUCH）返回 1 = 内核驱动开始出触摸事件了，兜底应让路。
-   笔事件（ABS_X/Y、BTN_TOOL_PEN）与非触摸事件不算。无事件返回 0。
-   读到的数据全部排空，避免旧事件堆积。fd<0 时返回 0。 */
+/* 第 12 轮由内核守卫引入，第 16 轮起只供首次启动观测用：从内核 MT
+   节点 fd 非阻塞读事件。读到 MT 触摸事件（ABS_MT_* 或 BTN_TOUCH）
+   返回 1 = 内核驱动能出触摸事件。笔事件（ABS_X/Y、BTN_TOOL_PEN）
+   与非触摸事件不算。无事件返回 0。读到的数据全部排空，避免旧事件
+   堆积。fd<0 时返回 0。读出错（errno 非 EAGAIN，如节点被 rebind
+   销毁）时返回 -1（若本轮已读到事件则仍返回 1），调用方据此重找
+   节点。 */
 int kernel_touch_event_seen(int fd)
 {
     struct input_event ev;
@@ -295,8 +332,12 @@ int kernel_touch_event_seen(int fd)
         return 0;
     for (;;) {
         n = read(fd, &ev, sizeof(ev));
-        if (n < 0)
-            break;
+        if (n < 0) {
+            if (errno == EAGAIN)
+                break;
+            /* 非 EAGAIN 的读错：fd 已死。已读到事件则算见过。 */
+            return seen ? 1 : -1;
+        }
         if (n != (ssize_t)sizeof(ev))
             break;
         if (ev.type == EV_ABS &&
@@ -310,6 +351,145 @@ int kernel_touch_event_seen(int fd)
             seen = 1;
     }
     return seen;
+}
+
+/* 第 16 轮：读首次启动决策 stamp。1 = bypass（兜底已判需要），
+   0 = kernel（内核驱动已判能用），-1 = 无 stamp / 读失败 / 内容非法。 */
+static int read_bypass_stamp(const char *stamp_path)
+{
+    FILE *f = fopen(stamp_path, "r");
+    char line[32];
+    int r = -1;
+
+    if (!f)
+        return -1;
+    if (fgets(line, sizeof(line), f)) {
+        line[strcspn(line, "\r\n")] = '\0';
+        if (strcmp(line, "bypass") == 0)
+            r = 1;
+        else if (strcmp(line, "kernel") == 0)
+            r = 0;
+    }
+    fclose(f);
+    return r;
+}
+
+/* 第 16 轮：写首次启动决策 stamp（decision 为 "bypass" 或 "kernel"）。
+   返回 0 = 写好，-1 = 失败（调用方按“无 stamp”继续，下次开机重判；
+   失败不影响本次决策本身）。父目录不存在则逐级建（mkdir -p；只建
+   一级不够——/var/lib/xwlightos 若整条不存在，一级 mkdir 会失败，
+   本地先验 round16 用例 1 实测抓到过）。 */
+static int write_bypass_stamp(const char *stamp_path, const char *decision)
+{
+    FILE *f;
+    const char *slash = strrchr(stamp_path, '/');
+
+    if (slash && slash != stamp_path) {
+        char dirbuf[512];
+        size_t len = (size_t)(slash - stamp_path);
+        size_t i;
+        if (len < sizeof(dirbuf)) {
+            memcpy(dirbuf, stamp_path, len);
+            dirbuf[len] = '\0';
+            for (i = 1; i < len; i++) {
+                if (dirbuf[i] == '/') {
+                    dirbuf[i] = '\0';
+                    mkdir(dirbuf, 0755); /* 已存在则忽略。 */
+                    dirbuf[i] = '/';
+                }
+            }
+            mkdir(dirbuf, 0755); /* 已存在则忽略。 */
+        }
+    }
+    f = fopen(stamp_path, "w");
+    if (!f)
+        return -1;
+    if (fprintf(f, "%s\n", decision) < 0) {
+        fclose(f);
+        return -1;
+    }
+    if (fclose(f) != 0)
+        return -1;
+    return 0;
+}
+
+/* 第 16 轮：在已打开的内核 MT 节点 fd 上观测到 deadline_ms（单调时钟
+   毫秒）为止。返回 1 = 读到内核触摸事件，0 = 到时无事件，
+   -1 = fd 出错（调用方应重找节点）。 */
+static int observe_kernel_fd(int fd, long deadline_ms)
+{
+    for (;;) {
+        int r = kernel_touch_event_seen(fd);
+        if (r != 0)
+            return r; /* 1 = 见过事件；-1 = fd 已死。 */
+        if (now_ms() >= deadline_ms)
+            return 0;
+        usleep(CVTE_OBSERVE_POLL_MS * 1000);
+    }
+}
+
+/* 第 16 轮首次启动决策。返回 1 = 开启兜底，0 = 不开启（内核驱动能用）。
+   stamp_path：决策 stamp 路径；observe_ms：无 stamp 时的观测窗口毫秒
+   （出货值 CVTE_OBSERVE_WINDOW_MS，测试可传短值）；inject_fd：测试注入
+   （>=0 时当作内核节点 fd 用，不扫 sysfs；生产传 -1）。
+   逻辑：stamp 为 bypass → 立即返回 1；为 kernel → 立即返回 0；
+   无 stamp/非法 → 观测 observe_ms：读到内核触摸事件 → 写 kernel、
+   返回 0；到时无事件（或节点始终未出现）→ 写 bypass、返回 1。
+   节点中途被重建（fd 出错）时关闭重找，窗口继续计时。 */
+int bypass_decision(const char *stamp_path, int observe_ms, int inject_fd)
+{
+    int r = read_bypass_stamp(stamp_path);
+    long deadline;
+    int kfd = -1;
+    int own_fd = 0;
+
+    if (r == 1)
+        return 1;
+    if (r == 0)
+        return 0;
+    deadline = now_ms() + observe_ms;
+    if (inject_fd >= 0) {
+        kfd = inject_fd;
+        own_fd = 0;
+    }
+    for (;;) {
+        int seen;
+        if (kfd < 0) {
+            kfd = find_kernel_touch_evdev();
+            own_fd = 1;
+            if (kfd < 0) {
+                /* 节点尚未出现（驱动绑定晚于服务启动）：等到截止。 */
+                if (now_ms() >= deadline)
+                    break;
+                usleep(CVTE_OBSERVE_POLL_MS * 1000);
+                continue;
+            }
+        }
+        seen = observe_kernel_fd(kfd, deadline);
+        if (seen == 1) {
+            if (own_fd)
+                close(kfd);
+            write_bypass_stamp(stamp_path, "kernel");
+            return 0;
+        }
+        if (seen == -1) {
+            /* fd 已死（节点被重建）：关闭重找，窗口继续。 */
+            if (own_fd)
+                close(kfd);
+            kfd = -1;
+            own_fd = 0;
+            if (inject_fd >= 0)
+                break; /* 注入的 fd 已死，测试里不再重找。 */
+            if (now_ms() >= deadline)
+                break;
+            continue;
+        }
+        break; /* seen == 0：到时无事件。 */
+    }
+    if (kfd >= 0 && own_fd)
+        close(kfd);
+    write_bypass_stamp(stamp_path, "bypass");
+    return 1;
 }
 
 // 自动寻找希沃触屏 (VID: 1ff7, PID: 0f26) 的 hidraw 节点
@@ -351,7 +531,7 @@ int find_hidraw_device() {
 
 #ifndef CVTE_TOUCH_TEST
 int main() {
-    int hid_fd, uinput_fd, guard_fd = -1;
+    int hid_fd, uinput_fd;
     unsigned char buf[128];
     struct touch_state st;
 
@@ -365,12 +545,22 @@ int main() {
         printf("等待 CVTE Touch Device 插入...\n");
         sleep(2);
     }
-    /* 第 12 轮内核守卫：找内核 MT 触摸节点（找不到则守卫不激活）。 */
-    guard_fd = find_kernel_touch_evdev();
-    if (guard_fd >= 0)
-        printf("内核触摸节点守卫已就绪\n");
-    else
-        printf("未找到内核触摸节点，守卫不激活\n");
+    /* 第 16 轮首次启动决策：stamp 已判过则直接按决策走；否则观测
+       30 秒——期间有内核触摸事件说明内核驱动能用，不开启兜底，
+       退出 0（Restart=on-failure 不会重启退出 0 的进程，服务保持
+       未运行状态）。观测不到事件才开启。决策结果写进 stamp，下次
+       开机不再重复判断（LiveCD 的 /var 不持久，每次开机重判）。 */
+    if (!bypass_decision(CVTE_FIRST_BOOT_STAMP, CVTE_OBSERVE_WINDOW_MS, -1)) {
+        printf("内核触摸链路已有事件，兜底不需要，退出\n");
+        /* 顺带把服务禁用掉，使设置里的开关状态与实际一致（尽力而为；
+           失败也不影响本次退出——下次开机 stamp 仍会让本进程直接退出）。 */
+        {
+            int dis_rc = system("systemctl disable xwlightos-touch-bypass.service >/dev/null 2>&1");
+            (void)dis_rc;
+        }
+        close(hid_fd);
+        return 0;
+    }
 
     uinput_fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
     if (uinput_fd < 0) {
@@ -422,6 +612,10 @@ int main() {
         (void)notify_rc;
     }
 
+    /* 第 16 轮：内核守卫已删除（用户 2026-11-14 裁决）。兜底一旦开启
+       就一直开着，不再监视内核节点、不再自动让路；主循环只转发
+       hidraw 报告。服务停止时 systemd 发 SIGTERM，本进程随之结束，
+       uinput fd 关闭后内核自动销毁虚拟设备。 */
     while (1) {
         int n = read(hid_fd, buf, sizeof(buf));
 
@@ -442,18 +636,11 @@ int main() {
             process_report2(buf, n, uinput_fd, &st, now_ms());
             flush_pending_releases(uinput_fd, &st, now_ms());
         }
-
-        /* 第 12 轮内核守卫：内核驱动开始出触摸事件了，兜底让路——
-           销毁虚拟设备、干净退出，之后触摸全走内核，不产生双份输入。 */
-        if (kernel_touch_event_seen(guard_fd)) {
-            printf("内核触摸链路已出事件，兜底让路，退出\n");
-            break;
-        }
     }
 
+    /* 正常情况下主循环不退出；以下清理只为完整性（服务停止时进程
+       被 SIGTERM 结束，uinput 设备由内核在 fd 关闭时自动销毁）。 */
     close(hid_fd);
-    if (guard_fd >= 0)
-        close(guard_fd);
     ioctl(uinput_fd, UI_DEV_DESTROY);
     close(uinput_fd);
     return 0;

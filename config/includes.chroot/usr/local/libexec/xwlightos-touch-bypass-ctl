@@ -1,0 +1,83 @@
+#!/bin/sh
+# XWLightOS: 触屏兜底服务的开关助手（设置程序经 pkexec 调）。
+#
+# 第 16 轮（用户 2026-11-14：设置里关闭后要弹确认窗、10 秒无操作自动
+# 恢复，和 Windows 改分辨率同一个策略，防关了之后触屏全失灵点不回来）。
+#
+# on：把首次启动决策 stamp 改写成 bypass（用户显式选择压过自动决策：
+# 若某次开机内核曾被判能用，stamp 是 kernel，不改写的话服务启动后
+# cvte_touch 会直接退出、手动开启等于没开），再 systemctl enable --now。
+# off：systemctl disable --now（失败则返回非零，设置程序按现有模式
+# 回弹开关、不弹确认窗）；成功后立即 fork 一个脱离的后台等待者，
+# 助手本身马上返回 0，设置程序随即弹确认窗。
+#
+# 等待者（只在 off 时 fork）：在 /run/xwlightos-touch-bypass-decision/
+# 里等决策文件，最长 10 秒（出货值；XWLIGHTOS_TOUCH_BYPASS_OFF_TIMEOUT
+# 可覆盖，仅供本地先验缩短用）。keep 文件出现 → 保持关闭，退出；
+# restore 文件出现 → 立即 systemctl enable --now 恢复，退出；
+# 10 秒到时两个文件都没出现 → 自动 systemctl enable --now 恢复，退出。
+# 恢复动作只做 systemctl，不碰设置程序的界面；界面同步由设置程序在
+# 确认窗关闭后轮询 service_enabled() 完成。
+#
+# 为什么等待者要在 root 助手里、不在设置程序里：恢复需要 root；若由
+# 设置程序在倒计时到时再调一次 pkexec，会弹第二次授权框，用户不理
+# 就恢复失败，防锁死落空。一次 pkexec 完成“关闭 + 10 秒等待 + 按需
+# 恢复”全程，只授权一次。即使用户在确认窗打开时关掉设置窗口，
+# 等待者仍在（已脱离），10 秒到时照样恢复。
+set -eu
+
+UNIT=xwlightos-touch-bypass.service
+STAMP=/var/lib/xwlightos/touch-bypass-first-boot
+DECISION_DIR=/run/xwlightos-touch-bypass-decision
+KEEP_FILE=$DECISION_DIR/keep
+RESTORE_FILE=$DECISION_DIR/restore
+# 出货值 10 秒；测试口只供本地先验缩短倒计时，生产环境不设。
+TIMEOUT_SEC=${XWLIGHTOS_TOUCH_BYPASS_OFF_TIMEOUT:-10}
+
+case "${1:-}" in
+    on)
+        # 显式开启压过自动决策：stamp 写成 bypass，否则 stamp 为
+        # kernel 时 cvte_touch 启动后直接退出，手动开启等于没开。
+        mkdir -p /var/lib/xwlightos
+        printf 'bypass\n' > "$STAMP" || {
+            echo 'XWLightOS: cannot write touch bypass stamp' >&2
+            exit 1
+        }
+        systemctl enable --now "$UNIT"
+        ;;
+    off)
+        systemctl disable --now "$UNIT" || {
+            echo 'XWLightOS: failed to stop the touch bypass service' >&2
+            exit 1
+        }
+        # 决策目录 1777：设置程序以用户身份在里面建 keep/restore 文件。
+        mkdir -p "$DECISION_DIR"
+        chmod 1777 "$DECISION_DIR"
+        rm -f "$KEEP_FILE" "$RESTORE_FILE"
+        # 立即脱离后台等待者：父进程（pkexec 调的本脚本）马上返回，
+        # 设置程序随即弹确认窗；等待者被 init 收养，输入输出全部脱离。
+        (
+            i=0
+            # 每 0.5 秒查一次决策文件，最长 TIMEOUT_SEC 秒。
+            while [ "$i" -lt $((TIMEOUT_SEC * 2)) ]; do
+                if [ -f "$KEEP_FILE" ]; then
+                    exit 0
+                fi
+                if [ -f "$RESTORE_FILE" ]; then
+                    systemctl enable --now "$UNIT" >/dev/null 2>&1 || true
+                    exit 0
+                fi
+                sleep 0.5
+                i=$((i + 1))
+            done
+            # 超时无决策：自动恢复开启（防锁死的核心）。
+            if [ ! -f "$KEEP_FILE" ]; then
+                systemctl enable --now "$UNIT" >/dev/null 2>&1 || true
+            fi
+        ) </dev/null >/dev/null 2>&1 &
+        ;;
+    *)
+        echo "usage: $0 on|off" >&2
+        exit 1
+        ;;
+esac
