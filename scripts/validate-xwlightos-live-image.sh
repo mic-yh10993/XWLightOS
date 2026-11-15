@@ -87,10 +87,15 @@ require_path() {
 # 全屏窗口已删，自启动入口与启动器残留即失败）。
 forbid_path() {
     local path="$1"
-    grep -q -E "(^|/)${path//./\\.}$" "$LIST" && {
+    # NB: must be an `if`, not `grep ... && { exit 1; }`. With `set -e` +
+    # the ERR trap, the `&&` form returns grep's 1 when the path is absent
+    # (the desired outcome) and the trap kills the script -- a false
+    # failure (run 83 died exactly this way at the first forbid_path call).
+    # The `if` form returns 0 when nothing matches.
+    if grep -q -E "(^|/)${path//./\\.}$" "$LIST"; then
         echo "forbidden path present in final squashfs: /$path" >&2
         exit 1
-    }
+    fi
 }
 
 cat_image_file() {
