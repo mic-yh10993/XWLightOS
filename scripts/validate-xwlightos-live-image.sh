@@ -2157,14 +2157,19 @@ grep -q '#F5F7FA' "$SHOW_QML" || {
     echo 'Calamares show.qml is not light-themed' >&2; exit 1; }
 if grep -q '#07162F' "$SHOW_QML"; then
     echo 'Calamares show.qml still has the dark #07162F background' >&2; exit 1; fi
-# 2 密码校验全去：users.conf 必须关掉字典检查并允许弱密码；nonempty
-# 在 3.3.14 里被忽略，出现即是误导性残留。
+# 2 密码校验全去（第 17 轮：整个 libpwquality 列表已删——回文/分数校验
+# 无开关可关，只有删列表才能全去；allowWeakPasswords 改为 false 以隐藏
+# "要求使用强密码。"复选框）。nonempty 在 3.3.14 里被忽略，出现即是误导性残留。
 USERS_CONF="$WORK/calamares-users.conf"
 cat_image_file 'etc/calamares/modules/users.conf' "$USERS_CONF"
-grep -q 'dictcheck=0' "$USERS_CONF" || {
-    echo 'Calamares users.conf lacks dictcheck=0 (any password would fail the dictionary check: no cracklib dictionary in the image)' >&2; exit 1; }
-grep -q 'allowWeakPasswords: true' "$USERS_CONF" || {
-    echo 'Calamares users.conf lacks allowWeakPasswords: true' >&2; exit 1; }
+if grep -q 'libpwquality' "$USERS_CONF"; then
+    echo 'Calamares users.conf still has libpwquality (palindrome/score checks would reject weak passwords)' >&2; exit 1; fi
+grep -q 'allowWeakPasswords: false' "$USERS_CONF" || {
+    echo 'Calamares users.conf lacks allowWeakPasswords: false (the strong-password checkbox would show)' >&2; exit 1; }
+grep -q 'minLength: -1' "$USERS_CONF" || {
+    echo 'Calamares users.conf lacks minLength: -1' >&2; exit 1; }
+grep -q 'maxLength: -1' "$USERS_CONF" || {
+    echo 'Calamares users.conf lacks maxLength: -1' >&2; exit 1; }
 if grep -q 'nonempty' "$USERS_CONF"; then
     echo 'Calamares users.conf still has nonempty (ignored in 3.3.14; stale)' >&2; exit 1; fi
 # 3 时区锁定：settings.conf 的 show/exec 序列里不得再有 locale，
