@@ -83,6 +83,16 @@ require_path() {
     }
 }
 
+# 反向断言：路径必须不存在于最终 squashfs（第 17 轮：触屏诊断
+# 全屏窗口已删，自启动入口与启动器残留即失败）。
+forbid_path() {
+    local path="$1"
+    grep -q -E "(^|/)${path//./\\.}$" "$LIST" && {
+        echo "forbidden path present in final squashfs: /$path" >&2
+        exit 1
+    }
+}
+
 cat_image_file() {
     local path="$1" output="$2"
     unsquashfs -cat "$FS" "$path" > "$output"
@@ -118,11 +128,12 @@ require_path 'etc/udev/rules.d/70-xwlightos-touch-bypass.rules'
 require_path 'etc/modules-load.d/xwlightos-touch-bypass.conf'
 # 第十一轮声音修法：snd_hda_intel 电源管理关闭文件必须进镜像。
 require_path 'etc/modprobe.d/snd-hda-no-power-save.conf'
-# 诊断版（Build 40 触屏诊断，1621 钩子）：开机自动弹窗的诊断脚本、
-# 启动器与桌面自启动入口必须进镜像。正式版确认根因后删除。
+# 诊断脚本（Build 40 触屏诊断，1621 钩子）：脚本本体必须进镜像
+# （能存日志，需要时手动跑）。第 17 轮用户 2026-11-15 已令删除
+# 开机自动弹最大化终端的入口：启动器与自启动入口必须不存在。
 require_path 'usr/local/sbin/xwlightos-touch-diag.sh'
-require_path 'usr/local/sbin/xwlightos-touch-diag-launch.sh'
-require_path 'etc/xdg/autostart/xwlightos-touch-diag.desktop'
+forbid_path 'usr/local/sbin/xwlightos-touch-diag-launch.sh'
+forbid_path 'etc/xdg/autostart/xwlightos-touch-diag.desktop'
 # 用户 2026-10-19 邮件：完善驱动（显卡/摄像头/声卡）。新增驱动包必须进镜像。
 # 显卡：Vulkan（mesa-vulkan-drivers）、VDPAU（mesa-vdpau-drivers）、
 # 老 Intel VA-API（i965-va-driver）、vainfo 诊断工具。

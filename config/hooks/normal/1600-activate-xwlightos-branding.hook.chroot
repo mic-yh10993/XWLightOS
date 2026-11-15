@@ -51,6 +51,44 @@ done
 unset _qt_plugin _qt_plugin_path _qt_plugin_missing
 echo "XWLightOS: Qt Wayland platform plugins present (qt6-wayland)"
 
+# Round 17 (preview-82: the install page's main area was blank white).
+# Calamares's slideshow Presentation.qml (Qt6) imports QtQuick.Window 2.0,
+# but the image did not ship that QML module; the user log shows
+# "module QtQuick.Window is not installed" and the whole slideshow
+# component fails to load. The module files live in
+# qml6-module-qtquick-window (Trixie Contents index); calamares does not
+# depend on it. Fail the build if the package or the module files are
+# missing, and statically resolve every QML import used by the slideshow
+# and show.qml so the next missing module is caught here, not by the user.
+for _qml_pkg in qml6-module-qtquick-window qml6-module-qtquick; do
+    dpkg -l "$_qml_pkg" 2>/dev/null | grep -q '^ii' || {
+        echo "XWLightOS: $_qml_pkg is not installed (Calamares slideshow would load blank)" >&2
+        exit 1
+    }
+done
+for _qml_file in /usr/lib/x86_64-linux-gnu/qt6/qml/QtQuick/Window/qmldir \
+                 /usr/lib/x86_64-linux-gnu/qt6/qml/QtQuick/Window/libquickwindowplugin.so \
+                 /usr/lib/x86_64-linux-gnu/qt6/qml/QtQuick/qmldir; do
+    [ -f "$_qml_file" ] || {
+        echo "XWLightOS: Qt6 QML module file missing: $_qml_file" >&2
+        exit 1
+    }
+done
+unset _qml_pkg
+for _qml_src in /usr/share/calamares/qml/calamares/slideshow/*.qml /etc/calamares/branding/xwlightos/show.qml; do
+    [ -f "$_qml_src" ] || continue
+    for _qml_import in $(grep -h -o -E '^import[[:space:]]+[A-Za-z0-9_.]+' "$_qml_src" 2>/dev/null | awk '{print $2}' | sort -u); do
+        _qml_path="$(printf '%s' "$_qml_import" | tr '.' '/')"
+        [ -f "/usr/lib/x86_64-linux-gnu/qt6/qml/$_qml_path/qmldir" ] || \
+        [ -f "/usr/share/calamares/qml/$_qml_path/qmldir" ] || {
+            echo "XWLightOS: QML import '$_qml_import' in $_qml_src has no qmldir (slideshow would fail to load)" >&2
+            exit 1
+        }
+    done
+done
+unset _qml_file _qml_src _qml_import _qml_path
+echo "XWLightOS: Calamares slideshow QML imports resolve (QtQuick.Window present)"
+
 # calamares-settings-debian supplies the tested Debian module sequence. Keep
 # that sequence but replace its selected branding component with XWLightOS.
 SETTINGS=/etc/calamares/settings.conf
@@ -119,6 +157,38 @@ EOF
 # password requirements change. `nonempty` is dropped: Calamares 3.3.14
 # ignores it ("nonempty check is ignored; use minLength: 1") and its schema
 # has no such key. minLength/maxLength -1 means "no check".
+# Round 17 (user 2026-11-15, "why so many restrictions"): round 15 only
+# disabled 1 of 4 password checks (dictionary). The rest cannot be switched
+# off by options at all, verified against Calamares 3.3.14
+# CheckPWQuality.cpp + libpwquality 1.4.x check.c/settings.c:
+#  - palindrome: NO option exists; password_check() rejects it
+#    unconditionally, before everything else ("The password is a palindrome").
+#  - minlen=0 is silently clamped to 6 (PWQ_BASE_MIN_LENGTH); short passwords
+#    still fail PWQ_ERROR_MIN_LENGTH and their score is computed against 6.
+#  - score < 40 is rejected (Calamares hardcodes the threshold; "abcdef" scores
+#    0, "abc123" scores 3). No option disables the score check.
+#  - allowWeakPasswords: true WITHOUT allowWeakPasswordsDefault leaves the
+#    "Require strong passwords." checkbox shown AND checked by default, so
+#    every remaining check still blocks (Config.cpp setConfigurationMap).
+# The only config-level way to remove them all is to delete the entire
+# `libpwquality:` list: with no options, add_check_libpwquality never runs,
+# the password check list is empty, passwordStatus() is always Valid (green
+# check, no warning text at all -- downgrading to Weak would leave the yellow
+# text on screen, which the user also rejects). allowWeakPasswords is set to
+# false so the "Require strong passwords." checkbox is hidden entirely (with
+# zero checks it has no function; the checkbox text itself is one of the
+# complained-about restrictions). Empty passwords are also accepted, matching
+# "remove ALL restrictions". Password-mismatch still blocks (typo protection,
+# not a restriction, no config switch anyway).
+# Hostname/username limits are NOT configurable: HOSTNAME_MIN_LENGTH=2,
+# HOSTNAME_MAX_LENGTH=63, USERNAME_MAX_LENGTH=31 and both regexes are
+# hardcoded in Config.cpp; users.schema.yaml has no length/regex keys
+# (forbidden_names can only ADD banned names). A 1-character hostname still
+# shows "too short" -- the only way to allow it is patching Calamares source
+# and rebuilding the deb, which is disproportionate for a 1-char edge case
+# (the field auto-suggests from the user's name, so normal use never hits it).
+# The "at least eight characters" text is a static tooltip in the .ui file,
+# not a check; it can only be removed by rebuilding Calamares.
 cat > /etc/calamares/modules/users.conf <<'EOF'
 ---
 userGroup:       users
@@ -137,20 +207,30 @@ defaultGroups:
 autologinGroup:  autologin
 sudoersGroup:    sudo
 setRootPassword: false
-allowWeakPasswords: true
+allowWeakPasswords: false
 
 passwordRequirements:
     minLength: -1  # Password at least this many characters (-1: no check)
     maxLength: -1  # Password at most this many characters (-1: no check)
-    libpwquality:
-        - minlen=0
-        - minclass=0
-        - dictcheck=0
-        - usercheck=0
-        - gecoscheck=0
 EOF
-grep -q 'dictcheck=0' /etc/calamares/modules/users.conf || {
-    echo "XWLightOS: users.conf lost dictcheck=0, installer passwords would still be rejected" >&2
+# Round 17 gate: the libpwquality list must be GONE (any option re-enables the
+# whole libpwquality check, including the unswitchable palindrome/score rules);
+# minLength/maxLength must stay -1; allowWeakPasswords must be false so the
+# "Require strong passwords." checkbox is hidden.
+if grep -q 'libpwquality' /etc/calamares/modules/users.conf; then
+    echo "XWLightOS: users.conf contains libpwquality (palindrome/score checks would reject weak passwords)" >&2
+    exit 1
+fi
+grep -q 'minLength: -1' /etc/calamares/modules/users.conf || {
+    echo "XWLightOS: users.conf lost minLength: -1" >&2
+    exit 1
+}
+grep -q 'maxLength: -1' /etc/calamares/modules/users.conf || {
+    echo "XWLightOS: users.conf lost maxLength: -1" >&2
+    exit 1
+}
+grep -q 'allowWeakPasswords: false' /etc/calamares/modules/users.conf || {
+    echo "XWLightOS: users.conf lost allowWeakPasswords: false (the strong-password checkbox would show)" >&2
     exit 1
 }
 

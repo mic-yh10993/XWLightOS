@@ -80,6 +80,10 @@ if command -v dconf >/dev/null 2>&1; then
         echo 'XWLightOS: dconf update failed' >&2
         exit 1
     }
+    # 第 17 轮（bug A 同款）：dconf 编出的 db 权限跟随 umask（本地实测
+    # 022→644、027→640、007→660），不显式 chmod 则限制性 umask 下普通
+    # 用户读不了系统默认值。显式 chmod 644（与 postinstall 同款）。
+    chmod 644 /etc/dconf/db/local /etc/dconf/db/ibus /etc/dconf/db/gdm 2>/dev/null || true
 fi
 
 # Compile the GSettings schema overrides (dash-to-dock defaults are forced

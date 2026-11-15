@@ -353,16 +353,13 @@ if [ -f "$EASICAMERA_LIB" ]; then
 fi
 unset EASICAMERA_LIB _gtk2lib
 
-# --- Seewo whiteboard daemon: ensure it is enabled at boot ---
-if [ -f /usr/lib/systemd/system/com.cvte.maxhub.alfred.service ] || \
-   [ -f /lib/systemd/system/com.cvte.maxhub.alfred.service ]; then
-    mkdir -p /etc/systemd/system/multi-user.target.wants
-    ln -sfn /usr/lib/systemd/system/com.cvte.maxhub.alfred.service \
-        /etc/systemd/system/multi-user.target.wants/com.cvte.maxhub.alfred.service 2>/dev/null || \
-    ln -sfn /lib/systemd/system/com.cvte.maxhub.alfred.service \
-        /etc/systemd/system/multi-user.target.wants/com.cvte.maxhub.alfred.service 2>/dev/null || true
-    echo "XWLightOS: Seewo whiteboard daemon enabled"
-fi
+# --- Seewo whiteboard daemon (alfred) ---
+# 第 17 轮删除：这段启用代码是死代码——条件只查 /usr/lib 与 /lib，
+# 而 alfred 的 unit 文件实际在 /etc/systemd/system（厂商 postinst 把
+# 白板包内捆的 alfred 目录拷到 / 并 systemctl enable，preview-82
+# 构建日志第 9132 行实证 default.target.wants 软链已建）。条件恒为假，
+# 从未执行过。启用动作现统一由 1660 钩子做全量枚举（第 17 轮起也扫
+# /etc/systemd/system，alfred 有硬门禁兜底），此处不再重复单点启用。
 
 # --- Seewo Terminal Manager daemon ---
 # 历史写法只认 /usr/lib/systemd/system 一个路径、找不到就静默——真机反馈

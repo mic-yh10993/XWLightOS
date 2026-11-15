@@ -30,7 +30,11 @@ install -d -m 0755 /etc/xwlightos
     echo "XWLightOS: /etc/environment missing, com.seewo.terminalmanager.service can never start (EnvironmentFile without dash prefix)" >&2
     exit 1
 }
-for base in /usr/lib/systemd/system /lib/systemd/system; do
+# 第 17 轮：加扫 /etc/systemd/system——alfred 的 unit 文件就在那里（厂商
+# postinst 从白板包内捆的 alfred 目录拷过去），之前只扫 /usr/lib 与 /lib，
+# alfred 从未进过清单、也从未被门禁兜底过。masked 的更新类 unit 是指向
+# /dev/null 的软链，[ -f ] 跟随链接后不是常规文件，会被自动跳过。
+for base in /usr/lib/systemd/system /lib/systemd/system /etc/systemd/system; do
     [ -d "$base" ] || continue
     for unit in "$base"/*seewo* "$base"/*cvte* "$base"/*maxhub* \
                 "$base"/*udi* "$base"/*Udi* "$base"/*easi*; do
@@ -53,7 +57,7 @@ while IFS= read -r name; do
         *update*|*upgrade*|*ota*) echo "XWLightOS: not enabling updater unit $name"; continue ;;
     esac
     src=""
-    for base in /usr/lib/systemd/system /lib/systemd/system; do
+    for base in /usr/lib/systemd/system /lib/systemd/system /etc/systemd/system; do
         [ -f "$base/$name" ] && { src="$base/$name"; break; }
     done
     [ -n "$src" ] || continue
@@ -72,6 +76,21 @@ if grep -qx 'com.seewo.terminalmanager.service' "$INV"; then
     }
 else
     echo "XWLightOS: WARNING: com.seewo.terminalmanager.service NOT found in image (manager backend cannot start)" >&2
+fi
+
+# 第 17 轮：alfred（白板守护进程）硬门禁，与管家同款。alfred 的 unit 在
+# /etc/systemd/system，WantedBy=default.target，厂商 postinst 已建
+# default.target.wants 软链；上面循环又直连了 multi-user.target.wants。
+# 任一 wants 软链在即算启用，两者皆无则构建失败。
+if grep -qx 'com.cvte.maxhub.alfred.service' "$INV"; then
+    echo "XWLightOS: Seewo whiteboard daemon (alfred) unit present and enabled"
+    [ -L /etc/systemd/system/multi-user.target.wants/com.cvte.maxhub.alfred.service ] || \
+    [ -L /etc/systemd/system/default.target.wants/com.cvte.maxhub.alfred.service ] || {
+        echo "XWLightOS: alfred unit found but not linked into any target.wants" >&2
+        exit 1
+    }
+else
+    echo "XWLightOS: WARNING: com.cvte.maxhub.alfred.service NOT found in image (whiteboard daemon cannot start)" >&2
 fi
 # 用户 2026-10-25 09:01 指令：希沃侧边栏与 Udi 组件暂时删除。
 # 1550 钩子已跳过这两个厂商包的安装；这里不再接线、也不再为

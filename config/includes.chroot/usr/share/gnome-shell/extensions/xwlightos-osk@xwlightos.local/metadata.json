@@ -1,0 +1,1 @@
+{"description":"屏幕键盘助手：顶栏键盘按钮点一下弹键盘、再点收起（Qt 应用在 Wayland 下触发不了系统自动弹出时手动召唤）；并尝试在输入框聚焦时自动弹键盘。","name":"XWLightOS OSK Helper","shell-version":["48"],"url":"https://github.com/mic-yh10993/XWLightOS","uuid":"xwlightos-osk@xwlightos.local","version":1}

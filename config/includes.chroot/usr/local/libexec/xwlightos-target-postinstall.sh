@@ -6,8 +6,11 @@ set -eu
 TARGET=/
 
 # The Live image starts a temporary `user` session directly. The installed
-# system must never preserve that identity or bypass authentication: the GDM
-# login screen authenticates the Calamares-created account.
+# system must never preserve that identity: the Live `user` account and its
+# autologin are removed here. The Calamares-created account is unaffected:
+# if the user checked automatic login in the installer, the displaymanager
+# module's autologin for that account is preserved (round 17: the old code
+# deleted every AutomaticLogin line and silently voided the user's choice).
 if command -v systemctl >/dev/null 2>&1; then
     systemctl disable xwlightos-live-session-init.service >/dev/null 2>&1 || true
 fi
@@ -45,11 +48,24 @@ rm -rf /etc/lightdm /etc/systemd/system/lightdm.service.d
 # passwd entry happen to be visible while Calamares runs. Clear the image's
 # Live session file first, then require the account created by Calamares.
 rm -f /etc/xwlightos/session-user
-# Installed systems use the GDM login screen: drop the Live autologin.
+# 第 17 轮（用户 2026-11-15：勾了自动登录，装完登录界面还是要密码）：
+# 根因：旧写法删掉了 daemon.conf 里 ALL 自动登录配置，包括 Calamares
+# displaymanager 模块刚给新用户写的（用户勾了自动登录才写），用户勾选
+# 被静默作废。这里只删 Live 用户（user）的自动登录，保留新用户的；
+# 删完后若已无 AutomaticLogin 行，再把 AutomaticLoginEnable=True 也删掉
+# （否则悬空：Enable=true 却无用户，GDM 无用户可自动登录；Enable=False
+# 是 displaymanager 明确写的"不自动登录"，不动它）。
+# 注：displaymanager 模块在写新用户配置前已先删掉文件里所有旧的
+# AutomaticLogin 行（Calamares 3.3.14 main.py 第 422-425 行），Live 行
+# 在它那一步已被清掉；这里的 sed 只是保险（防 displaymanager 未跑的
+# 极端情况），正常流程下它是空操作。不要再扩大删除范围。
 # 注意：Debian 的 gdm3 只读 /etc/gdm3/daemon.conf（见该文件头注释的根因说明），
 # 不要改回 custom.conf，那个文件 GDM 根本不读。
 if [ -f /etc/gdm3/daemon.conf ]; then
-    sed -i '/^AutomaticLoginEnable=/d; /^AutomaticLogin=/d' /etc/gdm3/daemon.conf
+    sed -i -E '/^AutomaticLogin[[:space:]]*=[[:space:]]*user[[:space:]]*$/d' /etc/gdm3/daemon.conf
+    if ! grep -q -E '^AutomaticLogin[[:space:]]*=' /etc/gdm3/daemon.conf; then
+        sed -i -E '/^AutomaticLoginEnable[[:space:]]*=[[:space:]]*[Tt]rue[[:space:]]*$/d' /etc/gdm3/daemon.conf
+    fi
 fi
 # 时区锁定 UTC+8、硬件时钟按 Windows 方式存本地时间（第 13 轮，用户
 # 2026-11-11 邮件第 4 项；与 1200 钩子同款三行，安装后的系统也要钉
@@ -59,6 +75,39 @@ if [ -f /usr/share/zoneinfo/Asia/Shanghai ]; then
     printf '%s\n' 'Asia/Shanghai' > /etc/timezone
     ln -sfn /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
     printf '%s\n' '0.0 0 0.0' '0' 'LOCAL' > /etc/adjtime
+    # 第 17 轮（用户 2026-11-15：装好的系统时钟慢 8 小时，顶栏 03:21 而
+    # LiveCD 是 11:16）：只写 adjtime=LOCAL 是不够的。Calamares 的 hwclock
+    # 模块（跑在 postinstall 之前）已用 hwclock --systohc --utc 把硬件时
+    # 钟写成了 UTC；postinstall 若只改 adjtime、不重写硬件时钟，装好的系
+    # 统就会把 UTC 值当本地时间读，整整错 8 小时。这里把当前系统时间（安
+    # 装时的 LiveCD 时间，是对的北京时间）以本地时间写回硬件时钟，与
+    # LOCAL 一致；真机上 Windows 也是本地时间硬件时钟，双引导一致。
+    # hwclock 在目标 chroot 里可用（hwclock 模块就是在目标里跑的，见
+    # Calamares 3.3.14 src/modules/hwclock/main.py 的 target_env_call）。
+    # 时钟问题不值得让整个安装失败：写失败只大声警告，不退出。
+    # 写成功后回读断言：硬件时钟读数应与系统时间一致（秒级误差内）。
+    # 若回读差 8 小时，说明写没生效（虚拟机 hypervisor 锁了 RTC 等），
+    # 装好的系统仍会慢 8 小时——大声警告，附手动修复命令。
+    if command -v hwclock >/dev/null 2>&1; then
+        if hwclock --systohc --localtime; then
+            _rtc_epoch="$(hwclock --show 2>/dev/null | sed 's/\.[0-9]*//' | xargs -I{} date -d '{}' +%s 2>/dev/null)" || _rtc_epoch=""
+            _sys_epoch="$(date +%s)"
+            if [ -n "$_rtc_epoch" ]; then
+                _rtc_diff=$((_sys_epoch - _rtc_epoch))
+                [ "$_rtc_diff" -lt 0 ] && _rtc_diff=$((-_rtc_diff))
+                if [ "$_rtc_diff" -gt 120 ]; then
+                    echo "XWLightOS postinstall: WARNING: hardware clock read-back differs from system time by ${_rtc_diff}s after hwclock --systohc --localtime; the installed system may show the wrong time (fix after first boot: sudo hwclock --systohc --localtime)" >&2
+                fi
+            else
+                echo "XWLightOS postinstall: WARNING: could not read back the hardware clock after writing it (hwclock --show failed); the installed system time is unverified" >&2
+            fi
+            unset _rtc_epoch _sys_epoch _rtc_diff
+        else
+            echo "XWLightOS postinstall: WARNING: hwclock --systohc --localtime failed; the installed system may show UTC time instead of Beijing time (check /etc/adjtime and the RTC after first boot)" >&2
+        fi
+    else
+        echo "XWLightOS postinstall: WARNING: hwclock is not available in the target; the hardware clock was left in UTC while /etc/adjtime says LOCAL, so the installed system may show UTC time" >&2
+    fi
 else
     echo 'XWLightOS: tzdata is missing /usr/share/zoneinfo/Asia/Shanghai in the target (timezone left as-is)' >&2
 fi
@@ -120,6 +169,70 @@ fi
 install -Dm644 /dev/stdin /etc/xwlightos/session-user <<EOF
 $installed_account
 EOF
+# 第 17 轮（用户 2026-11-15：装好的系统上管家后端 plugin_core 起不来，
+# LiveCD 正常）：根因是安装账号的 UID 不是 1000。
+# 链条（已逐项实核，见评估卡 §4）：Calamares 的 users 模块调 useradd
+# 时不带 -u（3.3.14 源码 CreateUserJob.cpp:63-76 与实包 .so 双核：
+# argv 只有 -m -U -s -c -K，无 "-u"），useradd 取第一个空闲 UID；
+# unpackfs 先把 Live 的
+# /etc/passwd（user 占 1000）拷进目标，安装账号于是拿到 1001；上面
+# 刚把 user 删掉，1000 空出来了，但安装账号仍是 1001。厂商
+# hugo_launcher 的 GetActiveUser 硬编码查 passwd 里 UID 1000——本地
+# 沙箱实测：无 1000 用户时每 5 秒重试、每次都跳过全部 4 个守护进程
+# （plugin_core、plugin_ability、remote_control、media_capture），且
+# 只记文件日志 /var/cache/seewo/hugo_launcher/log/ 下、不进 journal；
+# 有 1000 用户时即使无会话也能拉起。所以装好的系统上 plugin_core
+# 永不起、8066 无监听。修法：把安装账号迁到 UID 1000（私有组同步
+# 迁到 GID 1000，家目录与邮件 spool 改属主），与 Live 一致。自动
+# 登录修法（§1）与此无关，修不好 plugin_core；登录状态也无关
+# （GetActiveUser 只查 passwd，不查会话）。
+_installed_uid="$(id -u "$installed_account" 2>/dev/null || echo "")"
+if [ -n "$_installed_uid" ] && [ "$_installed_uid" != "1000" ]; then
+    if getent passwd 1000 >/dev/null 2>&1; then
+        echo "XWLightOS: WARNING: UID 1000 is already taken by $(getent passwd 1000 | cut -d: -f1); leaving $installed_account at UID $_installed_uid (Seewo manager backend requires UID 1000 and will not start)" >&2
+    else
+        _installed_gid="$(id -g "$installed_account" 2>/dev/null || echo "")"
+        _installed_home="$(getent passwd "$installed_account" 2>/dev/null | cut -d: -f6)"
+        if usermod -u 1000 "$installed_account" 2>/dev/null; then
+            # 私有组（GID 与旧 UID 相同）同步迁到 1000；1000 组已
+            # 被占时只告警，不拖垮安装（组 ID 不影响厂商后端）。
+            if [ "$_installed_gid" = "$_installed_uid" ]; then
+                if getent group 1000 >/dev/null 2>&1; then
+                    echo "XWLightOS: WARNING: GID 1000 already taken, keeping group $installed_account at GID $_installed_gid" >&2
+                else
+                    groupmod -g 1000 "$installed_account" 2>/dev/null || \
+                        echo "XWLightOS: WARNING: could not move group $installed_account to GID 1000" >&2
+                fi
+            fi
+            # usermod -u 不改文件属主：家目录与邮件 spool 必须跟上，
+            # 否则新 UID 登录后自己的文件全是别人的。
+            if [ -n "$_installed_home" ] && [ -d "$_installed_home" ]; then
+                chown -R "$installed_account:$installed_account" "$_installed_home" 2>/dev/null || \
+                    echo "XWLightOS: WARNING: could not rechown $_installed_home to UID 1000" >&2
+            fi
+            [ -f "/var/mail/$installed_account" ] && \
+                chown "$installed_account:$installed_account" "/var/mail/$installed_account" 2>/dev/null || true
+            [ -f "/var/spool/mail/$installed_account" ] && \
+                chown "$installed_account:$installed_account" "/var/spool/mail/$installed_account" 2>/dev/null || true
+            # 终检：UID 必须是 1000，且家目录下无旧 UID 残留文件。
+            # 迁一半（passwd 改了、文件没改）比不迁更糟，必须大声失败。
+            if [ "$(id -u "$installed_account" 2>/dev/null)" != "1000" ]; then
+                echo "XWLightOS: moved $installed_account to UID 1000 but id still reports $(id -u "$installed_account" 2>/dev/null); refusing to ship a half-migrated account" >&2
+                exit 1
+            fi
+            if [ -n "$_installed_home" ] && [ -d "$_installed_home" ] && \
+               find "$_installed_home" -uid "$_installed_uid" -print -quit 2>/dev/null | grep -q .; then
+                echo "XWLightOS: files owned by old UID $_installed_uid remain under $_installed_home after the UID 1000 migration; refusing to ship a half-migrated account" >&2
+                exit 1
+            fi
+            echo "XWLightOS: moved installed account $installed_account from UID $_installed_uid to UID 1000 (Seewo manager backend requires UID 1000)"
+        else
+            echo "XWLightOS: WARNING: could not move $installed_account to UID 1000 (Seewo manager backend requires UID 1000 and will not start)" >&2
+        fi
+        unset _installed_gid _installed_home
+    fi
+fi
+unset _installed_uid
 # Deep-chain fix (user mail 2026-10-24 22:40: why do boot-animation and
 # font-color fixes keep not landing): the live session pins its session via
 # AccountsService (the 1700 hook writes XSession=gnome for the
@@ -349,7 +462,11 @@ ENVEOF
     echo 'XWLightOS: /etc/environment missing in installed target, recreated (vendor manager unit hard-fails without it)'
 fi
 mkdir -p /etc/systemd/system/multi-user.target.wants
-for _vbase in /usr/lib/systemd/system /lib/systemd/system; do
+# 第 17 轮：加扫 /etc/systemd/system——alfred 的 unit 文件就在那里（厂商
+# postinst 从白板包内捆的 alfred 目录拷过去），之前只扫 /usr/lib 与 /lib，
+# 目标里的 alfred 从未被这段循环重启用过（靠 unpackfs 把 /etc 原样拷过来
+# 兜底，缺口是"没人断言"不是"一定丢了"，见评估卡 §4）。
+for _vbase in /usr/lib/systemd/system /lib/systemd/system /etc/systemd/system; do
     [ -d "$_vbase" ] || continue
     for _vunit in "$_vbase"/*seewo* "$_vbase"/*cvte* "$_vbase"/*maxhub* "$_vbase"/*easi*; do
         [ -f "$_vunit" ] || continue
@@ -387,6 +504,19 @@ if [ -f /usr/lib/systemd/system/com.seewo.terminalmanager.service ] || \
     }
 else
     echo 'XWLightOS: WARNING: terminalmanager unit absent in installed target (manager backend cannot start)' >&2
+fi
+# 第 17 轮：alfred（白板守护进程）目标内硬门禁，与管家同款。unit 在
+# /etc/systemd/system，WantedBy=default.target；上面循环已直连
+# multi-user.target.wants，unpackfs 也把厂商 postinst 建的
+# default.target.wants 软链拷过来。任一 wants 软链在即算启用。
+if [ -f /etc/systemd/system/com.cvte.maxhub.alfred.service ]; then
+    [ -e /etc/systemd/system/multi-user.target.wants/com.cvte.maxhub.alfred.service ] || \
+    [ -e /etc/systemd/system/default.target.wants/com.cvte.maxhub.alfred.service ] || {
+        echo 'XWLightOS: alfred unit present in target but not enabled; refusing to ship a backend that never starts' >&2
+        exit 1
+    }
+else
+    echo 'XWLightOS: WARNING: alfred unit absent in installed target (whiteboard daemon cannot start)' >&2
 fi
 
 # Refresh device state and initramfs so firmware already present in the target
@@ -431,6 +561,13 @@ if command -v dconf >/dev/null 2>&1; then
         echo 'XWLightOS: target dconf update failed; dock/system defaults would not apply' >&2
         exit 1
     }
+    # 第 17 轮（bug A：装好的系统屏幕键盘默认是关的）：dconf 编译出的 db
+    # 文件权限跟随当前 umask（本地实测：umask 022→644，027→640，007→660），
+    # dconf 自己不显式 chmod。若 postinstall 跑在限制性 umask 下，编出的
+    # /etc/dconf/db/local 普通用户读不了，会话读不到任何系统默认值，全部
+    # 回落到 schema 默认（屏幕键盘默认 false）。显式 chmod 644，保证无论
+    # 什么 umask 下系统默认值都可读。
+    chmod 644 /etc/dconf/db/local /etc/dconf/db/ibus /etc/dconf/db/gdm 2>/dev/null || true
 else
     echo 'XWLightOS: dconf missing in target; dock defaults cannot be compiled' >&2
     exit 1

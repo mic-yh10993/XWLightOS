@@ -48,7 +48,7 @@ button-layout=':minimize,maximize,close'
 # 固定栏里那个系统监视器程序仍不钉住（见 favorite-apps）。
 # 用户 2026-10-24 23:31 邮件：输入法面板扩展也要（此前 22:53 撤回，
 # 现按最新要求重新加回启用；Shift 切换配置本身的修法保留）。
-enabled-extensions=['apps-menu@gnome-shell-extensions.gcampax.github.com', 'dash-to-dock@micxgx.gmail.com', 'ding@rastersoft.com', 'native-window-placement@gnome-shell-extensions.gcampax.github.com', 'places-menu@gnome-shell-extensions.gcampax.github.com', 'drive-menu@gnome-shell-extensions.gcampax.github.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'ubuntu-appindicators@ubuntu.com', 'system-monitor@gnome-shell-extensions.gcampax.github.com', 'xwlightos-my-computer@xwlightos.local']
+enabled-extensions=['apps-menu@gnome-shell-extensions.gcampax.github.com', 'dash-to-dock@micxgx.gmail.com', 'ding@rastersoft.com', 'native-window-placement@gnome-shell-extensions.gcampax.github.com', 'places-menu@gnome-shell-extensions.gcampax.github.com', 'drive-menu@gnome-shell-extensions.gcampax.github.com', 'user-theme@gnome-shell-extensions.gcampax.github.com', 'ubuntu-appindicators@ubuntu.com', 'system-monitor@gnome-shell-extensions.gcampax.github.com', 'xwlightos-my-computer@xwlightos.local', 'xwlightos-osk@xwlightos.local']
 # 用户 2026-10-20 邮件指令：固定栏固定 7 个应用——希沃白板、希沃视频展台、
 # 班级优化大师、ONLYOFFICE、钉钉、微信、QQ（按此顺序）。
 # 用户 2026-10-20 邮件指令：dock 栏把"文件"和 Firefox 加回去，放最前面。
@@ -240,3 +240,16 @@ overrides={'Gtk/IMModule':<'ibus'>}
 [org/gnome/desktop/input-sources]
 current=0
 sources=[('ibus', 'libpinyin'), ('xkb', 'us')]
+
+# 第 17 轮（用户 2026-11-15：安装器为什么是全屏）：不是 Calamares 要全屏。
+# Calamares 3.3.14 在 windowExpanding=normal 下只做普通 show()（源码
+# CalamaresApplication.cpp:274-281），品牌尺寸 1024×650 只会被钳制、从不
+# 最大化。真凶是 GNOME 合成器 Mutter 的 auto-maximize：新窗口面积超过
+# 工作区 80% 就自动最大化（Mutter 48 源码 window.c:2402-2419，阈值
+# MAX_UNMAXIMIZED_WINDOW_AREA=.8，默认开启 prefs.c:113）；1024×650 的
+# 安装器窗口在 1024×768 虚拟机里占工作区 88.3%，被顺手最大化。真机大屏
+# （1080p/4K）占 33%，本来就不会触发。这里关掉自动最大化，窗口按请求
+# 尺寸打开（Windows 也是这样，不自动最大化）；只影响本来会被自动最大
+# 化的窗口，真机无影响。
+[org/gnome/mutter]
+auto-maximize=false

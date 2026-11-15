@@ -191,6 +191,22 @@ libqt6printsupport6
 # Qt 找不到插件直接 abort。显式声明，autoremove 拿不走。1600 钩子另有
 # 门禁（包已装 + 插件文件存在 + ldd 无缺失）。
 qt6-wayland
+# 第 17 轮（preview-82 实测：安装器安装过程主区域全白）：Calamares 的
+# 幻灯片 Presentation.qml（Qt6 版）第 65 行 import QtQuick.Window 2.0，
+# 而镜像里根本没装这个 QML 模块，用户日志实证 "module QtQuick.Window
+# is not installed"，整个幻灯片组件加载失败。QtQuick.Window 的 QML 文件
+# （libquickwindowplugin.so + qmldir）在 qml6-module-qtquick-window 包里
+# （Trixie Contents 索引确认），不在上面这组库里，calamares 的依赖也
+# 没把它拉进来。显式声明。1600 钩子另有门禁（QML 模块文件存在）。
+qml6-module-qtquick-window
+# 同轮（幻灯片全部 import 核对）：Qt6 幻灯片 6 个 QML 文件只 import 两
+# 个模块——QtQuick（4 处）与 QtQuick.Window（Presentation.qml 1 处）。
+# 运行日志只报了 Window 缺失，但镜像里连 qml6-module-qtquick 也没有
+# （preview-82 已装包单里只有 Qt5 的 qml-module-qtquick2，Qt6 的
+# QtQuick QML 模块不在镜像里；运行期 QtQuick 能解析是 Qt6 引擎经 C++
+# 注册的缘故，不可靠）。两包一起显式声明，1600 钩子的静态 import
+# 解析门禁也会断言 QtQuick 的 qmldir 存在。
+qml6-module-qtquick
 # 第 16 轮（厂商二进制依赖审计，13 个应用、1468 个 ELF 逐条跑 NEEDED）：
 # 以下 4 个包 Trixie 都有，但 preview-79 镜像里没装，厂商二进制缺了
 # 对应 SONAME：libxres1 → libXRes.so.1（希沃管家 live_player 捆绑的
